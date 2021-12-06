@@ -172,9 +172,11 @@ func extractPathArgs(ctx *cli.Context) (string, error) {
 	// paths so they can be found within the custom base directory set.
 	// This allows us to set a custom base directory, along with custom
 	// paths to the TLS cert file.
-	if baseDir != terminal.DefaultLitDir || networkStr != terminal.DefaultNetwork {
+	if baseDir != terminal.DefaultLitDir &&
+		ctx.GlobalString(tlsCertFlag.Name) != tlsCertFlag.Value {
+
 		tlsCertPath = filepath.Join(
-			baseDir, networkStr, terminal.DefaultTLSCertFilename,
+			baseDir, terminal.DefaultTLSCertFilename,
 		)
 	}
 
