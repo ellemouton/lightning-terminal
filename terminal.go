@@ -140,7 +140,8 @@ type LightningTerminal struct {
 	wg         sync.WaitGroup
 	lndErrChan chan error
 
-	lndClient *lndclient.GrpcLndServices
+	lndClient   *lndclient.GrpcLndServices
+	basicClient lnrpc.LightningClient
 
 	faradayServer  *frdrpc.RPCServer
 	faradayStarted bool
@@ -404,7 +405,6 @@ func (g *LightningTerminal) Run() error {
 // servers that lnd started.
 func (g *LightningTerminal) startSubservers() error {
 	var (
-		basicClient   lnrpc.LightningClient
 		insecure      bool
 		clientOptions []lndclient.BasicClientOption
 	)
@@ -436,7 +436,7 @@ func (g *LightningTerminal) startSubservers() error {
 		// We'll need a basic client and a full client because not all
 		// subservers have the same requirements.
 		var err error
-		basicClient, err = lndclient.NewBasicClient(
+		g.basicClient, err = lndclient.NewBasicClient(
 			host, tlsPath, path.Dir(macPath), string(network),
 			clientOptions...,
 		)
@@ -496,7 +496,7 @@ func (g *LightningTerminal) startSubservers() error {
 		// faraday, loop, and pool, all at the same time.
 		ctx := context.Background()
 		superMacaroon, err := bakeSuperMacaroon(
-			ctx, basicClient, 0, getAllPermissions(),
+			ctx, g.basicClient, 0, getAllPermissions(),
 		)
 		if err != nil {
 			return err
@@ -544,7 +544,7 @@ func (g *LightningTerminal) startSubservers() error {
 
 	if !g.cfg.poolRemote {
 		err = g.poolServer.StartAsSubserver(
-			basicClient, g.lndClient, createDefaultMacaroons,
+			g.basicClient, g.lndClient, createDefaultMacaroons,
 		)
 		if err != nil {
 			return err
