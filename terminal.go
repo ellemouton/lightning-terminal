@@ -494,27 +494,15 @@ func (g *LightningTerminal) startSubservers() error {
 	if g.cfg.LndMode == ModeIntegrated {
 		// Create a super macaroon that can be used to control lnd,
 		// faraday, loop, and pool, all at the same time.
-		bakePerms := getAllPermissions()
-		req := &lnrpc.BakeMacaroonRequest{
-			Permissions: make(
-				[]*lnrpc.MacaroonPermission, len(bakePerms),
-			),
-			AllowExternalPermissions: true,
-		}
-		for idx, perm := range bakePerms {
-			req.Permissions[idx] = &lnrpc.MacaroonPermission{
-				Entity: perm.Entity,
-				Action: perm.Action,
-			}
-		}
-
 		ctx := context.Background()
-		res, err := basicClient.BakeMacaroon(ctx, req)
+		superMacaroon, err := bakeSuperMacaroon(
+			ctx, basicClient, 0, getAllPermissions(),
+		)
 		if err != nil {
 			return err
 		}
 
-		g.rpcProxy.superMacaroon = res.Macaroon
+		g.rpcProxy.superMacaroon = superMacaroon
 	}
 
 	// If we're in integrated and stateless init mode, we won't create
@@ -1127,6 +1115,37 @@ func (g *LightningTerminal) createRESTProxy() error {
 	}
 
 	return nil
+}
+
+// bakeSuperMacaroon uses the lnd client to bake a macaroon that can include
+// permissions for multiple daemons.
+func bakeSuperMacaroon(ctx context.Context, lnd lnrpc.LightningClient,
+	rootKeyID uint64, perms []bakery.Op) (string, error) {
+
+	if lnd == nil {
+		return "", errors.New("lnd not yet connected")
+	}
+
+	req := &lnrpc.BakeMacaroonRequest{
+		Permissions: make(
+			[]*lnrpc.MacaroonPermission, len(perms),
+		),
+		AllowExternalPermissions: true,
+		RootKeyId:                rootKeyID,
+	}
+	for idx, perm := range perms {
+		req.Permissions[idx] = &lnrpc.MacaroonPermission{
+			Entity: perm.Entity,
+			Action: perm.Action,
+		}
+	}
+
+	res, err := lnd.BakeMacaroon(ctx, req)
+	if err != nil {
+		return "", err
+	}
+
+	return res.Macaroon, err
 }
 
 // allowCORS wraps the given http.Handler with a function that adds the
