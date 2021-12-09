@@ -50,6 +50,12 @@ var addSessionCommand = cli.Command{
 			Usage: "set to true to skip verification of the " +
 				"server's tls cert.",
 		},
+		cli.StringFlag{
+			Name: "type",
+			Usage: "session type to be created " +
+				"uipassword|adminmacaroon",
+			Value: "uipassword",
+		},
 	},
 }
 
@@ -65,13 +71,16 @@ func addSession(ctx *cli.Context) error {
 		return fmt.Errorf("must set a label for the session")
 	}
 
+	sessTypeStr := ctx.String("type")
+	sessType, err := parseSessionType(sessTypeStr)
+
 	sessionLength := time.Second * time.Duration(ctx.Uint64("expiry"))
 	sessionExpiry := time.Now().Add(sessionLength).Unix()
 
 	resp, err := client.AddSession(
 		getAuthContext(ctx), &litrpc.AddSessionRequest{
 			Label:                  label,
-			SessionType:            litrpc.SessionType_TYPE_UI_PASSWORD,
+			SessionType:            sessType,
 			ExpiryTimestampSeconds: uint64(sessionExpiry),
 			MailboxServerAddr:      ctx.String("mailboxserveraddr"),
 			DevServer:              ctx.Bool("devserver"),
@@ -84,6 +93,17 @@ func addSession(ctx *cli.Context) error {
 	printRespJSON(resp)
 
 	return nil
+}
+
+func parseSessionType(sessionType string) (litrpc.SessionType, error) {
+	switch sessionType {
+	case "uipassword":
+		return litrpc.SessionType_TYPE_UI_PASSWORD, nil
+	case "adminmacaroon":
+		return litrpc.SessionType_TYPE_MACAROON_ADMIN, nil
+	default:
+		return 0, fmt.Errorf("unsupported session type %s", sessionType)
+	}
 }
 
 var listSessionCommand = cli.Command{
