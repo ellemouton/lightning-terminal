@@ -34,4 +34,6 @@ require (
 // able to remove this once pool 0.5.3-alpha is out.
 replace github.com/lightninglabs/pool/auctioneerrpc => github.com/lightninglabs/pool/auctioneerrpc v1.0.4
 
+replace github.com/lightninglabs/lightning-node-connect => github.com/ellemouton/lightning-node-connect v0.1.5-alpha.0.20211209160156-7cf875441053
+
 go 1.16

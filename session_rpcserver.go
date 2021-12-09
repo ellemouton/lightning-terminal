@@ -10,6 +10,7 @@ import (
 	"github.com/lightninglabs/lightning-node-connect/mailbox"
 	"github.com/lightninglabs/lightning-terminal/litrpc"
 	"github.com/lightninglabs/lightning-terminal/session"
+	"gopkg.in/macaroon-bakery.v2/bakery"
 )
 
 // sessionRpcServer is the gRPC server for the Session RPC interface.
@@ -20,33 +21,38 @@ type sessionRpcServer struct {
 
 	db            *session.DB
 	sessionServer *session.Server
+
+	superMacBaker func(ctx context.Context, rootKeyID uint64,
+		perms []bakery.Op) (string, error)
 }
 
 // AddSession adds and starts a new Terminal Connect session.
 func (s *sessionRpcServer) AddSession(_ context.Context,
 	req *litrpc.AddSessionRequest) (*litrpc.AddSessionResponse, error) {
 
-	var (
-		typ    session.Type
-		expiry time.Time
-	)
-	switch req.SessionType {
-	case litrpc.SessionType_TYPE_UI_PASSWORD:
-		typ = session.TypeUIPassword
-
-	default:
-		return nil, fmt.Errorf("invalid session type, only UI " +
-			"password supported in LiT")
+	typ, err := unmarshalRPCType(req.SessionType)
+	if err != nil {
+		return nil, err
 	}
 
-	expiry = time.Unix(int64(req.ExpiryTimestampSeconds), 0)
+	if typ != session.TypeUIPassword && typ != session.TypeMacaroonAdmin {
+		return nil, fmt.Errorf("invalid session type, only UI " +
+			"password or Macaroon admin types supported in LiT")
+	}
+
+	expiry := time.Unix(int64(req.ExpiryTimestampSeconds), 0)
 	if time.Now().After(expiry) {
 		return nil, fmt.Errorf("expiry must be in the future")
 	}
 
+	var macPerms []bakery.Op
+	if typ == session.TypeMacaroonAdmin {
+		macPerms = getAllPermissions()
+	}
+
 	sess, err := session.NewSession(
 		req.Label, typ, expiry, req.MailboxServerAddr, req.DevServer,
-		nil,
+		macPerms,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new session: %v", err)
@@ -82,18 +88,36 @@ func (s *sessionRpcServer) resumeSession(sess *session.Session) error {
 			sess.LocalPublicKey.SerializeCompressed(), sess.State)
 		return nil
 	}
-	if sess.Type != session.TypeUIPassword {
-		log.Debugf("Not resuming session %x with type %d",
-			sess.LocalPublicKey.SerializeCompressed(), sess.Type)
-		return nil
-	}
 	if sess.Expiry.Before(time.Now()) {
 		log.Debugf("Not resuming session %x with expiry %s",
 			sess.LocalPublicKey.SerializeCompressed(), sess.Expiry)
 		return nil
 	}
 
-	authData := []byte("Authorization: Basic " + s.basicAuth)
+	var authData []byte
+	switch sess.Type {
+	case session.TypeUIPassword:
+		authData = []byte("Authorization: Basic " + s.basicAuth)
+
+	case session.TypeMacaroonAdmin:
+		ctx := context.Background()
+		mac, err := s.superMacBaker(
+			ctx, sess.MacaroonRootKey, sess.MacaroonRecipe,
+		)
+		if err != nil {
+			log.Debugf("Not resuming session %x. Could not bake"+
+				"the necessary macaroon: %w",
+				sess.LocalPublicKey.SerializeCompressed(), err)
+		}
+
+		authData = []byte(fmt.Sprintf("%s: %s", HeaderMacaroon, mac))
+
+	default:
+		log.Debugf("Not resuming session %x with type %d",
+			sess.LocalPublicKey.SerializeCompressed(), sess.Type)
+		return nil
+	}
+
 	return s.sessionServer.StartSession(sess, authData)
 }
 
@@ -213,6 +237,26 @@ func marshalRPCType(typ session.Type) (litrpc.SessionType, error) {
 
 	case session.TypeUIPassword:
 		return litrpc.SessionType_TYPE_UI_PASSWORD, nil
+
+	default:
+		return 0, fmt.Errorf("unknown type <%d>", typ)
+	}
+}
+
+// unmarshalRPCType converts an RPC session type to its session counterpart.
+func unmarshalRPCType(typ litrpc.SessionType) (session.Type, error) {
+	switch typ {
+	case litrpc.SessionType_TYPE_MACAROON_READONLY:
+		return session.TypeMacaroonReadonly, nil
+
+	case litrpc.SessionType_TYPE_MACAROON_ADMIN:
+		return session.TypeMacaroonAdmin, nil
+
+	case litrpc.SessionType_TYPE_MACAROON_CUSTOM:
+		return session.TypeMacaroonCustom, nil
+
+	case litrpc.SessionType_TYPE_UI_PASSWORD:
+		return session.TypeUIPassword, nil
 
 	default:
 		return 0, fmt.Errorf("unknown type <%d>", typ)

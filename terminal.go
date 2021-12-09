@@ -228,17 +228,13 @@ func (g *LightningTerminal) Run() error {
 		basicAuth:     g.rpcProxy.basicAuth,
 		db:            g.sessionDB,
 		sessionServer: g.sessionServer,
-	}
+		superMacBaker: func(ctx context.Context, rootKeyID uint64,
+			perms []bakery.Op) (string, error) {
 
-	// Now start up all previously created sessions.
-	sessions, err := g.sessionDB.ListSessions()
-	if err != nil {
-		return fmt.Errorf("error listing sessions: %v", err)
-	}
-	for _, sess := range sessions {
-		if err := g.sessionRpcServer.resumeSession(sess); err != nil {
-			return fmt.Errorf("error resuming sesion: %v", err)
-		}
+			return bakeSuperMacaroon(
+				ctx, g.basicClient, rootKeyID, perms,
+			)
+		},
 	}
 
 	// Overwrite the loop and pool daemon's user agent name so it sends
@@ -376,6 +372,20 @@ func (g *LightningTerminal) Run() error {
 	if err != nil {
 		log.Errorf("Could not start subservers: %v", err)
 		return err
+	}
+
+	// Now start up all previously created sessions. Since the sessions
+	// require a lnd connection in order to bake macaroons, we can only
+	// start up the sessions once the connection to lnd has been
+	// established.
+	sessions, err := g.sessionDB.ListSessions()
+	if err != nil {
+		return fmt.Errorf("error listing sessions: %v", err)
+	}
+	for _, sess := range sessions {
+		if err := g.sessionRpcServer.resumeSession(sess); err != nil {
+			return fmt.Errorf("error resuming sesion: %v", err)
+		}
 	}
 
 	// Now block until we receive an error or the main shutdown signal.
