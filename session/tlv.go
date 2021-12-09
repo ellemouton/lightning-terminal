@@ -1,13 +1,16 @@
 package session
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
+
+	"gopkg.in/macaroon-bakery.v2/bakery"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/lightningnetwork/lnd/tlv"
-	"gopkg.in/macaroon.v2"
 )
 
 const (
@@ -18,10 +21,14 @@ const (
 	typeServerAddr      tlv.Type = 5
 	typeDevServer       tlv.Type = 6
 	typeMacaroonRootKey tlv.Type = 7
-	typeMacaroon        tlv.Type = 8
 	typePairingSecret   tlv.Type = 9
 	typeLocalPrivateKey tlv.Type = 10
 	typeRemotePublicKey tlv.Type = 11
+	typeMacaroonRecipe  tlv.Type = 12
+
+	// typeMacaroon is no longer used but we leave it defined for backwards
+	// compatibility.
+	typeMacaroon tlv.Type = 8
 )
 
 // SerializeSession binary serializes the given session to the writer using the
@@ -58,17 +65,6 @@ func SerializeSession(w io.Writer, session *Session) error {
 		),
 	}
 
-	if session.Macaroon != nil {
-		macaroonBytes, err := session.Macaroon.MarshalBinary()
-		if err != nil {
-			return fmt.Errorf("error marshaling macaroon: %v", err)
-		}
-
-		tlvRecords = append(tlvRecords, tlv.MakePrimitiveRecord(
-			typeMacaroon, &macaroonBytes),
-		)
-	}
-
 	tlvRecords = append(
 		tlvRecords,
 		tlv.MakePrimitiveRecord(typePairingSecret, &pairingSecret),
@@ -79,6 +75,14 @@ func SerializeSession(w io.Writer, session *Session) error {
 		tlvRecords = append(tlvRecords, tlv.MakePrimitiveRecord(
 			typeRemotePublicKey, &session.RemotePublicKey,
 		))
+	}
+
+	if len(session.MacaroonRecipe) != 0 {
+		macRecipe := macaroonPermsToString(session.MacaroonRecipe)
+		macRecipeBytes := []byte(macRecipe)
+		tlvRecords = append(tlvRecords, tlv.MakePrimitiveRecord(
+			typeMacaroonRecipe, &macRecipeBytes),
+		)
 	}
 
 	tlvStream, err := tlv.NewStream(tlvRecords...)
@@ -93,11 +97,12 @@ func SerializeSession(w io.Writer, session *Session) error {
 // the data to be encoded in the tlv format.
 func DeserializeSession(r io.Reader) (*Session, error) {
 	var (
-		session                          = &Session{}
-		label, serverAddr, macaroonBytes []byte
-		pairingSecret, privateKey        []byte
-		state, typ, devServer            uint8
-		expiry                           uint64
+		session                   = &Session{}
+		label, serverAddr         []byte
+		macRecipe                 []byte
+		pairingSecret, privateKey []byte
+		state, typ, devServer     uint8
+		expiry                    uint64
 	)
 	tlvStream, err := tlv.NewStream(
 		tlv.MakePrimitiveRecord(typeLabel, &label),
@@ -109,12 +114,12 @@ func DeserializeSession(r io.Reader) (*Session, error) {
 		tlv.MakePrimitiveRecord(
 			typeMacaroonRootKey, &session.MacaroonRootKey,
 		),
-		tlv.MakePrimitiveRecord(typeMacaroon, &macaroonBytes),
 		tlv.MakePrimitiveRecord(typePairingSecret, &pairingSecret),
 		tlv.MakePrimitiveRecord(typeLocalPrivateKey, &privateKey),
 		tlv.MakePrimitiveRecord(
 			typeRemotePublicKey, &session.RemotePublicKey,
 		),
+		tlv.MakePrimitiveRecord(typeMacaroonRecipe, &macRecipe),
 	)
 	if err != nil {
 		return nil, err
@@ -132,14 +137,6 @@ func DeserializeSession(r io.Reader) (*Session, error) {
 	session.ServerAddr = string(serverAddr)
 	session.DevServer = devServer == 1
 
-	if t, ok := parsedTypes[typeMacaroon]; ok && t == nil {
-		session.Macaroon = &macaroon.Macaroon{}
-		err := session.Macaroon.UnmarshalBinary(macaroonBytes)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	if t, ok := parsedTypes[typePairingSecret]; ok && t == nil {
 		copy(session.PairingSecret[:], pairingSecret)
 	}
@@ -150,5 +147,46 @@ func DeserializeSession(r io.Reader) (*Session, error) {
 		)
 	}
 
+	if t, ok := parsedTypes[typeMacaroonRecipe]; ok && t == nil {
+		recipe, err := macaroonPermsFromString(string(macRecipe))
+		if err != nil {
+			return nil, err
+		}
+
+		session.MacaroonRecipe = recipe
+	}
+
 	return session, nil
+}
+
+func macaroonPermsToString(perms []bakery.Op) string {
+	var macRecipe string
+	for _, op := range perms {
+		if macRecipe != "" {
+			macRecipe += ";"
+		}
+
+		macRecipe += fmt.Sprintf("%s:%s", op.Entity, op.Action)
+	}
+
+	return macRecipe
+}
+
+func macaroonPermsFromString(macRecipe string) ([]bakery.Op, error) {
+	perms := strings.Split(macRecipe, ";")
+	recipe := make([]bakery.Op, 0, len(perms))
+	for _, permStr := range perms {
+		perm := strings.Split(permStr, ":")
+		if len(perm) != 2 {
+			return nil, errors.New("invalid macaroon " +
+				"recipe encoding")
+		}
+
+		recipe = append(recipe, bakery.Op{
+			Entity: perm[0],
+			Action: perm[1],
+		})
+	}
+
+	return recipe, nil
 }

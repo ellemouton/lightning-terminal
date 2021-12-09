@@ -7,7 +7,7 @@ import (
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/lightninglabs/lightning-node-connect/mailbox"
-	"gopkg.in/macaroon.v2"
+	"gopkg.in/macaroon-bakery.v2/bakery"
 )
 
 // Type represents the type of session.
@@ -39,7 +39,7 @@ type Session struct {
 	ServerAddr      string
 	DevServer       bool
 	MacaroonRootKey uint64
-	Macaroon        *macaroon.Macaroon
+	MacaroonRecipe  []bakery.Op
 	PairingSecret   [mailbox.NumPasswordBytes]byte
 	LocalPrivateKey *btcec.PrivateKey
 	LocalPublicKey  *btcec.PublicKey
@@ -48,7 +48,7 @@ type Session struct {
 
 // NewSession creates a new session with the given user-defined parameters.
 func NewSession(label string, typ Type, expiry time.Time, serverAddr string,
-	devServer bool) (*Session, error) {
+	devServer bool, perms []bakery.Op) (*Session, error) {
 
 	_, pairingSecret, err := mailbox.NewPassword()
 	if err != nil {
@@ -70,6 +70,7 @@ func NewSession(label string, typ Type, expiry time.Time, serverAddr string,
 		ServerAddr:      serverAddr,
 		DevServer:       devServer,
 		MacaroonRootKey: macRootKey,
+		MacaroonRecipe:  perms,
 		PairingSecret:   pairingSecret,
 		LocalPrivateKey: privateKey,
 		LocalPublicKey:  pubKey,
