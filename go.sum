@@ -92,12 +92,10 @@ github.com/btcsuite/btcutil v1.0.2/go.mod h1:j9HUFwoQRsZL3V4n+qG+CUnEGHOarIxfC3L
 github.com/btcsuite/btcutil v1.0.3-0.20201208143702-a53e38424cce/go.mod h1:0DVlHczLPewLcPGEIeUEzfOJhqGPQ0mJJRDBtD307+o=
 github.com/btcsuite/btcutil v1.0.3-0.20210527170813-e2ba6805a890 h1:9aGy5p7oXRUB4MCTmWm0+jzuh79GpjPIfv1leA5POD4=
 github.com/btcsuite/btcutil v1.0.3-0.20210527170813-e2ba6805a890/go.mod h1:0DVlHczLPewLcPGEIeUEzfOJhqGPQ0mJJRDBtD307+o=
-github.com/btcsuite/btcutil/psbt v1.0.2/go.mod h1:LVveMu4VaNSkIRTZu2+ut0HDBRuYjqGocxDMNS1KuGQ=
 github.com/btcsuite/btcutil/psbt v1.0.3-0.20200826194809-5f93e33af2b0/go.mod h1:LVveMu4VaNSkIRTZu2+ut0HDBRuYjqGocxDMNS1KuGQ=
 github.com/btcsuite/btcutil/psbt v1.0.3-0.20201208143702-a53e38424cce/go.mod h1:LVveMu4VaNSkIRTZu2+ut0HDBRuYjqGocxDMNS1KuGQ=
 github.com/btcsuite/btcutil/psbt v1.0.3-0.20210527170813-e2ba6805a890 h1:0xUNvvwJ7RjzBs4nCF+YrK28S5P/b4uHkpPxY1ovGY4=
 github.com/btcsuite/btcutil/psbt v1.0.3-0.20210527170813-e2ba6805a890/go.mod h1:LVveMu4VaNSkIRTZu2+ut0HDBRuYjqGocxDMNS1KuGQ=
-github.com/btcsuite/btcwallet v0.11.1-0.20200814001439-1d31f4ea6fc5/go.mod h1:YkEbJaCyN6yncq5gEp2xG0OKDwus2QxGCEXTNF27w5I=
 github.com/btcsuite/btcwallet v0.11.1-0.20200904022754-2c5947a45222/go.mod h1:owv9oZqM0HnUW+ByF7VqOgfs2eb0ooiePW/+Tl/i/Nk=
 github.com/btcsuite/btcwallet v0.12.1-0.20210519225359-6ab9b615576f/go.mod h1:f1HuBGov5+OTp40Gh1vA+tvF6d7bbuLFTceJMRB7fXw=
 github.com/btcsuite/btcwallet v0.13.0 h1:gtLWwueRm27KQiHJpycybv3uMdK1eo87JexfTfzvEhk=
@@ -203,6 +201,8 @@ github.com/dsnet/compress v0.0.1/go.mod h1:Aw8dCMJ7RioblQeTqt88akK31OvO8Dhf5Jflh
 github.com/dsnet/golib v0.0.0-20171103203638-1ea166775780/go.mod h1:Lj+Z9rebOhdfkVLjJ8T6VcRQv3SXugXy999NBtR9aFY=
 github.com/dustin/go-humanize v1.0.0 h1:VSnTsYCnlFHaM2/igO1h6X3HA71jcobQuxemgkq4zYo=
 github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=
+github.com/ellemouton/lndclient v1.0.1-0.20220107065909-65a7beeb09cb h1:CV1Z3TAn2nQlrtWkxZ2L0qO6pi4Qk2/CoVgI60TaBhY=
+github.com/ellemouton/lndclient v1.0.1-0.20220107065909-65a7beeb09cb/go.mod h1:ffBf0jWWH2EBEPiRXu4SJpWsA9zTY2gOljMN0xkGlEU=
 github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.1-0.20191026205805-5f8ba28d4473/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1mIlRU8Am5FuJP05cCM98=
@@ -514,9 +514,6 @@ github.com/lightninglabs/lightning-node-connect v0.1.5-alpha h1:6Jguz6wXSaV2KVs+
 github.com/lightninglabs/lightning-node-connect v0.1.5-alpha/go.mod h1:xsDBDnSzHalal3K4gbnVSrbWVbV25sHrm96p3+lASt0=
 github.com/lightninglabs/lightning-node-connect/hashmailrpc v1.0.2 h1:Er1miPZD2XZwcfE4xoS5AILqP1mj7kqnhbBSxW9BDxY=
 github.com/lightninglabs/lightning-node-connect/hashmailrpc v1.0.2/go.mod h1:antQGRDRJiuyQF6l+k6NECCSImgCpwaZapATth2Chv4=
-github.com/lightninglabs/lndclient v0.11.0-4/go.mod h1:8/cTKNwgL87NX123gmlv3Xh6p1a7pvzu+40Un3PhHiI=
-github.com/lightninglabs/lndclient v0.14.0-5 h1:dI2/Y2fn9m5VuwMTd/DcF6y0DYdMy3pk0MPu4xNjj54=
-github.com/lightninglabs/lndclient v0.14.0-5/go.mod h1:2kH9vNoc29ghIkfMjxwSeK8yCxsYfR80XAJ9PU/QWWk=
 github.com/lightninglabs/loop v0.15.1-beta h1:X4qth5qAdpgKarmcltO85HxMze3Wrk8FzI46Cwt9H4A=
 github.com/lightninglabs/loop v0.15.1-beta/go.mod h1:9TawqLzvjDP4pswZ8QkvTcBqH+wGKBffP+r6mFGBVi4=
 github.com/lightninglabs/neutrino v0.11.0/go.mod h1:CuhF0iuzg9Sp2HO6ZgXgayviFTn1QHdSTJlMncK80wg=
@@ -535,7 +532,6 @@ github.com/lightningnetwork/lightning-onion v1.0.2-0.20200501022730-3c8c8d0b89ea
 github.com/lightningnetwork/lightning-onion v1.0.2-0.20200501022730-3c8c8d0b89ea/go.mod h1:rigfi6Af/KqsF7Za0hOgcyq2PNH4AN70AaMRxcJkff4=
 github.com/lightningnetwork/lightning-onion v1.0.2-0.20210520211913-522b799e65b1 h1:h1BsjPzWea790mAXISoiT/qr0JRcixTCDNLmjsDThSw=
 github.com/lightningnetwork/lightning-onion v1.0.2-0.20210520211913-522b799e65b1/go.mod h1:rigfi6Af/KqsF7Za0hOgcyq2PNH4AN70AaMRxcJkff4=
-github.com/lightningnetwork/lnd v0.11.0-beta/go.mod h1:CzArvT7NFDLhVyW06+NJWSuWFmE6Ea+AjjA3txUBqTM=
 github.com/lightningnetwork/lnd v0.11.1-beta/go.mod h1:PGIgxy8aH70Li33YVYkHSaCM8m8LjEevk5h1Dpldrr4=
 github.com/lightningnetwork/lnd v0.13.0-beta.rc5.0.20210728112744-ebabda671786/go.mod h1:3cmukt9wR4PX1va9Q78gmqSPYd6yhV1wcFemM5F+kT8=
 github.com/lightningnetwork/lnd v0.14.0-beta/go.mod h1:qqOImM4QBKeIXsmUUsJznAbAaEF9iAPHAwfBZf9ld4Y=

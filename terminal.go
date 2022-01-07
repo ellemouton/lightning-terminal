@@ -202,7 +202,8 @@ func (g *LightningTerminal) Run() error {
 				),
 			),
 		},
-		basicAuth: g.rpcProxy.basicAuth,
+		basicAuth:    g.rpcProxy.basicAuth,
+		macaroonPath: g.cfg.MacaroonPath,
 	})
 
 	// Overwrite the loop and pool daemon's user agent name so it sends
@@ -484,7 +485,7 @@ func (g *LightningTerminal) startSubservers() error {
 
 	// If we're in integrated and stateless init mode, we won't create
 	// macaroon files in any of the subserver daemons.
-	createDefaultMacaroons := true
+	var stateless bool
 	if g.cfg.LndMode == ModeIntegrated && g.lndInterceptorChain != nil &&
 		g.lndInterceptorChain.MacaroonService() != nil {
 
@@ -494,14 +495,14 @@ func (g *LightningTerminal) startSubservers() error {
 		// daemons. In all other cases we want default macaroons so we
 		// can use the CLI tools to interact with loop/pool/faraday.
 		macService := g.lndInterceptorChain.MacaroonService()
-		createDefaultMacaroons = !macService.StatelessInit
+		stateless = macService.StatelessInit
 	}
 
 	// Both connection types are ready now, let's start our subservers if
 	// they should be started locally as an integrated service.
 	if !g.cfg.faradayRemote {
 		err = g.faradayServer.StartAsSubserver(
-			g.lndClient.LndServices, createDefaultMacaroons,
+			g.lndClient.LndServices, !stateless,
 		)
 		if err != nil {
 			return err
@@ -511,7 +512,7 @@ func (g *LightningTerminal) startSubservers() error {
 
 	if !g.cfg.loopRemote {
 		err = g.loopServer.StartAsSubserver(
-			g.lndClient, createDefaultMacaroons,
+			g.lndClient, !stateless,
 		)
 		if err != nil {
 			return err
@@ -521,7 +522,7 @@ func (g *LightningTerminal) startSubservers() error {
 
 	if !g.cfg.poolRemote {
 		err = g.poolServer.StartAsSubserver(
-			basicClient, g.lndClient, createDefaultMacaroons,
+			basicClient, g.lndClient, !stateless,
 		)
 		if err != nil {
 			return err
@@ -529,7 +530,8 @@ func (g *LightningTerminal) startSubservers() error {
 		g.poolStarted = true
 	}
 
-	if err = g.sessionRpcServer.start(); err != nil {
+	err = g.sessionRpcServer.start(stateless, &g.lndClient.LndServices)
+	if err != nil {
 		return err
 	}
 	g.sessionRpcServerStarted = true
