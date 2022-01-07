@@ -3,6 +3,7 @@ package terminal
 import (
 	"context"
 	"fmt"
+	"google.golang.org/grpc"
 	"strings"
 	"time"
 
@@ -18,8 +19,75 @@ type sessionRpcServer struct {
 
 	basicAuth string
 
+	cfg           *sessionRpcServerConfig
 	db            *session.DB
 	sessionServer *session.Server
+}
+
+// sessionRpcServerConfig holds the values used to configure the
+// sessionRpcServer.
+type sessionRpcServerConfig struct {
+	basicAuth   string
+	dbDir       string
+	grpcOptions []grpc.ServerOption
+}
+
+// newSessionRPCServer creates a new sessionRpcServer using the passed config.
+func newSessionRPCServer(cfg *sessionRpcServerConfig) (*sessionRpcServer,
+	error) {
+
+	// Create an instance of the local Terminal Connect session store DB.
+	db, err := session.NewDB(cfg.dbDir, session.DBFilename)
+	if err != nil {
+		return nil, fmt.Errorf("error creating session DB: %v", err)
+	}
+
+	// Create the gRPC server that handles adding/removing sessions and the
+	// actual mailbox server that spins up the Terminal Connect server
+	// interface.
+	server := session.NewServer(
+		func(opts ...grpc.ServerOption) *grpc.Server {
+			allOpts := append(cfg.grpcOptions, opts...)
+			return grpc.NewServer(allOpts...)
+		},
+	)
+
+	return &sessionRpcServer{
+		cfg:           cfg,
+		basicAuth:     cfg.basicAuth,
+		db:            db,
+		sessionServer: server,
+	}, nil
+}
+
+// start all the components necessary for the sessionRpcServer to start serving
+// requests. This includes starting the macaroon service and resuming all
+// non-revoked sessions.
+func (s *sessionRpcServer) start() error {
+	// Start up all previously created sessions.
+	sessions, err := s.db.ListSessions()
+	if err != nil {
+		return fmt.Errorf("error listing sessions: %v", err)
+	}
+	for _, sess := range sessions {
+		if err := s.resumeSession(sess); err != nil {
+			return fmt.Errorf("error resuming sesion: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// stop cleans up all resources managed by sessionRpcServer.
+func (s *sessionRpcServer) stop() error {
+	var returnErr error
+	if err := s.db.Close(); err != nil {
+		log.Errorf("Error closing session DB: %v", err)
+		returnErr = err
+	}
+	s.sessionServer.Stop()
+
+	return returnErr
 }
 
 // AddSession adds and starts a new Terminal Connect session.

@@ -22,7 +22,6 @@ import (
 	"github.com/jessevdk/go-flags"
 	"github.com/lightninglabs/faraday/frdrpc"
 	"github.com/lightninglabs/lightning-terminal/litrpc"
-	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightninglabs/loop"
 	"github.com/lightninglabs/loop/loopd"
@@ -154,9 +153,8 @@ type LightningTerminal struct {
 	rpcProxy   *rpcProxy
 	httpServer *http.Server
 
-	sessionDB        *session.DB
-	sessionServer    *session.Server
-	sessionRpcServer *sessionRpcServer
+	sessionRpcServer        *sessionRpcServer
+	sessionRpcServerStarted bool
 
 	restHandler http.Handler
 	restCancel  func()
@@ -194,51 +192,18 @@ func (g *LightningTerminal) Run() error {
 	g.rpcProxy = newRpcProxy(
 		g.cfg, g, getAllMethodPermissions(), bufRpcListener,
 	)
-
-	// Create an instance of the local Terminal Connect session store DB.
-	networkDir := path.Join(g.cfg.LitDir, g.cfg.Network)
-	g.sessionDB, err = session.NewDB(networkDir, session.DBFilename)
-	if err != nil {
-		return fmt.Errorf("error creating session DB: %v", err)
-	}
-
-	// Create the gRPC server that handles adding/removing sessions and the
-	// actual mailbox server that spins up the Terminal Connect server
-	// interface.
-	g.sessionServer = session.NewServer(
-		func(opts ...grpc.ServerOption) *grpc.Server {
-			allOpts := []grpc.ServerOption{
-				grpc.CustomCodec(grpcProxy.Codec()), // nolint: staticcheck,
-				grpc.UnknownServiceHandler(
-					grpcProxy.TransparentHandler(
-						g.rpcProxy.director,
-					),
+	g.sessionRpcServer, err = newSessionRPCServer(&sessionRpcServerConfig{
+		dbDir: path.Join(g.cfg.LitDir, g.cfg.Network),
+		grpcOptions: []grpc.ServerOption{
+			grpc.CustomCodec(grpcProxy.Codec()), // nolint: staticcheck,
+			grpc.UnknownServiceHandler(
+				grpcProxy.TransparentHandler(
+					g.rpcProxy.director,
 				),
-			}
-			allOpts = append(allOpts, opts...)
-			mailboxGrpcServer := grpc.NewServer(allOpts...)
-
-			_ = g.RegisterGrpcSubserver(mailboxGrpcServer)
-
-			return mailboxGrpcServer
+			),
 		},
-	)
-	g.sessionRpcServer = &sessionRpcServer{
-		basicAuth:     g.rpcProxy.basicAuth,
-		db:            g.sessionDB,
-		sessionServer: g.sessionServer,
-	}
-
-	// Now start up all previously created sessions.
-	sessions, err := g.sessionDB.ListSessions()
-	if err != nil {
-		return fmt.Errorf("error listing sessions: %v", err)
-	}
-	for _, sess := range sessions {
-		if err := g.sessionRpcServer.resumeSession(sess); err != nil {
-			return fmt.Errorf("error resuming sesion: %v", err)
-		}
-	}
+		basicAuth: g.rpcProxy.basicAuth,
+	})
 
 	// Overwrite the loop and pool daemon's user agent name so it sends
 	// "litd" instead of "loopd" and "poold" respectively.
@@ -564,6 +529,11 @@ func (g *LightningTerminal) startSubservers() error {
 		g.poolStarted = true
 	}
 
+	if err = g.sessionRpcServer.start(); err != nil {
+		return err
+	}
+	g.sessionRpcServerStarted = true
+
 	return nil
 }
 
@@ -838,11 +808,12 @@ func (g *LightningTerminal) shutdown() error {
 		}
 	}
 
-	if err := g.sessionDB.Close(); err != nil {
-		log.Errorf("Error closing session DB: %v", err)
-		returnErr = err
+	if g.sessionRpcServerStarted {
+		if err := g.sessionRpcServer.stop(); err != nil {
+			log.Errorf("Error closing session DB: %v", err)
+			returnErr = err
+		}
 	}
-	g.sessionServer.Stop()
 
 	if g.lndClient != nil {
 		g.lndClient.Close()
