@@ -499,7 +499,7 @@ func (p *rpcProxy) basicAuthToMacaroon(basicAuth, requestURI string,
 		}
 
 	case isLitURI(requestURI):
-		return []byte("no-macaroons-for-litcli"), nil
+		macPath = p.cfg.MacaroonPath
 
 	default:
 		return nil, fmt.Errorf("unknown gRPC web request: %v",
