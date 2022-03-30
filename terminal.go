@@ -200,8 +200,9 @@ func (g *LightningTerminal) Run() error {
 		bufRpcListener,
 	)
 	g.sessionRpcServer, err = newSessionRPCServer(&sessionRpcServerConfig{
-		basicAuth: g.rpcProxy.basicAuth,
-		dbDir:     path.Join(g.cfg.LitDir, g.cfg.Network),
+		basicAuth:    g.rpcProxy.basicAuth,
+		macaroonPath: g.cfg.MacaroonPath,
+		dbDir:        path.Join(g.cfg.LitDir, g.cfg.Network),
 		grpcOptions: []grpc.ServerOption{
 			grpc.CustomCodec(grpcProxy.Codec()), // nolint: staticcheck,
 			grpc.ChainStreamInterceptor(
@@ -544,7 +545,9 @@ func (g *LightningTerminal) startSubservers() error {
 		g.poolStarted = true
 	}
 
-	if err = g.sessionRpcServer.start(); err != nil {
+	if err = g.sessionRpcServer.start(
+		!createDefaultMacaroons, &g.lndClient.LndServices,
+	); err != nil {
 		return err
 	}
 	g.sessionRpcServerStarted = true

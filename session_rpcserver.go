@@ -11,6 +11,7 @@ import (
 	"github.com/lightninglabs/lightning-node-connect/mailbox"
 	"github.com/lightninglabs/lightning-terminal/litrpc"
 	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightninglabs/lndclient"
 	"google.golang.org/grpc"
 )
 
@@ -18,9 +19,10 @@ import (
 type sessionRpcServer struct {
 	litrpc.UnimplementedSessionsServer
 
-	cfg           *sessionRpcServerConfig
-	db            *session.DB
-	sessionServer *session.Server
+	cfg             *sessionRpcServerConfig
+	db              *session.DB
+	sessionServer   *session.Server
+	macaroonService *lndclient.MacaroonService
 
 	quit     chan struct{}
 	wg       sync.WaitGroup
@@ -32,6 +34,7 @@ type sessionRpcServer struct {
 type sessionRpcServerConfig struct {
 	basicAuth           string
 	dbDir               string
+	macaroonPath        string
 	grpcOptions         []grpc.ServerOption
 	registerGrpcServers func(server *grpc.Server)
 	superMacBaker       func(ctx context.Context, rootKeyID uint64,
@@ -73,7 +76,32 @@ func newSessionRPCServer(cfg *sessionRpcServerConfig) (*sessionRpcServer,
 // start all the components necessary for the sessionRpcServer to start serving
 // requests. This includes starting the macaroon service and resuming all
 // non-revoked sessions.
-func (s *sessionRpcServer) start() error {
+func (s *sessionRpcServer) start(stateless bool,
+	lndClient *lndclient.LndServices) error {
+
+	var err error
+	s.macaroonService, err = lndclient.NewMacaroonService(
+		&lndclient.MacaroonServiceConfig{
+			DBPath:           s.cfg.dbDir,
+			MacaroonLocation: "litd",
+			StatelessInit:    stateless,
+			RequiredPerms:    litPermissions,
+			LndClient:        lndClient,
+			EphemeralKey:     lndclient.SharedKeyNUMS,
+			KeyLocator:       lndclient.SharedKeyLocator,
+			MacaroonPath:     s.cfg.macaroonPath,
+		},
+	)
+	if err != nil {
+		log.Errorf("Could not create a new macaroon service: %v", err)
+		return err
+	}
+
+	if err := s.macaroonService.Start(); err != nil {
+		log.Errorf("Could not start macaroon service: %v", err)
+		return err
+	}
+
 	// Start up all previously created sessions.
 	sessions, err := s.db.ListSessions()
 	if err != nil {
@@ -97,6 +125,11 @@ func (s *sessionRpcServer) stop() error {
 			returnErr = err
 		}
 		s.sessionServer.Stop()
+
+		if err := s.macaroonService.Stop(); err != nil {
+			log.Errorf("Error stopping macaroon service: %v", err)
+			returnErr = err
+		}
 
 		close(s.quit)
 		s.wg.Wait()
