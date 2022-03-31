@@ -204,10 +204,10 @@ var (
 		// don't explicitly check for an empty array but just the
 		// existence of the array in the response.
 		successPattern:              "\"sessions\":[",
-		supportsMacAuthOnLndPort:    false,
-		supportsMacAuthOnLitPort:    false,
-		supportsUIPasswordOnLndPort: true,
-		supportsUIPasswordOnLitPort: true,
+		supportsMacAuthOnLndPort:    true,
+		supportsMacAuthOnLitPort:    true,
+		supportsUIPasswordOnLndPort: false,
+		supportsUIPasswordOnLitPort: false,
 		allowedThroughLNC:           false,
 		grpcWebURI:                  "/litrpc.Sessions/ListSessions",
 	}}
