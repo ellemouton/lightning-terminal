@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
@@ -59,7 +60,7 @@ func (e *proxyErr) Unwrap() error {
 // component.
 func newRpcProxy(cfg *Config, validator macaroons.MacaroonValidator,
 	superMacValidator session.SuperMacaroonValidator,
-	permissionMap map[string][]bakery.Op,
+	getPermissionMap func() map[string][]bakery.Op,
 	bufListener *bufconn.Listener) *rpcProxy {
 
 	// The gRPC web calls are protected by HTTP basic auth which is defined
@@ -77,7 +78,7 @@ func newRpcProxy(cfg *Config, validator macaroons.MacaroonValidator,
 	p := &rpcProxy{
 		cfg:               cfg,
 		basicAuth:         basicAuth,
-		permissionMap:     permissionMap,
+		getPermsMap:       getPermissionMap,
 		macValidator:      validator,
 		superMacValidator: superMacValidator,
 		bufListener:       bufListener,
@@ -146,9 +147,16 @@ func newRpcProxy(cfg *Config, validator macaroons.MacaroonValidator,
 //                                    +---------------------+
 //
 type rpcProxy struct {
-	cfg           *Config
-	basicAuth     string
+	cfg       *Config
+	basicAuth string
+
+	// permissionMap holds the required permissions for each supported URI.
+	// This map most _not_ be accessed directly. Instead, the
+	// rpcProxy.getPerms method should always be used.
 	permissionMap map[string][]bakery.Op
+	getPermsMap   func() map[string][]bakery.Op
+	getPermsOnce  sync.Once
+	permsMu       sync.Mutex
 
 	macValidator      macaroons.MacaroonValidator
 	superMacValidator session.SuperMacaroonValidator
@@ -373,7 +381,7 @@ func (p *rpcProxy) UnaryServerInterceptor(ctx context.Context, req interface{},
 	info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{},
 	error) {
 
-	uriPermissions, ok := p.permissionMap[info.FullMethod]
+	uriPermissions, ok := p.getPerms()[info.FullMethod]
 	if !ok {
 		return nil, fmt.Errorf("%s: unknown permissions "+
 			"required for method", info.FullMethod)
@@ -414,7 +422,7 @@ func (p *rpcProxy) StreamServerInterceptor(srv interface{},
 	ss grpc.ServerStream, info *grpc.StreamServerInfo,
 	handler grpc.StreamHandler) error {
 
-	uriPermissions, ok := p.permissionMap[info.FullMethod]
+	uriPermissions, ok := p.getPerms()[info.FullMethod]
 	if !ok {
 		return fmt.Errorf("%s: unknown permissions required "+
 			"for method", info.FullMethod)
@@ -580,7 +588,7 @@ func (p *rpcProxy) basicAuthToMacaroon(basicAuth, requestURI string,
 func (p *rpcProxy) convertSuperMacaroon(ctx context.Context, macHex string,
 	fullMethod string) ([]byte, error) {
 
-	requiredPermissions, ok := p.permissionMap[fullMethod]
+	requiredPermissions, ok := p.getPerms()[fullMethod]
 	if !ok {
 		return nil, fmt.Errorf("%s: unknown permissions required for "+
 			"method", fullMethod)
@@ -622,6 +630,20 @@ func (p *rpcProxy) convertSuperMacaroon(ctx context.Context, macHex string,
 	}
 
 	return nil, nil
+}
+
+// getPerms returns a map from URI to permissions required for the URI. The
+// first time it is called, the getPermsMap is used to set the contents of the
+// map. After that, the same map is returned.
+func (p *rpcProxy) getPerms() map[string][]bakery.Op {
+	p.permsMu.Lock()
+	defer p.permsMu.Unlock()
+
+	p.getPermsOnce.Do(func() {
+		p.permissionMap = p.getPermsMap()
+	})
+
+	return p.permissionMap
 }
 
 // dialBufConnBackend dials an in-memory connection to an RPC listener and

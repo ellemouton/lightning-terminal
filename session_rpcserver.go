@@ -12,6 +12,7 @@ import (
 	"github.com/lightninglabs/lightning-terminal/litrpc"
 	"github.com/lightninglabs/lightning-terminal/session"
 	"google.golang.org/grpc"
+	"gopkg.in/macaroon-bakery.v2/bakery"
 	"gopkg.in/macaroon-bakery.v2/bakery/checkers"
 	"gopkg.in/macaroon.v2"
 )
@@ -39,6 +40,7 @@ type sessionRpcServerConfig struct {
 	superMacBaker       func(ctx context.Context, rootKeyID uint64,
 		recipe *session.MacaroonRecipe) (string, error)
 	firstConnectionDeadline time.Duration
+	getAllPermissions       func(readOnly bool) []bakery.Op
 }
 
 // newSessionRPCServer creates a new sessionRpcServer using the passed config.
@@ -205,7 +207,7 @@ func (s *sessionRpcServer) resumeSession(sess *session.Session) error {
 	mac, err := s.cfg.superMacBaker(
 		context.Background(), sess.MacaroonRootKey,
 		&session.MacaroonRecipe{
-			Permissions: GetAllPermissions(readOnly),
+			Permissions: s.cfg.getAllPermissions(readOnly),
 			Caveats:     caveats,
 		},
 	)

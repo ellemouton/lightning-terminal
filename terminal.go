@@ -145,6 +145,8 @@ type LightningTerminal struct {
 	lndClient   *lndclient.GrpcLndServices
 	basicClient lnrpc.LightningClient
 
+	lndBuildTags map[string]bool
+
 	faradayServer  *frdrpcserver.RPCServer
 	faradayStarted bool
 
@@ -170,7 +172,8 @@ type LightningTerminal struct {
 // New creates a new instance of the lightning-terminal daemon.
 func New() *LightningTerminal {
 	return &LightningTerminal{
-		lndErrChan: make(chan error, 1),
+		lndErrChan:   make(chan error, 1),
+		lndBuildTags: make(map[string]bool),
 	}
 }
 
@@ -200,8 +203,10 @@ func (g *LightningTerminal) Run() error {
 	g.loopServer = loopd.New(g.cfg.Loop, nil)
 	g.poolServer = pool.NewServer(g.cfg.Pool)
 	g.rpcProxy = newRpcProxy(
-		g.cfg, g, g.validateSuperMacaroon, getAllMethodPermissions(),
-		bufRpcListener,
+		g.cfg, g, g.validateSuperMacaroon,
+		func() map[string][]bakery.Op {
+			return getAllMethodPermissions(g.lndBuildTags)
+		}, bufRpcListener,
 	)
 	g.sessionRpcServer, err = newSessionRPCServer(&sessionRpcServerConfig{
 		basicAuth: g.rpcProxy.basicAuth,
@@ -233,6 +238,9 @@ func (g *LightningTerminal) Run() error {
 			)
 		},
 		firstConnectionDeadline: g.cfg.FirstLNCConnDeadline,
+		getAllPermissions: func(readOnly bool) []bakery.Op {
+			return GetAllPermissions(readOnly, g.lndBuildTags)
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("could not create new session rpc "+
@@ -486,6 +494,16 @@ func (g *LightningTerminal) startSubservers() error {
 		return err
 	}
 
+	// Collect the tags that LND was built with.
+	version, err := g.lndClient.Versioner.GetVersion(ctxc)
+	if err != nil {
+		return err
+	}
+
+	for _, tag := range version.BuildTags {
+		g.lndBuildTags[strings.ToLower(tag)] = true
+	}
+
 	// In the integrated mode, we received an admin macaroon once lnd was
 	// ready. We can now bake a "super macaroon" that contains all
 	// permissions of all daemons that we can use for any internal calls.
@@ -497,7 +515,7 @@ func (g *LightningTerminal) startSubservers() error {
 			ctx, g.basicClient, session.NewSuperMacaroonRootKeyID(
 				[4]byte{},
 			),
-			GetAllPermissions(false), nil,
+			GetAllPermissions(false, g.lndBuildTags), nil,
 		)
 		if err != nil {
 			return err

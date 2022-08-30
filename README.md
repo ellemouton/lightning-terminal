@@ -38,7 +38,7 @@ To use LiT with a remote `lnd` instance please [follow these instructions](./doc
 Note that LiT requires `lnd` to be built with **all of its subservers** and requires running at least v0.11.0. Download the latest [official release binary](https://github.com/lightningnetwork/lnd/releases/latest) or build `lnd` from source by following the [installation instructions](https://github.com/lightningnetwork/lnd/blob/master/docs/INSTALL.md). If you choose to build `lnd` from source, use the following command to enable all the relevant subservers:
 
 ```shell
-⛰  make install tags="signrpc walletrpc chainrpc invoicesrpc"
+⛰  make install tags="signrpc walletrpc chainrpc invoicesrpc verrpc"
 ```
 
 ## Interaction

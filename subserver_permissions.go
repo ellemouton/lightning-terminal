@@ -1,10 +1,30 @@
 package terminal
 
 import (
+	"net"
+	"strings"
+
 	faraday "github.com/lightninglabs/faraday/frdrpcserver/perms"
 	loop "github.com/lightninglabs/loop/loopd/perms"
 	pool "github.com/lightninglabs/pool/perms"
 	"github.com/lightningnetwork/lnd"
+	"github.com/lightningnetwork/lnd/autopilot"
+	"github.com/lightningnetwork/lnd/chainreg"
+	"github.com/lightningnetwork/lnd/lnrpc"
+	"github.com/lightningnetwork/lnd/lnrpc/autopilotrpc"
+	"github.com/lightningnetwork/lnd/lnrpc/chainrpc"
+	"github.com/lightningnetwork/lnd/lnrpc/devrpc"
+	"github.com/lightningnetwork/lnd/lnrpc/invoicesrpc"
+	"github.com/lightningnetwork/lnd/lnrpc/neutrinorpc"
+	"github.com/lightningnetwork/lnd/lnrpc/peersrpc"
+	"github.com/lightningnetwork/lnd/lnrpc/routerrpc"
+	"github.com/lightningnetwork/lnd/lnrpc/signrpc"
+	"github.com/lightningnetwork/lnd/lnrpc/walletrpc"
+	"github.com/lightningnetwork/lnd/lnrpc/watchtowerrpc"
+	"github.com/lightningnetwork/lnd/lnrpc/wtclientrpc"
+	"github.com/lightningnetwork/lnd/lntest/mock"
+	"github.com/lightningnetwork/lnd/routing"
+	"github.com/lightningnetwork/lnd/sweep"
 	"gopkg.in/macaroon-bakery.v2/bakery"
 )
 
@@ -39,13 +59,30 @@ var (
 		"/lnrpc.State/SubscribeState": {},
 		"/lnrpc.State/GetState":       {},
 	}
+
+	// lndSubServerNameToTag is a map from the name of an LND subserver to
+	// the name of the LND tag that corresponds to the subserver. This map
+	// only contains the subserver-to-tag pairs for the pairs where the
+	// names differ.
+	lndSubServerNameToTag = map[string]string{
+		"WalletKitRPC":        "walletrpc",
+		"DevRPC":              "dev",
+		"NeutrinoKitRPC":      "neutrinorpc",
+		"VersionRPC":          "verrpc",
+		"WatchtowerClientRPC": "wtclientrpc",
+	}
+
+	// lndSubServerPerms is a map from LND subserver name to permissions
+	// map.
+	lndSubServerPerms = make(map[string]map[string][]bakery.Op)
 )
 
 // getSubserverPermissions returns a merged map of all subserver macaroon
 // permissions.
 func getSubserverPermissions() map[string][]bakery.Op {
-	mapSize := len(faraday.RequiredPermissions) +
+	mapSize := len(litPermissions) + len(faraday.RequiredPermissions) +
 		len(loop.RequiredPermissions) + len(pool.RequiredPermissions)
+
 	result := make(map[string][]bakery.Op, mapSize)
 	for key, value := range faraday.RequiredPermissions {
 		result[key] = value
@@ -64,30 +101,54 @@ func getSubserverPermissions() map[string][]bakery.Op {
 
 // getAllMethodPermissions returns a merged map of lnd's and all subservers'
 // method macaroon permissions.
-func getAllMethodPermissions() map[string][]bakery.Op {
-	subserverPermissions := getSubserverPermissions()
-	lndPermissions := lnd.MainRPCServerPermissions()
-	mapSize := len(subserverPermissions) + len(lndPermissions) +
-		len(whiteListedMethods)
+func getAllMethodPermissions(
+	lndBuildTags map[string]bool) map[string][]bakery.Op {
+
+	litsubServerPerms := getSubserverPermissions()
+	lndPerms := lnd.MainRPCServerPermissions()
+
+	mapSize := len(litsubServerPerms) + len(lndSubServerPerms) +
+		len(lndPerms) + len(whiteListedMethods)
+
 	result := make(map[string][]bakery.Op, mapSize)
-	for key, value := range lndPermissions {
+
+	for key, value := range lndPerms {
 		result[key] = value
 	}
-	for key, value := range subserverPermissions {
-		result[key] = value
-	}
+
 	for key, value := range whiteListedMethods {
 		result[key] = value
 	}
+
+	for key, value := range litsubServerPerms {
+		result[key] = value
+	}
+
+	for subServerName, perms := range lndSubServerPerms {
+		name := subServerName
+		if tagName, ok := lndSubServerNameToTag[name]; ok {
+			name = tagName
+		}
+
+		if !lndBuildTags[strings.ToLower(name)] {
+			continue
+		}
+
+		for key, value := range perms {
+			result[key] = value
+		}
+	}
+
 	return result
 }
 
 // GetAllPermissions retrieves all the permissions needed to bake a super
 // macaroon.
-func GetAllPermissions(readOnly bool) []bakery.Op {
-	dedupMap := make(map[string]map[string]bool)
+func GetAllPermissions(readOnly bool,
+	lndBuildTags map[string]bool) []bakery.Op {
 
-	for _, methodPerms := range getAllMethodPermissions() {
+	dedupMap := make(map[string]map[string]bool)
+	for _, methodPerms := range getAllMethodPermissions(lndBuildTags) {
 		for _, methodPerm := range methodPerms {
 			if methodPerm.Action == "" || methodPerm.Entity == "" {
 				continue
@@ -121,7 +182,7 @@ func GetAllPermissions(readOnly bool) []bakery.Op {
 
 // isLndURI returns true if the given URI belongs to an RPC of lnd.
 func isLndURI(uri string) bool {
-	_, ok := lnd.MainRPCServerPermissions()[uri]
+	_, ok := lndSubServerPerms[uri]
 	return ok
 }
 
@@ -147,4 +208,84 @@ func isPoolURI(uri string) bool {
 func isLitURI(uri string) bool {
 	_, ok := litPermissions[uri]
 	return ok
+}
+
+func init() {
+	ss := lnrpc.RegisteredSubServers()
+	for _, subServer := range ss {
+		_, perms, err := subServer.NewGrpcHandler().CreateSubServer(
+			&mockConfig{},
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		name := subServer.SubServerName
+		lndSubServerPerms[name] = make(map[string][]bakery.Op)
+		for key, value := range perms {
+			lndSubServerPerms[name][key] = value
+		}
+	}
+}
+
+// mockConfig implements lnrpc.SubServerConfigDispatcher. It provides th
+// functionality required so that the lnrpc.GrpcHandler.CreateSubServer
+// function can be called without panicking.
+type mockConfig struct{}
+
+var _ lnrpc.SubServerConfigDispatcher = (*mockConfig)(nil)
+
+// FetchConfig is a mock implementation of lnrpc.SubServerConfigDispatcher. It
+// is used as a parameter to lnrpc.GrpcHandler.CreateSubServer and allows the
+// function to be called without panicking. This is useful because
+// CreateSubServer can be used to extract the permissions required by each
+// registered subserver.
+//
+// TODO(elle): remove this once the sub-server permission lists in LND have been
+// exported
+func (t *mockConfig) FetchConfig(subServerName string) (interface{}, bool) {
+	switch subServerName {
+	case "InvoicesRPC":
+		return &invoicesrpc.Config{}, true
+	case "WatchtowerClientRPC":
+		return &wtclientrpc.Config{
+			Resolver: func(_, _ string) (*net.TCPAddr, error) {
+				return nil, nil
+			},
+		}, true
+	case "AutopilotRPC":
+		return &autopilotrpc.Config{
+			Manager: &autopilot.Manager{},
+		}, true
+	case "ChainRPC":
+		return &chainrpc.Config{
+			ChainNotifier: &chainreg.NoChainBackend{},
+		}, true
+	case "DevRPC":
+		return &devrpc.Config{}, true
+	case "NeutrinoKitRPC":
+		return &neutrinorpc.Config{}, true
+	case "PeersRPC":
+		return &peersrpc.Config{}, true
+	case "RouterRPC":
+		return &routerrpc.Config{
+			Router: &routing.ChannelRouter{},
+		}, true
+	case "SignRPC":
+		return &signrpc.Config{
+			Signer: &mock.DummySigner{},
+		}, true
+	case "WalletKitRPC":
+		return &walletrpc.Config{
+			FeeEstimator: &chainreg.NoChainBackend{},
+			Wallet:       &mock.WalletController{},
+			KeyRing:      &mock.SecretKeyRing{},
+			Sweeper:      &sweep.UtxoSweeper{},
+			Chain:        &mock.ChainIO{},
+		}, true
+	case "WatchtowerRPC":
+		return &watchtowerrpc.Config{}, true
+	default:
+		return nil, false
+	}
 }
