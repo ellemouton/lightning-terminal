@@ -152,6 +152,7 @@ type LightningTerminal struct {
 	basicClient lnrpc.LightningClient
 
 	statusServer *statusServer
+	subServerMgr *subServerMgr
 
 	faradayServer  *frdrpcserver.RPCServer
 	faradayStarted bool
@@ -187,6 +188,7 @@ type LightningTerminal struct {
 func New() *LightningTerminal {
 	return &LightningTerminal{
 		statusServer: newStatusServer(),
+		subServerMgr: newSubServerMgr(),
 	}
 }
 
@@ -991,6 +993,11 @@ func (g *LightningTerminal) shutdown() error {
 			log.Errorf("Error stopping pool: %v", err)
 			returnErr = err
 		}
+	}
+
+	err := g.subServerMgr.Stop()
+	if err != nil {
+		returnErr = err
 	}
 
 	if g.sessionRpcServerStarted {
