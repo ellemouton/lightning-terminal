@@ -272,7 +272,7 @@ func (p *rpcProxy) isHandling(resp http.ResponseWriter,
 	if p.grpcWebProxy.IsGrpcWebRequest(req) ||
 		p.grpcWebProxy.IsGrpcWebSocketRequest(req) {
 
-		if !p.hasStarted() {
+		if !p.hasStarted() && !isStatusReq(req.URL.Path) {
 			resp.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = resp.Write(make([]byte, 0))
 		} else {
@@ -286,7 +286,7 @@ func (p *rpcProxy) isHandling(resp http.ResponseWriter,
 	// Normal gRPC requests are also easy to identify. These we can
 	// send directly to the lnd proxy's gRPC server.
 	if isGrpcRequest(req) {
-		if !p.hasStarted() {
+		if !p.hasStarted() && !isStatusReq(req.URL.Path) {
 			resp.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = resp.Write(make([]byte, 0))
 		} else {
@@ -664,4 +664,12 @@ func isGrpcRequest(req *http.Request) bool {
 	contentType := req.Header.Get("content-type")
 	return req.ProtoMajor == 2 &&
 		strings.HasPrefix(contentType, contentTypeGrpc)
+}
+
+// isStatusReq returns true if the given request is intended for the
+// litrpc.Status service.
+func isStatusReq(uri string) bool {
+	return strings.HasPrefix(
+		uri, fmt.Sprintf("/%s", litrpc.Status_ServiceDesc.ServiceName),
+	)
 }

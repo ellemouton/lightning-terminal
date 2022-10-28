@@ -68,6 +68,14 @@ var (
 		}},
 	}
 
+	// MacaroonWhitelist defines methods that we don't require macaroons to
+	// access.
+	MacaroonWhitelist = map[string][]bakery.Op{
+		// The Status service must be available at all times, even
+		// before we can check macaroons, so we whitelist it.
+		"/litrpc.Status/GetSubServerState": {},
+	}
+
 	// whiteListedLNDMethods is a map of all lnd RPC methods that don't
 	// require any macaroon authentication.
 	whiteListedLNDMethods = map[string][]bakery.Op{
@@ -146,6 +154,9 @@ func NewManager() (*Manager, error) {
 	permissions[loopPerms] = loop.RequiredPermissions
 	permissions[poolPerms] = pool.RequiredPermissions
 	permissions[litPerms] = LitPermissions
+	for k, v := range MacaroonWhitelist {
+		permissions[litPerms][k] = v
+	}
 	permissions[lndPerms] = lnd.MainRPCServerPermissions()
 	for k, v := range whiteListedLNDMethods {
 		permissions[lndPerms][k] = v
