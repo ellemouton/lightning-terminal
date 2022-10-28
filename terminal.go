@@ -145,8 +145,9 @@ type LightningTerminal struct {
 	wg       sync.WaitGroup
 	errQueue *queue.ConcurrentQueue[error]
 
-	lndClient   *lndclient.GrpcLndServices
-	basicClient lnrpc.LightningClient
+	subServerMgr *subServerMgr
+	lndClient    *lndclient.GrpcLndServices
+	basicClient  lnrpc.LightningClient
 
 	faradayServer  *frdrpcserver.RPCServer
 	faradayStarted bool
@@ -176,6 +177,9 @@ type LightningTerminal struct {
 // New creates a new instance of the lightning-terminal daemon.
 func New() *LightningTerminal {
 	return &LightningTerminal{}
+	return &LightningTerminal{
+		subServerMgr: newSubServerMgr(),
+	}
 }
 
 // Run starts everything and then blocks until either the application is shut
@@ -896,6 +900,11 @@ func (g *LightningTerminal) shutdown() error {
 			log.Errorf("Error stopping pool: %v", err)
 			returnErr = err
 		}
+	}
+
+	err := g.subServerMgr.Stop()
+	if err != nil {
+		returnErr = err
 	}
 
 	if g.sessionRpcServerStarted {
