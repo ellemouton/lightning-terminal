@@ -145,6 +145,7 @@ type LightningTerminal struct {
 	wg       sync.WaitGroup
 	errQueue *queue.ConcurrentQueue[error]
 
+	stateServer  *statusServer
 	subServerMgr *subServerMgr
 	lndClient    *lndclient.GrpcLndServices
 	basicClient  lnrpc.LightningClient
@@ -179,6 +180,7 @@ func New() *LightningTerminal {
 	return &LightningTerminal{}
 	return &LightningTerminal{
 		subServerMgr: newSubServerMgr(),
+		stateServer:  newStatusServer(),
 	}
 }
 
@@ -1033,6 +1035,12 @@ func (g *LightningTerminal) startMainWebServer() error {
 	// main UI HTTP server. We use this simple switching handler to send the
 	// requests to the correct implementation.
 	httpHandler := func(resp http.ResponseWriter, req *http.Request) {
+		// The state server is checked first in-case this request is
+		// for it.
+		if g.stateServer.isHandling(resp, req) {
+			return
+		}
+
 		// If this is some kind of gRPC, gRPC Web or REST call that
 		// should go to lnd or one of the daemons, pass it to the proxy
 		// that handles all those calls.
