@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package litrpc;
+
+option go_package = "github.com/lightninglabs/lightning-terminal/litrpc";
+
+// The Status server can be used to query the state of various LiT sub-servers.
+service Status {
+    rpc GetSubServerState (GetSubServerStateReq)
+        returns (GetSubServerStateResp);
+}
+
+message GetSubServerStateReq {
+    // The name of the sub-server for which the status is to be queried for.
+    string sub_server_name = 1;
+}
+
+message GetSubServerStateResp {
+    // running is true if the sub-server is currently running.
+    bool running = 1;
+
+    // error describes an error that might have resulted in the sub-server not
+    // starting up properly.
+    string error = 2;
+}
