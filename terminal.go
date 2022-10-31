@@ -154,15 +154,6 @@ type LightningTerminal struct {
 	statusServer *statusServer
 	subServerMgr *subServerMgr
 
-	faradayServer  *frdrpcserver.RPCServer
-	faradayStarted bool
-
-	loopServer  *loopd.Daemon
-	loopStarted bool
-
-	poolServer  *pool.Server
-	poolStarted bool
-
 	rpcProxy   *rpcProxy
 	httpServer *http.Server
 
@@ -226,7 +217,10 @@ func (g *LightningTerminal) Run() error {
 
 	// Construct the rpcProxy. It must be initialised before the main web
 	// server is started.
-	g.rpcProxy = newRpcProxy(g.cfg, g, g.validateSuperMacaroon, g.permsMgr)
+	g.rpcProxy = newRpcProxy(
+		g.cfg, g, g.validateSuperMacaroon, g.permsMgr, g.statusServer,
+		g.subServerMgr,
+	)
 
 	// We'll also create a REST proxy that'll convert any REST calls to gRPC
 	// calls and forward them to the internal listener.
@@ -244,10 +238,9 @@ func (g *LightningTerminal) Run() error {
 	}
 
 	// Create the instances of our subservers now so we can hook them up to
-	// lnd once it's fully started.
-	g.faradayServer = frdrpcserver.NewRPCServer(g.cfg.faradayRpcConfig)
-	g.loopServer = loopd.New(g.cfg.Loop, nil)
-	g.poolServer = pool.NewServer(g.cfg.Pool)
+	// lnd once it's fully running.
+	g.initSubServers()
+
 	g.accountService, err = accounts.NewService(
 		filepath.Dir(g.cfg.MacaroonPath), g.errQueue.ChanIn(),
 	)
@@ -297,11 +290,6 @@ func (g *LightningTerminal) Run() error {
 		return fmt.Errorf("could not create new session rpc "+
 			"server: %v", err)
 	}
-
-	// Overwrite the loop and pool daemon's user agent name so it sends
-	// "litd" instead of "loopd" and "poold" respectively.
-	loop.AgentName = "litd"
-	pool.SetAgentName("litd")
 
 	// Call the "real" main in a nested manner so the defers will properly
 	// be executed in the case of a graceful shutdown.
@@ -397,6 +385,10 @@ func (g *LightningTerminal) Run() error {
 		return fmt.Errorf("could not connect to LND: %v", err)
 	}
 
+	// Initialise any connections to sub-servers that we are running in
+	// remote mode.
+	g.subServerMgr.StartRemoteSubServers()
+
 	// Now start the RPC proxy that will handle all incoming gRPC, grpc-web
 	// and REST requests.
 	if err := g.rpcProxy.Start(g.lndConn); err != nil {
@@ -453,11 +445,9 @@ func (g *LightningTerminal) Run() error {
 		createDefaultMacaroons = !macService.StatelessInit
 	}
 
-	err = g.startIntegratedDaemons(createDefaultMacaroons)
-	if err != nil {
-		log.Errorf("Could not start integrated daemons: %v", err)
-		return err
-	}
+	g.subServerMgr.StartIntegratedServers(
+		g.basicClient, g.lndClient, createDefaultMacaroons,
+	)
 
 	err = g.startInternalSubServers(createDefaultMacaroons)
 	if err != nil {
@@ -466,13 +456,6 @@ func (g *LightningTerminal) Run() error {
 
 	// Now block until we receive an error or the main shutdown signal.
 	select {
-	case err := <-g.loopServer.ErrChan:
-		// Loop will shut itself down if an error happens. We don't need
-		// to try to stop it again.
-		g.loopStarted = false
-		log.Errorf("Received critical error from loop, shutting down: "+
-			"%v", err)
-
 	case err := <-g.errQueue.ChanOut():
 		if err != nil {
 			log.Errorf("Received critical error from subsystem, "+
@@ -487,6 +470,123 @@ func (g *LightningTerminal) Run() error {
 	}
 
 	return nil
+}
+
+// initSubServers registers the faraday, loop and pool sub-servers with the
+// subServerMgr.
+func (g *LightningTerminal) initSubServers() {
+	// Overwrite the loop and pool daemon's user agent name so it sends
+	// "litd" instead of "loopd" and "poold" respectively.
+	loop.AgentName = "litd"
+	pool.SetAgentName("litd")
+
+	faradayServer := frdrpcserver.NewRPCServer(g.cfg.faradayRpcConfig)
+	faraday := newSubServer(&subServerCfg{
+		name:         FaradaySubServer,
+		remote:       g.cfg.faradayRemote,
+		remoteCfg:    g.cfg.Remote.Faraday,
+		macValidator: faradayServer,
+		macPath:      g.cfg.Faraday.MacaroonPath,
+		registerGrpcService: func(server grpc.ServiceRegistrar) {
+			frdrpc.RegisterFaradayServerServer(
+				server, faradayServer,
+			)
+		},
+		ownsURI: g.permsMgr.IsFaradayURI,
+		startIntegrated: func(_ lnrpc.LightningClient,
+			lndGrpc *lndclient.GrpcLndServices,
+			withMacaroonService bool) error {
+
+			return faradayServer.StartAsSubserver(
+				lndGrpc.LndServices, withMacaroonService,
+			)
+		},
+		stopIntegrated: faradayServer.Stop,
+		onStartSuccess: func() {
+			g.statusServer.setServerRunning(FaradaySubServer)
+		},
+		onStartError: func(err error) {
+			g.statusServer.setServerErrored(
+				FaradaySubServer, err.Error(),
+			)
+		},
+		onStop: func() {
+			g.statusServer.setServerStopped(FaradaySubServer)
+		},
+	})
+	g.subServerMgr.AddServer(faraday)
+
+	loopServer := loopd.New(g.cfg.Loop, nil)
+	loopd := newSubServer(&subServerCfg{
+		name:         LoopSubServer,
+		remote:       g.cfg.loopRemote,
+		remoteCfg:    g.cfg.Remote.Loop,
+		macPath:      g.cfg.Loop.MacaroonPath,
+		macValidator: loopServer,
+		ownsURI:      g.permsMgr.IsLoopURI,
+		registerGrpcService: func(server grpc.ServiceRegistrar) {
+			looprpc.RegisterSwapClientServer(server, loopServer)
+		},
+		startIntegrated: func(_ lnrpc.LightningClient,
+			lndGrpc *lndclient.GrpcLndServices,
+			withMacaroonService bool) error {
+
+			return loopServer.StartAsSubserver(
+				lndGrpc, withMacaroonService,
+			)
+		},
+		stopIntegrated: func() error {
+			loopServer.Stop()
+			return nil
+		},
+		onStartSuccess: func() {
+			g.statusServer.setServerRunning(LoopSubServer)
+		},
+		serverErrChan: loopServer.ErrChan,
+		onStartError: func(err error) {
+			g.statusServer.setServerErrored(
+				LoopSubServer, err.Error(),
+			)
+		},
+		onStop: func() {
+			g.statusServer.setServerStopped(LoopSubServer)
+		},
+	})
+	g.subServerMgr.AddServer(loopd)
+
+	poolServer := pool.NewServer(g.cfg.Pool)
+	poold := newSubServer(&subServerCfg{
+		name:         PoolSubServer,
+		remote:       g.cfg.poolRemote,
+		remoteCfg:    g.cfg.Remote.Pool,
+		macPath:      g.cfg.Pool.MacaroonPath,
+		macValidator: poolServer,
+		ownsURI:      g.permsMgr.IsPoolURI,
+		registerGrpcService: func(server grpc.ServiceRegistrar) {
+			poolrpc.RegisterTraderServer(server, poolServer)
+		},
+		startIntegrated: func(lndClient lnrpc.LightningClient,
+			lndGrpc *lndclient.GrpcLndServices,
+			withMacaroonService bool) error {
+
+			return poolServer.StartAsSubserver(
+				lndClient, lndGrpc, withMacaroonService,
+			)
+		},
+		stopIntegrated: poolServer.Stop,
+		onStartSuccess: func() {
+			g.statusServer.setServerRunning(PoolSubServer)
+		},
+		onStartError: func(err error) {
+			g.statusServer.setServerErrored(
+				PoolSubServer, err.Error(),
+			)
+		},
+		onStop: func() {
+			g.statusServer.setServerStopped(PoolSubServer)
+		},
+	})
+	g.subServerMgr.AddServer(poold)
 }
 
 // setUpLNDClients sets up the various LND clients required by LiT.
@@ -606,49 +706,6 @@ func (g *LightningTerminal) setUpLNDClients() error {
 	return nil
 }
 
-// startIntegratedDaemons starts all embedded daemons as external sub-servers
-// that hook into the same gRPC and REST servers that lnd started.
-func (g *LightningTerminal) startIntegratedDaemons(
-	createDefaultMacaroons bool) error {
-
-	// Both connection types are ready now, let's start our sub-servers if
-	// they should be started locally as an integrated service.
-	if !g.cfg.faradayRemote {
-		log.Infof("Starting integrated faraday daemon")
-		err := g.faradayServer.StartAsSubserver(
-			g.lndClient.LndServices, createDefaultMacaroons,
-		)
-		if err != nil {
-			return err
-		}
-		g.faradayStarted = true
-	}
-
-	if !g.cfg.loopRemote {
-		log.Infof("Starting integrated loop daemon")
-		err := g.loopServer.StartAsSubserver(
-			g.lndClient, createDefaultMacaroons,
-		)
-		if err != nil {
-			return err
-		}
-		g.loopStarted = true
-	}
-
-	if !g.cfg.poolRemote {
-		log.Infof("Starting integrated pool daemon")
-		err := g.poolServer.StartAsSubserver(
-			g.basicClient, g.lndClient, createDefaultMacaroons,
-		)
-		if err != nil {
-			return err
-		}
-		g.poolStarted = true
-	}
-
-	return nil
-}
-
 // startInternalSubServers starts all Litd specific sub-servers.
 func (g *LightningTerminal) startInternalSubServers(
 	createDefaultMacaroons bool) error {
@@ -743,21 +800,7 @@ func (g *LightningTerminal) RegisterGrpcSubserver(server *grpc.Server) error {
 func (g *LightningTerminal) registerSubDaemonGrpcServers(server *grpc.Server,
 	withLitRPC bool) {
 
-	// In remote mode the "director" of the RPC proxy will act as a catch-
-	// all for any gRPC request that isn't known because we didn't register
-	// any server for it. The director will then forward the request to the
-	// remote service.
-	if !g.cfg.faradayRemote {
-		frdrpc.RegisterFaradayServerServer(server, g.faradayServer)
-	}
-
-	if !g.cfg.loopRemote {
-		looprpc.RegisterSwapClientServer(server, g.loopServer)
-	}
-
-	if !g.cfg.poolRemote {
-		poolrpc.RegisterTraderServer(server, g.poolServer)
-	}
+	g.subServerMgr.RegisterRPCServices(server)
 
 	if withLitRPC {
 		litrpc.RegisterSessionsServer(server, g.sessionRpcServer)
@@ -841,83 +884,23 @@ func (g *LightningTerminal) ValidateMacaroon(ctx context.Context,
 		)
 	}
 
-	// Validate all macaroons for services that are running in the local
-	// process. Calls that we proxy to a remote host don't need to be
-	// checked as they'll have their own interceptor.
-	switch {
-	case g.permsMgr.IsFaradayURI(fullMethod):
-		// In remote mode we just pass through the request, the remote
-		// daemon will check the macaroon.
-		if g.cfg.faradayRemote {
+	handled, err := g.subServerMgr.ValidateMacaroon(
+		ctx, requiredPermissions, fullMethod,
+	)
+	if err != nil {
+		return err
+	}
+
+	if handled {
+		return nil
+	}
+
+	if g.permsMgr.IsLitURI(fullMethod) {
+		// If the request is for the status server, then allow it.
+		if isStatusReq(fullMethod) {
 			return nil
 		}
 
-		if !g.faradayStarted {
-			return fmt.Errorf("faraday is not yet ready for " +
-				"requests, lnd possibly still starting or " +
-				"syncing")
-		}
-
-		err = g.faradayServer.ValidateMacaroon(
-			ctx, requiredPermissions, fullMethod,
-		)
-		if err != nil {
-			return &proxyErr{
-				proxyContext: "faraday",
-				wrapped: fmt.Errorf("invalid macaroon: %v",
-					err),
-			}
-		}
-
-	case g.permsMgr.IsLoopURI(fullMethod):
-		// In remote mode we just pass through the request, the remote
-		// daemon will check the macaroon.
-		if g.cfg.loopRemote {
-			return nil
-		}
-
-		if !g.loopStarted {
-			return fmt.Errorf("loop is not yet ready for " +
-				"requests, lnd possibly still starting or " +
-				"syncing")
-		}
-
-		err = g.loopServer.ValidateMacaroon(
-			ctx, requiredPermissions, fullMethod,
-		)
-		if err != nil {
-			return &proxyErr{
-				proxyContext: "loop",
-				wrapped: fmt.Errorf("invalid macaroon: %v",
-					err),
-			}
-		}
-
-	case g.permsMgr.IsPoolURI(fullMethod):
-		// In remote mode we just pass through the request, the remote
-		// daemon will check the macaroon.
-		if g.cfg.poolRemote {
-			return nil
-		}
-
-		if !g.poolStarted {
-			return fmt.Errorf("pool is not yet ready for " +
-				"requests, lnd possibly still starting or " +
-				"syncing")
-		}
-
-		err = g.poolServer.ValidateMacaroon(
-			ctx, requiredPermissions, fullMethod,
-		)
-		if err != nil {
-			return &proxyErr{
-				proxyContext: "pool",
-				wrapped: fmt.Errorf("invalid macaroon: %v",
-					err),
-			}
-		}
-
-	case g.permsMgr.IsLitURI(fullMethod):
 		if !g.macaroonServiceStarted {
 			return fmt.Errorf("the macaroon service has not " +
 				"started yet")
@@ -972,28 +955,6 @@ func (g *LightningTerminal) BuildWalletConfig(ctx context.Context,
 // shutdown stops all subservers that were started and attached to lnd.
 func (g *LightningTerminal) shutdown() error {
 	var returnErr error
-
-	if g.faradayStarted {
-		if err := g.faradayServer.Stop(); err != nil {
-			log.Errorf("Error stopping faraday: %v", err)
-			returnErr = err
-		}
-	}
-
-	if g.loopStarted {
-		g.loopServer.Stop()
-		if err := <-g.loopServer.ErrChan; err != nil {
-			log.Errorf("Error stopping loop: %v", err)
-			returnErr = err
-		}
-	}
-
-	if g.poolStarted {
-		if err := g.poolServer.Stop(); err != nil {
-			log.Errorf("Error stopping pool: %v", err)
-			returnErr = err
-		}
-	}
 
 	err := g.subServerMgr.Stop()
 	if err != nil {
