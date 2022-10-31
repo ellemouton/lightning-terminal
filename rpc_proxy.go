@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
@@ -165,6 +166,9 @@ type rpcProxy struct {
 
 	grpcServer   *grpc.Server
 	grpcWebProxy *grpcweb.WrappedGrpcServer
+
+	started bool
+	mu      sync.RWMutex
 }
 
 // Start creates initial connection to lnd.
@@ -219,6 +223,12 @@ func (p *rpcProxy) Start() error {
 		}
 	}
 
+	// Set started to true to indicate that the rpcProxy is now ready to
+	// handle requests.
+	p.mu.Lock()
+	p.started = true
+	p.mu.Unlock()
+
 	return nil
 }
 
@@ -267,6 +277,15 @@ func (p *rpcProxy) StopDaemon(_ context.Context,
 	return &litrpc.StopDaemonResponse{}, nil
 }
 
+// hasStarted returns true if the rpcProxy has started and is ready to handle
+// requests.
+func (p *rpcProxy) hasStarted() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	return p.started
+}
+
 // isHandling checks if the specified request is something to be handled by lnd
 // or any of the attached sub daemons. If true is returned, the call was handled
 // by the RPC proxy and the caller MUST NOT handle it again. If false is
@@ -279,8 +298,13 @@ func (p *rpcProxy) isHandling(resp http.ResponseWriter,
 	if p.grpcWebProxy.IsGrpcWebRequest(req) ||
 		p.grpcWebProxy.IsGrpcWebSocketRequest(req) {
 
-		log.Infof("Handling gRPC web request: %s", req.URL.Path)
-		p.grpcWebProxy.ServeHTTP(resp, req)
+		if !p.hasStarted() {
+			resp.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = resp.Write(make([]byte, 0))
+		} else {
+			log.Infof("Handling gRPC web request: %s", req.URL.Path)
+			p.grpcWebProxy.ServeHTTP(resp, req)
+		}
 
 		return true
 	}
@@ -288,8 +312,13 @@ func (p *rpcProxy) isHandling(resp http.ResponseWriter,
 	// Normal gRPC requests are also easy to identify. These we can
 	// send directly to the lnd proxy's gRPC server.
 	if isGrpcRequest(req) {
-		log.Infof("Handling gRPC request: %s", req.URL.Path)
-		p.grpcServer.ServeHTTP(resp, req)
+		if !p.hasStarted() {
+			resp.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = resp.Write(make([]byte, 0))
+		} else {
+			log.Infof("Handling gRPC request: %s", req.URL.Path)
+			p.grpcServer.ServeHTTP(resp, req)
+		}
 
 		return true
 	}
