@@ -436,10 +436,16 @@ func (p *rpcProxy) checkSubSystemStarted(requestURI string) error {
 		system = subServerName
 
 	case p.permsMgr.IsLndURI(requestURI):
-		return nil
+		system = LNDSubServer
 
 	case p.permsMgr.IsLitURI(requestURI):
-		return nil
+		system = LitSubServer
+
+		// If the request is for the status server, then we allow the
+		// request even if Lit has not properly started.
+		if isStatusReq(requestURI) {
+			return nil
+		}
 
 	default:
 		return fmt.Errorf("unknown gRPC web request: %v", requestURI)
