@@ -72,6 +72,7 @@ func main() {
 	}
 	app.Commands = append(app.Commands, sessionCommands...)
 	app.Commands = append(app.Commands, accountsCommands...)
+	app.Commands = append(app.Commands, litCommands...)
 
 	err := app.Run(os.Args)
 	if err != nil {

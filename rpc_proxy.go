@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
+	"github.com/lightninglabs/lightning-terminal/litrpc"
 	"github.com/lightninglabs/lightning-terminal/perms"
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightningnetwork/lnd/lncfg"
@@ -145,6 +146,8 @@ func newRpcProxy(cfg *Config, validator macaroons.MacaroonValidator,
 //                                    +---------------------+
 //
 type rpcProxy struct {
+	litrpc.UnimplementedLitServiceServer
+
 	cfg       *Config
 	basicAuth string
 	permsMgr  *perms.Manager
@@ -252,6 +255,16 @@ func (p *rpcProxy) Stop() error {
 	}
 
 	return nil
+}
+
+// StopDaemon will send a shutdown request to the interrupt handler, triggering
+// a graceful shutdown of the daemon.
+func (p *rpcProxy) StopDaemon(_ context.Context,
+	_ *litrpc.StopDaemonRequest) (*litrpc.StopDaemonResponse, error) {
+
+	interceptor.RequestShutdown()
+
+	return &litrpc.StopDaemonResponse{}, nil
 }
 
 // isHandling checks if the specified request is something to be handled by lnd
