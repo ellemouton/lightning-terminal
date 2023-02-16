@@ -576,8 +576,8 @@ func (g *LightningTerminal) start() error {
 
 	case err := <-g.errQueue.ChanOut():
 		if err != nil {
-			log.Errorf("Received critical error from subsystem, "+
-				"shutting down: %v", err)
+			return fmt.Errorf("received critical error from "+
+				"subsystem, shutting down: %v", err)
 		}
 
 	case <-lndQuit:
