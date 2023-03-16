@@ -270,25 +270,64 @@ var (
 	}
 )
 
+// testSuite defines the signature of a test suite. The boolean parameter
+// indicates if the UI password is set or disabled.
+type testSuite func(context.Context, *NetworkHarness, *testing.T, bool)
+
+// testWithAndWithoutUIPassword runs the given test suite against the given node
+// both with the UI password set and without the UI password with the UI
+// disabled.
+func testWithAndWithoutUIPassword(ctx context.Context, net *NetworkHarness,
+	t *testing.T, test testSuite, node *HarnessNode) {
+
+	t.Run("with UI password", func(t *testing.T) {
+		test(ctx, net, t, false)
+	})
+
+	// Restart the node without the ui password and disable the UI.
+	err := net.RestartNode(
+		node, nil, []LitArgOption{
+			WithoutLitArg("uipassword"),
+			WithLitArg("disableui", ""),
+		},
+	)
+	require.NoError(t, err)
+
+	t.Run("without UI password", func(t *testing.T) {
+		test(ctx, net, t, true)
+	})
+}
+
 // testModeIntegrated makes sure that in integrated mode all daemons work
-// correctly.
+// correctly. It tests the full integrated mode test suite with the ui password
+// set and then again with no ui password and a disabled UI.
 func testModeIntegrated(ctx context.Context, net *NetworkHarness,
 	t *harnessTest) {
 
+	testWithAndWithoutUIPassword(
+		ctx, net, t.t, integratedTestSuite, net.Alice,
+	)
+}
+
+// integratedTestSuite makes sure that in integrated mode all daemons work
+// correctly.
+func integratedTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
+	withoutUIPassword bool) {
+
 	// Some very basic functionality tests to make sure lnd is working fine
 	// in integrated mode.
-	net.SendCoins(t.t, btcutil.SatoshiPerBitcoin, net.Alice)
+	net.SendCoins(t, btcutil.SatoshiPerBitcoin, net.Alice)
 
 	// We expect a non-empty alias (truncated node ID) to be returned.
 	resp, err := net.Alice.GetInfo(ctx, &lnrpc.GetInfoRequest{})
-	require.NoError(t.t, err)
-	require.NotEmpty(t.t, resp.Alias)
-	require.Contains(t.t, resp.Alias, "0")
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.Alias)
+	require.Contains(t, resp.Alias, "0")
 
-	t.t.Run("certificate check", func(tt *testing.T) {
+	t.Run("certificate check", func(tt *testing.T) {
 		runCertificateCheck(tt, net.Alice)
 	})
-	t.t.Run("gRPC macaroon auth check", func(tt *testing.T) {
+	t.Run("gRPC macaroon auth check", func(tt *testing.T) {
 		cfg := net.Alice.Cfg
 
 		for _, endpoint := range endpoints {
@@ -313,7 +352,7 @@ func testModeIntegrated(ctx context.Context, net *NetworkHarness,
 		}
 	})
 
-	t.t.Run("UI password auth check", func(tt *testing.T) {
+	t.Run("UI password auth check", func(tt *testing.T) {
 		cfg := net.Alice.Cfg
 
 		for _, endpoint := range endpoints {
@@ -327,20 +366,28 @@ func testModeIntegrated(ctx context.Context, net *NetworkHarness,
 			})
 
 			tt.Run(endpoint.name+" lit port", func(ttt *testing.T) {
+				shouldFailWithoutMacaroon := false
+				if withoutUIPassword {
+					shouldFailWithoutMacaroon = true
+				}
+
 				runUIPasswordCheck(
 					ttt, cfg.LitAddr(), cfg.LitTLSCertPath,
 					cfg.UIPassword, endpoint.requestFn,
-					false, endpoint.successPattern,
+					shouldFailWithoutMacaroon,
+					endpoint.successPattern,
 				)
 			})
 		}
 	})
 
-	t.t.Run("UI index page fallback", func(tt *testing.T) {
-		runIndexPageCheck(tt, net.Alice.Cfg.LitAddr())
+	t.Run("UI index page fallback", func(tt *testing.T) {
+		runIndexPageCheck(
+			tt, net.Alice.Cfg.LitAddr(), withoutUIPassword,
+		)
 	})
 
-	t.t.Run("grpc-web auth", func(tt *testing.T) {
+	t.Run("grpc-web auth", func(tt *testing.T) {
 		cfg := net.Alice.Cfg
 
 		for _, endpoint := range endpoints {
@@ -349,12 +396,13 @@ func testModeIntegrated(ctx context.Context, net *NetworkHarness,
 				runGRPCWebAuthTest(
 					ttt, cfg.LitAddr(), cfg.UIPassword,
 					endpoint.grpcWebURI,
+					withoutUIPassword,
 				)
 			})
 		}
 	})
 
-	t.t.Run("gRPC super macaroon auth check", func(tt *testing.T) {
+	t.Run("gRPC super macaroon auth check", func(tt *testing.T) {
 		cfg := net.Alice.Cfg
 
 		superMacFile, err := bakeSuperMacaroon(cfg, true)
@@ -386,7 +434,7 @@ func testModeIntegrated(ctx context.Context, net *NetworkHarness,
 		}
 	})
 
-	t.t.Run("REST auth", func(tt *testing.T) {
+	t.Run("REST auth", func(tt *testing.T) {
 		cfg := net.Alice.Cfg
 
 		for _, endpoint := range endpoints {
@@ -403,12 +451,13 @@ func testModeIntegrated(ctx context.Context, net *NetworkHarness,
 					endpoint.restWebURI,
 					endpoint.successPattern,
 					endpoint.restPOST,
+					withoutUIPassword,
 				)
 			})
 		}
 	})
 
-	t.t.Run("lnc auth", func(tt *testing.T) {
+	t.Run("lnc auth", func(tt *testing.T) {
 		cfg := net.Alice.Cfg
 
 		ctx := context.Background()
@@ -416,7 +465,7 @@ func testModeIntegrated(ctx context.Context, net *NetworkHarness,
 		defer cancel()
 
 		rawLNCConn := setUpLNCConn(
-			ctxt, t.t, cfg.LitAddr(), cfg.LitTLSCertPath,
+			ctxt, t, cfg.LitAddr(), cfg.LitTLSCertPath,
 			cfg.LitMacPath,
 			litrpc.SessionType_TYPE_MACAROON_READONLY, nil,
 		)
@@ -435,7 +484,7 @@ func testModeIntegrated(ctx context.Context, net *NetworkHarness,
 		}
 	})
 
-	t.t.Run("gRPC super macaroon account system test", func(tt *testing.T) {
+	t.Run("gRPC super macaroon account system test", func(tt *testing.T) {
 		cfg := net.Alice.Cfg
 
 		superMacFile, err := bakeSuperMacaroon(cfg, false)
@@ -456,7 +505,7 @@ func testModeIntegrated(ctx context.Context, net *NetworkHarness,
 		)
 	})
 
-	t.t.Run("lnc auth custom mac perms", func(tt *testing.T) {
+	t.Run("lnc auth custom mac perms", func(tt *testing.T) {
 		cfg := net.Alice.Cfg
 
 		ctx := context.Background()
@@ -478,7 +527,7 @@ func testModeIntegrated(ctx context.Context, net *NetworkHarness,
 		}
 
 		rawLNCConn := setUpLNCConn(
-			ctxt, t.t, cfg.LitAddr(), cfg.LitTLSCertPath,
+			ctxt, t, cfg.LitAddr(), cfg.LitTLSCertPath,
 			cfg.LitMacPath,
 			litrpc.SessionType_TYPE_MACAROON_CUSTOM, customPerms,
 		)
@@ -665,21 +714,28 @@ func runUIPasswordCheck(t *testing.T, hostPort, tlsCertPath, uiPassword string,
 }
 
 // runIndexPageCheck makes sure the index page is returned correctly.
-func runIndexPageCheck(t *testing.T, hostPort string) {
+func runIndexPageCheck(t *testing.T, hostPort string, uiDisabled bool) {
+	expect := indexHtmlMarker
+	if uiDisabled {
+		expect = ""
+	}
+
 	body, err := getURL(fmt.Sprintf("https://%s/index.html", hostPort))
 	require.NoError(t, err)
-	require.Contains(t, body, indexHtmlMarker)
+	require.Contains(t, body, expect)
 
 	// The UI implements "virtual" pages by using the browser history API.
 	// Any URL that looks like a directory should fall back to the main
 	// index.html file as well.
 	body, err = getURL(fmt.Sprintf("https://%s/loop", hostPort))
 	require.NoError(t, err)
-	require.Contains(t, body, indexHtmlMarker)
+	require.Contains(t, body, expect)
 }
 
 // runGRPCWebAuthTest tests authentication of the given gRPC interface.
-func runGRPCWebAuthTest(t *testing.T, hostPort, uiPassword, grpcWebURI string) {
+func runGRPCWebAuthTest(t *testing.T, hostPort, uiPassword, grpcWebURI string,
+	shouldFailWithUIPassword bool) {
+
 	basicAuth := base64.StdEncoding.EncodeToString(
 		[]byte(fmt.Sprintf("%s:%s", uiPassword, uiPassword)),
 	)
@@ -709,6 +765,18 @@ func runGRPCWebAuthTest(t *testing.T, hostPort, uiPassword, grpcWebURI string) {
 	body, responseHeader, err := postURL(url, emptyGrpcWebRequest, header)
 	require.NoError(t, err)
 
+	if shouldFailWithUIPassword {
+		require.Equal(
+			t, "expected 1 macaroon, got 0",
+			responseHeader.Get("grpc-message"),
+		)
+		require.Equal(
+			t, fmt.Sprintf("%d", codes.Unknown),
+			responseHeader.Get("grpc-status"),
+		)
+		return
+	}
+
 	require.Empty(t, responseHeader.Get("grpc-message"))
 	require.Empty(t, responseHeader.Get("grpc-status"))
 
@@ -718,7 +786,7 @@ func runGRPCWebAuthTest(t *testing.T, hostPort, uiPassword, grpcWebURI string) {
 
 // runRESTAuthTest tests authentication of the given REST interface.
 func runRESTAuthTest(t *testing.T, hostPort, uiPassword, macaroonPath, restURI,
-	successPattern string, usePOST bool) {
+	successPattern string, usePOST, shouldFailWithUIPassword bool) {
 
 	basicAuth := base64.StdEncoding.EncodeToString(
 		[]byte(fmt.Sprintf("%s:%s", uiPassword, uiPassword)),
@@ -756,7 +824,15 @@ func runRESTAuthTest(t *testing.T, hostPort, uiPassword, macaroonPath, restURI,
 		url, method, nil, basicAuthHeader, false,
 	)
 	require.NoError(t, err)
-	require.Contains(t, body, successPattern)
+
+	if shouldFailWithUIPassword {
+		require.Contains(
+			t, body,
+			"expected 1 macaroon, got 0",
+		)
+	} else {
+		require.Contains(t, body, successPattern)
+	}
 
 	// And finally, try with the given macaroon.
 	macBytes, err := ioutil.ReadFile(macaroonPath)
