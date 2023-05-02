@@ -62,7 +62,8 @@ var (
 type LitNodeConfig struct {
 	*node.BaseNodeConfig
 
-	LitArgs []string
+	LitArgs    []string
+	ActiveArgs *litArgs
 
 	RemoteMode bool
 
@@ -129,6 +130,19 @@ func (l *litArgs) addArg(name, value string) {
 	l.args[name] = value
 }
 
+// getArg gets the arg with the given name from the set and returns the value.
+// The boolean returned will be true if the argument is in the set. If the
+// boolean is true but the string is empty, it means it is a boolean config
+// flag.
+func (l *litArgs) getArg(name string) (string, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	value, ok := l.args[name]
+
+	return value, ok
+}
+
 // toArgList converts the litArgs map to an arguments string slice.
 func (l *litArgs) toArgList() []string {
 	l.mu.Lock()
@@ -174,6 +188,8 @@ func (cfg *LitNodeConfig) GenArgs(opts ...LitArgOption) []string {
 	for _, opt := range opts {
 		opt(args)
 	}
+
+	cfg.ActiveArgs = args
 
 	return args.toArgList()
 }
@@ -539,7 +555,7 @@ func renameFile(fromFileName, toFileName string) {
 // This may not clean up properly if an error is returned, so the caller should
 // call shutdown() regardless of the return value.
 func (hn *HarnessNode) start(litdBinary string, litdError chan<- error,
-	wait bool, litArgOpts ...LitArgOption) error {
+	waitForStart bool, litArgOpts ...LitArgOption) error {
 
 	hn.quit = make(chan struct{})
 
@@ -640,7 +656,7 @@ func (hn *HarnessNode) start(litdBinary string, litdError chan<- error,
 
 	// We may want to skip waiting for the node to come up (eg. the node
 	// is waiting to become the leader).
-	if !wait {
+	if !waitForStart {
 		return nil
 	}
 
@@ -681,7 +697,16 @@ func (hn *HarnessNode) start(litdBinary string, litdError chan<- error,
 	}
 	hn.litConn = litConn
 
-	return nil
+	ctxt, cancel := context.WithTimeout(
+		context.Background(), lntest.DefaultTimeout,
+	)
+	defer cancel()
+	return wait.NoError(func() error {
+		litConn := litrpc.NewProxyClient(hn.litConn)
+
+		_, err = litConn.GetInfo(ctxt, &litrpc.GetInfoRequest{})
+		return err
+	}, lntest.DefaultTimeout)
 }
 
 // WaitUntilStarted waits until the wallet state flips from "WAITING_TO_START".
@@ -695,39 +720,53 @@ func (hn *HarnessNode) WaitUntilStarted(conn grpc.ClientConnInterface,
 		return err
 	}
 
+	faradayMode, _ := hn.Cfg.ActiveArgs.getArg("faraday-mode")
+	loopMode, _ := hn.Cfg.ActiveArgs.getArg("faraday-mode")
+	poolMode, _ := hn.Cfg.ActiveArgs.getArg("faraday-mode")
+
 	ctxt, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	return wait.NoError(func() error {
-		faradayClient, err := hn.faradayClient()
-		if err != nil {
-			return err
+		if faradayMode != "disable" {
+			faradayClient, err := hn.faradayClient()
+			if err != nil {
+				return err
+			}
+
+			_, err = faradayClient.RevenueReport(
+				ctxt, &frdrpc.RevenueReportRequest{},
+			)
+			if err != nil {
+				return err
+			}
 		}
 
-		_, err = faradayClient.RevenueReport(
-			ctxt, &frdrpc.RevenueReportRequest{},
-		)
-		if err != nil {
-			return err
+		if loopMode != "disable" {
+			loopClient, err := hn.loopClient()
+			if err != nil {
+				return err
+			}
+
+			_, err = loopClient.ListSwaps(
+				ctxt, &looprpc.ListSwapsRequest{},
+			)
+			if err != nil {
+				return err
+			}
 		}
 
-		loopClient, err := hn.loopClient()
-		if err != nil {
-			return err
-		}
+		if poolMode != "disable" {
+			poolClient, err := hn.poolClient()
+			if err != nil {
+				return err
+			}
 
-		_, err = loopClient.ListSwaps(ctxt, &looprpc.ListSwapsRequest{})
-		if err != nil {
-			return err
-		}
-
-		poolClient, err := hn.poolClient()
-		if err != nil {
-			return err
-		}
-
-		_, err = poolClient.GetInfo(ctxt, &poolrpc.GetInfoRequest{})
-		if err != nil {
-			return err
+			_, err = poolClient.GetInfo(
+				ctxt, &poolrpc.GetInfoRequest{},
+			)
+			if err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -788,9 +827,17 @@ func (hn *HarnessNode) waitForState(conn grpc.ClientConnInterface,
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	stateStream, err := stateClient.SubscribeState(
-		ctx, &lnrpc.SubscribeStateRequest{},
+	var (
+		stateStream lnrpc.State_SubscribeStateClient
+		err         error
 	)
+	err = wait.NoError(func() error {
+		stateStream, err = stateClient.SubscribeState(
+			ctx, &lnrpc.SubscribeStateRequest{},
+		)
+
+		return err
+	}, lntest.DefaultTimeout)
 	if err != nil {
 		return err
 	}
