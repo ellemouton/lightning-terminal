@@ -19,7 +19,6 @@ import (
 
 	restProxy "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/jessevdk/go-flags"
-	"github.com/lightninglabs/faraday/frdrpc"
 	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/autopilotserver"
 	"github.com/lightninglabs/lightning-terminal/firewall"
@@ -33,9 +32,7 @@ import (
 	"github.com/lightninglabs/lightning-terminal/subservers"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightninglabs/loop"
-	"github.com/lightninglabs/loop/looprpc"
 	"github.com/lightninglabs/pool"
-	"github.com/lightninglabs/pool/poolrpc"
 	"github.com/lightningnetwork/lnd"
 	"github.com/lightningnetwork/lnd/build"
 	"github.com/lightningnetwork/lnd/chainreg"
@@ -926,23 +923,7 @@ func (g *LightningTerminal) RegisterRestSubserver(ctx context.Context,
 		return err
 	}
 
-	err = frdrpc.RegisterFaradayServerHandlerFromEndpoint(
-		ctx, mux, endpoint, dialOpts,
-	)
-	if err != nil {
-		return err
-	}
-
-	err = looprpc.RegisterSwapClientHandlerFromEndpoint(
-		ctx, mux, endpoint, dialOpts,
-	)
-	if err != nil {
-		return err
-	}
-
-	return poolrpc.RegisterTraderHandlerFromEndpoint(
-		ctx, mux, endpoint, dialOpts,
-	)
+	return g.subServerMgr.RegisterRestServices(ctx, mux, endpoint, dialOpts)
 }
 
 // ValidateMacaroon extracts the macaroon from the context's gRPC metadata,
