@@ -241,6 +241,7 @@ func (g *LightningTerminal) Run() error {
 	// server is started.
 	g.rpcProxy = newRpcProxy(
 		g.cfg, g, g.validateSuperMacaroon, g.permsMgr, g.subServerMgr,
+		g.statusMgr,
 	)
 
 	// Start the main web server that dispatches requests either to the
