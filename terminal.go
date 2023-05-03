@@ -29,6 +29,7 @@ import (
 	mid "github.com/lightninglabs/lightning-terminal/rpcmiddleware"
 	"github.com/lightninglabs/lightning-terminal/rules"
 	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightninglabs/lightning-terminal/status"
 	"github.com/lightninglabs/lightning-terminal/subservers"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightningnetwork/lnd"
@@ -159,6 +160,7 @@ type LightningTerminal struct {
 	basicClient lnrpc.LightningClient
 
 	subServerMgr *subservers.Manager
+	statusMgr    *status.Manager
 
 	autopilotClient autopilotserver.Autopilot
 
@@ -190,7 +192,9 @@ type LightningTerminal struct {
 
 // New creates a new instance of the lightning-terminal daemon.
 func New() *LightningTerminal {
-	return &LightningTerminal{}
+	return &LightningTerminal{
+		statusMgr: status.NewStatusManager(),
+	}
 }
 
 // Run starts everything and then blocks until either the application is shut
@@ -240,6 +244,7 @@ func (g *LightningTerminal) Run() error {
 	)
 
 	litrpc.RegisterProxyServer(g.rpcProxy.grpcServer, g.rpcProxy)
+	litrpc.RegisterStatusServer(g.rpcProxy.grpcServer, g.statusMgr)
 
 	// Start the main web server that dispatches requests either to the
 	// static UI file server or the RPC proxy. This makes it possible to
@@ -923,6 +928,13 @@ func (g *LightningTerminal) RegisterRestSubserver(ctx context.Context,
 		return err
 	}
 
+	err = litrpc.RegisterStatusHandlerFromEndpoint(
+		ctx, mux, endpoint, dialOpts,
+	)
+	if err != nil {
+		return err
+	}
+
 	return g.subServerMgr.RegisterRestServices(ctx, mux, endpoint, dialOpts)
 }
 
@@ -934,6 +946,10 @@ func (g *LightningTerminal) RegisterRestSubserver(ctx context.Context,
 // NOTE: This is part of the lnd.ExternalValidator interface.
 func (g *LightningTerminal) ValidateMacaroon(ctx context.Context,
 	requiredPermissions []bakery.Op, fullMethod string) error {
+
+	if _, ok := perms.MacaroonWhitelist[fullMethod]; ok {
+		return nil
+	}
 
 	macHex, err := macaroons.RawMacaroonFromContext(ctx)
 	if err != nil {
