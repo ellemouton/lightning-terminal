@@ -25,7 +25,7 @@ var litCommands = []cli.Command{
 }
 
 func getInfo(ctx *cli.Context) error {
-	clientConn, cleanup, err := connectClient(ctx)
+	clientConn, cleanup, err := connectClient(ctx, false)
 	if err != nil {
 		return err
 	}
@@ -44,7 +44,7 @@ func getInfo(ctx *cli.Context) error {
 }
 
 func shutdownLit(ctx *cli.Context) error {
-	clientConn, cleanup, err := connectClient(ctx)
+	clientConn, cleanup, err := connectClient(ctx, false)
 	if err != nil {
 		return err
 	}
