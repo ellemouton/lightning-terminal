@@ -444,8 +444,10 @@ func TestPrivacyMapper(t *testing.T) {
 }
 
 type mockDB struct {
-	privDB         map[string]*mockPrivacyMapDB
+	privDB map[string]*mockPrivacyMapDB
+
 	sessionIDIndex map[session.ID]session.ID
+	groupIDIndex   map[session.ID][]session.ID
 }
 
 func newMockDB(t *testing.T, preloadRealToPseudo map[string]string,
@@ -454,6 +456,7 @@ func newMockDB(t *testing.T, preloadRealToPseudo map[string]string,
 	db := mockDB{
 		privDB:         make(map[string]*mockPrivacyMapDB),
 		sessionIDIndex: make(map[session.ID]session.ID),
+		groupIDIndex:   make(map[session.ID][]session.ID),
 	}
 	sessDB := db.NewSessionDB(sessID)
 
@@ -481,6 +484,7 @@ func (m mockDB) NewSessionDB(sessionID session.ID) firewalldb.PrivacyMapDB {
 
 func (m mockDB) AddGroupID(sessionID, groupID session.ID) error {
 	m.sessionIDIndex[sessionID] = groupID
+	m.groupIDIndex[groupID] = append(m.groupIDIndex[groupID], sessionID)
 	return nil
 }
 
@@ -491,6 +495,15 @@ func (m mockDB) GetGroupID(sessionID session.ID) (session.ID, error) {
 	}
 
 	return groupID, nil
+}
+
+func (m mockDB) GetSessionIDs(groupID session.ID) ([]session.ID, error) {
+	sessionIDs, ok := m.groupIDIndex[groupID]
+	if !ok {
+		return nil, fmt.Errorf("group ID not found")
+	}
+
+	return sessionIDs, nil
 }
 
 func newMockPrivacyMapDB() *mockPrivacyMapDB {
