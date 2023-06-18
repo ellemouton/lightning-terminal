@@ -19,9 +19,9 @@ func TestBasicSessionStore(t *testing.T) {
 	})
 
 	// Create a few sessions.
-	s1 := newSession(t, "session 1")
-	s2 := newSession(t, "session 2")
-	s3 := newSession(t, "session 3")
+	s1 := newSession(t, "session 1", nil)
+	s2 := newSession(t, "session 2", nil)
+	s3 := newSession(t, "session 3", nil)
 
 	// Persist session 1.
 	require.NoError(t, db.CreateSession(s1))
@@ -73,11 +73,36 @@ func TestBasicSessionStore(t *testing.T) {
 	require.Equal(t, session1.State, StateRevoked)
 }
 
-func newSession(t *testing.T, label string) *Session {
+// TestLinkingSessions tests that session linking works as expected.
+func TestLinkingSessions(t *testing.T) {
+	// Set up a new DB.
+	db, err := NewDB(t.TempDir(), "test.db")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	// Create a new session with no previous link.
+	s1 := newSession(t, "session 1", nil)
+
+	// Create another session and link it to the first.
+	s2 := newSession(t, "session 2", &s1.GroupID)
+
+	// Try to persist the second session and assert that it fails due to the
+	// linked session not existing in the DB yet.
+	require.ErrorContains(t, db.CreateSession(s2), "unknown linked session")
+
+	// Now persist the first session and retry persisting the second one
+	// and assert that this now works.
+	require.NoError(t, db.CreateSession(s1))
+	require.NoError(t, db.CreateSession(s2))
+}
+
+func newSession(t *testing.T, label string, linkedGroupID *ID) *Session {
 	session, err := NewSession(
 		label, TypeMacaroonAdmin,
 		time.Date(99999, 1, 1, 0, 0, 0, 0, time.UTC),
-		"foo.bar.baz:1234", true, nil, nil, nil, true,
+		"foo.bar.baz:1234", true, nil, nil, nil, true, linkedGroupID,
 	)
 	require.NoError(t, err)
 

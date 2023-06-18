@@ -63,6 +63,11 @@ type Session struct {
 	RemotePublicKey   *btcec.PublicKey
 	FeatureConfig     *FeaturesConfig
 	WithPrivacyMapper bool
+
+	// GroupID is the Session ID of the very first Session in the linked
+	// group of sessions. If this is the very first session in the group
+	// then this will be the same as ID.
+	GroupID ID
 }
 
 // MacaroonBaker is a function type for baking a super macaroon.
@@ -72,7 +77,8 @@ type MacaroonBaker func(ctx context.Context, rootKeyID uint64,
 // NewSession creates a new session with the given user-defined parameters.
 func NewSession(label string, typ Type, expiry time.Time, serverAddr string,
 	devServer bool, perms []bakery.Op, caveats []macaroon.Caveat,
-	featureConfig FeaturesConfig, privacy bool) (*Session, error) {
+	featureConfig FeaturesConfig, privacy bool, linkedGroupID *ID) (
+	*Session, error) {
 
 	_, pairingSecret, err := mailbox.NewPassphraseEntropy()
 	if err != nil {
@@ -89,6 +95,17 @@ func NewSession(label string, typ Type, expiry time.Time, serverAddr string,
 	copy(macRootKeyBase[:], pubKey.SerializeCompressed())
 	macRootKey := NewSuperMacaroonRootKeyID(macRootKeyBase)
 
+	var (
+		// The group ID will by default be the same as the Session ID
+		// unless this session links to a previous session.
+		groupID = macRootKeyBase
+	)
+	if linkedGroupID != nil {
+		// If this session is linked to a previous session, then the
+		// group ID is the same as the linked session's group ID.
+		groupID = *linkedGroupID
+	}
+
 	sess := &Session{
 		ID:                macRootKeyBase,
 		Label:             label,
@@ -104,6 +121,7 @@ func NewSession(label string, typ Type, expiry time.Time, serverAddr string,
 		LocalPublicKey:    pubKey,
 		RemotePublicKey:   nil,
 		WithPrivacyMapper: privacy,
+		GroupID:           groupID,
 	}
 
 	if perms != nil || caveats != nil {
