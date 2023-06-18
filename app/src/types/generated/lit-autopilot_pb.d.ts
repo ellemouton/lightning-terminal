@@ -27,6 +27,11 @@ export class AddAutopilotSessionRequest extends jspb.Message {
   getNoPrivacyMapper(): boolean;
   setNoPrivacyMapper(value: boolean): void;
 
+  getPrevSessId(): Uint8Array | string;
+  getPrevSessId_asU8(): Uint8Array;
+  getPrevSessId_asB64(): string;
+  setPrevSessId(value: Uint8Array | string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): AddAutopilotSessionRequest.AsObject;
   static toObject(includeInstance: boolean, msg: AddAutopilotSessionRequest): AddAutopilotSessionRequest.AsObject;
@@ -46,6 +51,7 @@ export namespace AddAutopilotSessionRequest {
     featuresMap: Array<[string, FeatureConfig.AsObject]>,
     sessionRules?: lit_sessions_pb.RulesMap.AsObject,
     noPrivacyMapper: boolean,
+    prevSessId: Uint8Array | string,
   }
 }
 
