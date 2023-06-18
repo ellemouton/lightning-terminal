@@ -379,6 +379,7 @@ func (g *LightningTerminal) start() error {
 		autopilot:               g.autopilotClient,
 		ruleMgrs:                g.ruleMgrs,
 		privMap:                 g.firewallDB.PrivacyDB,
+		sessionIDIndex:          g.firewallDB,
 	})
 	if err != nil {
 		return fmt.Errorf("could not create new session rpc "+
@@ -788,6 +789,7 @@ func (g *LightningTerminal) startInternalSubServers(
 
 	privacyMapper := firewall.NewPrivacyMapper(
 		g.firewallDB.PrivacyDB, firewall.CryptoRandIntn,
+		g.firewallDB,
 	)
 
 	mw := []mid.RequestInterceptor{

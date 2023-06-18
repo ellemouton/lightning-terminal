@@ -64,6 +64,7 @@ type sessionRpcServerConfig struct {
 	autopilot               autopilotserver.Autopilot
 	ruleMgrs                rules.ManagerSet
 	privMap                 firewalldb.NewPrivacyMapDB
+	sessionIDIndex          firewalldb.SessionIDIndex
 }
 
 // newSessionRPCServer creates a new sessionRpcServer using the passed config.
@@ -1023,6 +1024,13 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new session: %v", err)
+	}
+
+	// Ensure that the session ID to group ID index is updated with the
+	// new pair before writing any values to the privacy mapper.
+	err = s.cfg.sessionIDIndex.AddGroupID(sess.ID, sess.GroupID)
+	if err != nil {
+		return nil, err
 	}
 
 	// If this session is being linked to a previous one, then we need to
