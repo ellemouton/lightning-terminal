@@ -126,6 +126,8 @@ message ListActionsRequest {
     considered.
     */
     uint64 end_timestamp = 11 [jstype = JS_STRING];
+
+    bytes group_id = 12;
 }
 
 message ListActionsResponse {

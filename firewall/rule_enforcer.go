@@ -30,6 +30,7 @@ var _ mid.RequestInterceptor = (*RuleEnforcer)(nil)
 type RuleEnforcer struct {
 	ruleDB            firewalldb.RulesDB
 	actionsDB         firewalldb.ActionReadDBGetter
+	sessionIDIndexDB  firewalldb.SessionIDIndex
 	markActionErrored func(reqID uint64, reason string) error
 	newPrivMap        firewalldb.NewPrivacyMapDB
 
@@ -50,8 +51,9 @@ type featurePerms func(ctx context.Context) (map[string]map[string]bool, error)
 
 // NewRuleEnforcer constructs a new RuleEnforcer instance.
 func NewRuleEnforcer(ruleDB firewalldb.RulesDB,
-	actionsDB firewalldb.ActionReadDBGetter, getFeaturePerms featurePerms,
-	permsMgr *perms.Manager, nodeID [33]byte,
+	actionsDB firewalldb.ActionReadDBGetter,
+	sessionIDIndexDB firewalldb.SessionIDIndex,
+	getFeaturePerms featurePerms, permsMgr *perms.Manager, nodeID [33]byte,
 	routerClient lndclient.RouterClient,
 	lndClient lndclient.LightningClient, ruleMgrs rules.ManagerSet,
 	markActionErrored func(reqID uint64, reason string) error,
@@ -60,6 +62,7 @@ func NewRuleEnforcer(ruleDB firewalldb.RulesDB,
 	return &RuleEnforcer{
 		ruleDB:            ruleDB,
 		actionsDB:         actionsDB,
+		sessionIDIndexDB:  sessionIDIndexDB,
 		permsMgr:          permsMgr,
 		getFeaturePerms:   getFeaturePerms,
 		nodeID:            nodeID,
@@ -221,7 +224,12 @@ func (r *RuleEnforcer) handleRequest(ctx context.Context,
 		return nil, fmt.Errorf("could not extract ID from macaroon")
 	}
 
-	rules, err := r.collectEnforcers(ri, sessionID)
+	groupID, err := r.sessionIDIndexDB.GetGroupID(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	rules, err := r.collectEnforcers(ri, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing rules: %v", err)
 	}
@@ -261,7 +269,12 @@ func (r *RuleEnforcer) handleResponse(ctx context.Context,
 		return nil, fmt.Errorf("could not extract ID from macaroon")
 	}
 
-	enforcers, err := r.collectEnforcers(ri, sessionID)
+	groupID, err := r.sessionIDIndexDB.GetGroupID(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	enforcers, err := r.collectEnforcers(ri, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing rules: %v", err)
 	}
@@ -295,7 +308,12 @@ func (r *RuleEnforcer) handleErrorResponse(ctx context.Context,
 		return nil, fmt.Errorf("could not extract ID from macaroon")
 	}
 
-	enforcers, err := r.collectEnforcers(ri, sessionID)
+	groupID, err := r.sessionIDIndexDB.GetGroupID(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	enforcers, err := r.collectEnforcers(ri, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing rules: %v", err)
 	}

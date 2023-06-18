@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -342,6 +343,83 @@ func (db *DB) ListActions(filterFn ListActionsFilterFn,
 	return actions, lastIndex, totalCount, nil
 }
 
+func (db *DB) ListGroupActions(groupID session.ID,
+	filterFn ListActionsFilterFn) ([]*Action, uint64, uint64, error) {
+
+	// TODO: update ListGroupActions to allow for pagination.
+
+	var (
+		actions    []*Action
+		totalCount uint64
+		lastIndex  uint64
+		errDone    = errors.New("done iterating")
+	)
+	err := db.View(func(tx *bbolt.Tx) error {
+		mainActionsBucket, err := getBucket(tx, actionsBucketKey)
+		if err != nil {
+			return err
+		}
+
+		actionsBucket := mainActionsBucket.Bucket(actionsKey)
+		if actionsBucket == nil {
+			return ErrNoSuchKeyFound
+		}
+
+		// Get the session ID index bucket so that we can get all the
+		// session IDs for the given group ID.
+		indexBkt, err := getBucket(tx, sessionIDIndexBucketKey)
+		if err != nil {
+			return err
+		}
+
+		groupToSessionBkt := indexBkt.Bucket(groupToSessionKey)
+		if groupToSessionBkt == nil {
+			return ErrDBInitErr
+		}
+
+		groupBkt := groupToSessionBkt.Bucket(groupID[:])
+		if groupBkt == nil {
+			return nil
+		}
+
+		return groupBkt.ForEach(func(_, sessionIDBytes []byte) error {
+			sessionsBucket := actionsBucket.Bucket(sessionIDBytes)
+			if sessionsBucket == nil {
+				return nil
+			}
+
+			var id session.ID
+			copy(id[:], sessionIDBytes)
+
+			return sessionsBucket.ForEach(func(_, v []byte) error {
+				action, err := DeserializeAction(
+					bytes.NewReader(v), id,
+				)
+				if err != nil {
+					return err
+				}
+
+				include, cont := filterFn(action, false)
+				if include {
+					actions = append(actions, action)
+				}
+
+				if !cont {
+					return errDone
+				}
+
+				return nil
+			})
+
+		})
+	})
+	if err != nil && !errors.Is(err, errDone) {
+		return nil, 0, 0, err
+	}
+
+	return actions, lastIndex, totalCount, nil
+}
+
 // ListSessionActions returns a list of the given session's Actions that pass
 // the filterFn requirements.
 func (db *DB) ListSessionActions(sessionID session.ID,
@@ -515,12 +593,12 @@ type ActionReadDBGetter interface {
 }
 
 // GetActionsReadDB is a method on DB that constructs an ActionsReadDB.
-func (db *DB) GetActionsReadDB(sessionID session.ID,
+func (db *DB) GetActionsReadDB(groupID session.ID,
 	featureName string) ActionsReadDB {
 
 	return &allActionsReadDB{
 		db:          db,
-		sessionID:   sessionID,
+		groupID:     groupID,
 		featureName: featureName,
 	}
 }
@@ -528,7 +606,7 @@ func (db *DB) GetActionsReadDB(sessionID session.ID,
 // allActionsReadDb is an implementation of the ActionsReadDB.
 type allActionsReadDB struct {
 	db          *DB
-	sessionID   session.ID
+	groupID     session.ID
 	featureName string
 }
 
@@ -554,14 +632,14 @@ type sessionActionsReadDB struct {
 
 var _ ActionsDB = (*sessionActionsReadDB)(nil)
 
-// ListActions will return all the Actions for a particular session.
+// ListActions will return all the Actions for a particular session group.
 func (s *sessionActionsReadDB) ListActions(_ context.Context) ([]*RuleAction,
 	error) {
 
-	sessionActions, _, _, err := s.db.ListSessionActions(
-		s.sessionID, func(a *Action, _ bool) (bool, bool) {
+	sessionActions, _, _, err := s.db.ListGroupActions(
+		s.groupID, func(a *Action, _ bool) (bool, bool) {
 			return a.State == ActionStateDone, true
-		}, nil,
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -589,11 +667,11 @@ var _ ActionsDB = (*featureActionsReadDB)(nil)
 func (a *featureActionsReadDB) ListActions(_ context.Context) ([]*RuleAction,
 	error) {
 
-	featureActions, _, _, err := a.db.ListSessionActions(
-		a.sessionID, func(action *Action, _ bool) (bool, bool) {
+	featureActions, _, _, err := a.db.ListGroupActions(
+		a.groupID, func(action *Action, _ bool) (bool, bool) {
 			return action.State == ActionStateDone &&
 				action.FeatureName == a.featureName, true
-		}, nil,
+		},
 	)
 	if err != nil {
 		return nil, err

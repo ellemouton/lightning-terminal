@@ -39,6 +39,12 @@ var listActionsCommand = cli.Command{
 				"left empty, then all actions will be " +
 				"returned.",
 		},
+		cli.StringFlag{
+			Name: "group_id",
+			Usage: "The group ID to filter the actions by. If " +
+				"left empty, then all actions will be " +
+				"returned.",
+		},
 		cli.Uint64Flag{
 			Name: "start_timestamp",
 			Usage: "Only actions executed after this unix " +
@@ -109,6 +115,14 @@ func listActions(ctx *cli.Context) error {
 		}
 	}
 
+	var groupID []byte
+	if ctx.String("group_id") != "" {
+		groupID, err = hex.DecodeString(ctx.String("group_id"))
+		if err != nil {
+			return err
+		}
+	}
+
 	resp, err := client.ListActions(
 		ctxb, &litrpc.ListActionsRequest{
 			SessionId:      sessionID,
@@ -122,6 +136,7 @@ func listActions(ctx *cli.Context) error {
 			CountTotal:     ctx.Bool("count_total"),
 			StartTimestamp: ctx.Uint64("start_timestamp"),
 			EndTimestamp:   ctx.Uint64("end_timestamp"),
+			GroupId:        groupID,
 		},
 	)
 	if err != nil {

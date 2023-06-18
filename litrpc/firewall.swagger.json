@@ -197,6 +197,10 @@
           "type": "string",
           "format": "uint64",
           "description": "If specified, then only actions created before the given timestamp will be\nconsidered."
+        },
+        "group_id": {
+          "type": "string",
+          "format": "byte"
         }
       }
     },

@@ -35,6 +35,8 @@ var (
 	// ErrNoSuchKeyFound is returned when there is no key-value pair found
 	// for the given key.
 	ErrNoSuchKeyFound = fmt.Errorf("no such key found")
+
+	ErrDBInitErr = fmt.Errorf("db did not initialise properly")
 )
 
 // DB is a bolt-backed persistent store.
@@ -141,7 +143,19 @@ func initDB(filepath string, firstInit bool) (*bbolt.DB, error) {
 			return err
 		}
 
-		_, err = tx.CreateBucketIfNotExists(sessionIDIndexBucketKey)
+		indexBkt, err := tx.CreateBucketIfNotExists(
+			sessionIDIndexBucketKey,
+		)
+		if err != nil {
+			return err
+		}
+
+		_, err = indexBkt.CreateBucketIfNotExists(sessionToGroupKey)
+		if err != nil {
+			return err
+		}
+
+		_, err = indexBkt.CreateBucketIfNotExists(groupToSessionKey)
 		return err
 	})
 	if err != nil {
