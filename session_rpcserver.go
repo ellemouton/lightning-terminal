@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
 	"github.com/lightninglabs/lightning-node-connect/mailbox"
 	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/autopilotserver"
@@ -997,16 +998,90 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 		caveats = append(caveats, firewall.MetaPrivacyCaveat)
 	}
 
+	// If a previous session ID has been set to link this new one to, we
+	// first check if we have the referenced session, and we make sure it
+	// has been revoked.
+	var (
+		linkedGroupID      *session.ID
+		linkedGroupSession *session.Session
+	)
+	if len(req.LinkedGroupId) != 0 {
+		var groupID session.ID
+		copy(groupID[:], req.LinkedGroupId)
+
+		// Check that the group actually does exist.
+		groupSess, err := s.cfg.db.GetSessionByID(groupID)
+		if err != nil {
+			return nil, err
+		}
+
+		// Ensure that the linked session is in fact the first session
+		// in its group.
+		if groupSess.ID != groupSess.GroupID {
+			return nil, fmt.Errorf("can not link to session "+
+				"%x since it is not the first in the session "+
+				"group %x", groupSess.ID, groupSess.GroupID)
+		}
+
+		// TODO(elle): combine this with the below Assert func. Ie, just
+		// pass group ID to that func and let it gather session IDs.
+		ids, err := s.cfg.db.GetSessionIDs(groupID)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(ids) == 0 {
+			return nil, fmt.Errorf("no sessions found for "+
+				"group %x", groupID)
+		}
+
+		// Now we need to check that all the sessions in the group are
+		// no longer active.
+		ok, err := s.cfg.db.AssertSessionsPredicate(
+			ids, func(s *session.Session) bool {
+				return s.State == session.StateRevoked ||
+					s.State == session.StateExpired
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if !ok {
+			return nil, fmt.Errorf("a linked session in group "+
+				"%x is still active", groupID)
+		}
+
+		linkedGroupID = &groupID
+		linkedGroupSession = groupSess
+	}
+
 	sess, err := session.NewSession(
 		req.Label, session.TypeAutopilot, expiry, req.MailboxServerAddr,
-		req.DevServer, perms, caveats, featureConfig, privacy, nil,
+		req.DevServer, perms, caveats, featureConfig, privacy,
+		linkedGroupID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new session: %v", err)
 	}
 
+	// If this session is being linked to a previous one, then we need to
+	// use the previous session's local private key to sign the new
+	// session's public key in order to prove to the Autopilot server that
+	// the two session's belong to the same owner.
+	var (
+		linkSig        []byte
+		prevSessionPub *btcec.PublicKey
+	)
+	if linkedGroupID != nil {
+		privKey := linkedGroupSession.LocalPrivateKey
+		msg := sess.LocalPublicKey.SerializeCompressed()
+		linkSig = ecdsa.Sign(privKey, msg).Serialize()
+		prevSessionPub = linkedGroupSession.LocalPublicKey
+	}
+
 	// Register all the privacy map pairs for this session ID.
-	privDB := s.cfg.privMap(sess.ID)
+	privDB := s.cfg.privMap(sess.GroupID)
 	err = privDB.Update(func(tx firewalldb.PrivacyMapTx) error {
 		for r, p := range privacyMapPairs {
 			err := tx.NewPair(r, p)
@@ -1023,7 +1098,7 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 	// Attempt to register the session with the Autopilot server.
 	remoteKey, err := s.cfg.autopilot.RegisterSession(
 		ctx, sess.LocalPublicKey, sess.ServerAddr, sess.DevServer,
-		featureConfig, nil, nil,
+		featureConfig, prevSessionPub, linkSig,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error registering session with "+

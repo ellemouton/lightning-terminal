@@ -377,6 +377,55 @@ func (db *DB) GetSessionIDs(groupID ID) ([]ID, error) {
 	return sessionIDs, nil
 }
 
+func (db *DB) AssertSessionsPredicate(ids []ID, fn func(s *Session) bool) (bool,
+	error) {
+
+	var (
+		pass          bool
+		errFailedPred = errors.New("session failed predicate")
+	)
+	err := db.View(func(tx *bbolt.Tx) error {
+		sessionBkt, err := getBucket(tx, sessionBucketKey)
+		if err != nil {
+			return err
+		}
+
+		// Iterate over all the sessions.
+		for _, id := range ids {
+			key, err := getKeyForID(sessionBkt, id)
+			if err != nil {
+				return err
+			}
+
+			v := sessionBkt.Get(key)
+			if len(v) == 0 {
+				return ErrSessionNotFound
+			}
+
+			session, err := DeserializeSession(bytes.NewReader(v))
+			if err != nil {
+				return err
+			}
+
+			if !fn(session) {
+				return errFailedPred
+			}
+		}
+
+		pass = true
+
+		return nil
+	})
+	if errors.Is(err, errFailedPred) {
+		return pass, nil
+	}
+	if err != nil {
+		return pass, err
+	}
+
+	return pass, nil
+}
+
 // addIdToKeyPair inserts the mapping from session ID to session key into the
 // id-index bucket.
 func addIDToKeyPair(sessionBkt *bbolt.Bucket, id ID, sessionKey []byte) error {
