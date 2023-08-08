@@ -174,3 +174,11 @@ func (t *taprootAssetsSubServer) MacPath() string {
 func (t *taprootAssetsSubServer) Permissions() map[string][]bakery.Op {
 	return perms.RequiredPermissions
 }
+
+// WhiteListedURLs returns a map of all the sub-server's URLs that can be
+// accessed without a macaroon.
+//
+// NOTE: this is part of the SubServer interface.
+func (t *taprootAssetsSubServer) WhiteListedURLs() map[string]struct{} {
+	return perms.MacaroonWhitelist(true)
+}
