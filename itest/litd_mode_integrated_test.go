@@ -464,8 +464,7 @@ func integratedTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
 					endpoint.requestFn,
 					endpoint.successPattern,
 					endpointDisabled,
-					"unknown permissions required for "+
-						"method",
+					"unknown request",
 				)
 			})
 		}
@@ -503,8 +502,7 @@ func integratedTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
 					shouldFailWithoutMacaroon,
 					endpoint.successPattern,
 					endpointDisabled,
-					"unknown permissions required for "+
-						"method",
+					"unknown request",
 				)
 			})
 		}
@@ -529,8 +527,7 @@ func integratedTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
 					ttt, cfg.LitAddr(), cfg.UIPassword,
 					endpoint.grpcWebURI,
 					withoutUIPassword, endpointDisabled,
-					"unknown permissions required for "+
-						"method", endpoint.noAuth,
+					"unknown request", endpoint.noAuth,
 				)
 			})
 		}
@@ -569,8 +566,7 @@ func integratedTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
 					endpoint.requestFn,
 					endpoint.successPattern,
 					endpointDisabled,
-					"unknown permissions required for "+
-						"method",
+					"unknown request",
 				)
 			})
 		}
@@ -765,12 +761,14 @@ func runGRPCAuthTest(t *testing.T, hostPort, tlsCertPath, macPath string,
 	require.NoError(t, err)
 	defer rawConn.Close()
 
-	if noMac {
-		resp, err := makeRequest(ctxt, rawConn)
-		if disabled {
-			require.ErrorContains(t, err, disabledErr)
-			return
-		}
+	resp, err := makeRequest(ctxt, rawConn)
+
+	switch {
+	case disabled:
+		require.ErrorContains(t, err, disabledErr)
+		return
+
+	case noMac:
 		require.NoError(t, err)
 
 		json, err := marshalOptions.Marshal(resp)
@@ -778,52 +776,36 @@ func runGRPCAuthTest(t *testing.T, hostPort, tlsCertPath, macPath string,
 		require.Contains(t, string(json), successContent)
 
 		return
-	}
 
 	// We have a connection without any macaroon. A call should fail.
-	_, err = makeRequest(ctxt, rawConn)
-	if disabled {
-		require.ErrorContains(t, err, disabledErr)
-	} else {
+	default:
 		require.ErrorContains(t, err, "expected 1 macaroon, got 0")
 	}
 
 	// Add dummy data as the macaroon, that should fail as well.
 	ctxm := macaroonContext(ctxt, []byte("dummy"))
 	_, err = makeRequest(ctxm, rawConn)
-	if disabled {
-		require.ErrorContains(t, err, disabledErr)
-	} else {
-		require.ErrorContains(t, err, "packet too short")
-	}
+	require.ErrorContains(t, err, "packet too short")
 
 	// Add a macaroon that can be parsed but that's not issued by lnd, which
 	// should also fail.
 	ctxm = macaroonContext(ctxt, dummyMacBytes)
 	_, err = makeRequest(ctxm, rawConn)
-	if disabled {
-		require.ErrorContains(t, err, disabledErr)
-	} else {
-		errStr := err.Error()
-		err1 := strings.Contains(errStr, "cannot get macaroon: root")
-		err2 := strings.Contains(errStr, "cannot get macaroon: sql: no")
-		require.Truef(
-			t, err1 || err2, "no macaroon, got unexpected error: "+
-				"%v", err,
-		)
-	}
+	errStr := err.Error()
+	err1 := strings.Contains(errStr, "cannot get macaroon: root")
+	err2 := strings.Contains(errStr, "cannot get macaroon: sql: no")
+	require.Truef(
+		t, err1 || err2, "no macaroon, got unexpected error: "+
+			"%v", err,
+	)
 
 	// Then finally we try with the correct macaroon which should now
 	// succeed, as long as it is not for a disabled sub-server.
 	macBytes, err := os.ReadFile(macPath)
 	require.NoError(t, err)
 	ctxm = macaroonContext(ctxt, macBytes)
-	resp, err := makeRequest(ctxm, rawConn)
-	if disabled {
-		require.ErrorContains(t, err, disabledErr)
-	} else {
-		require.NoError(t, err)
-	}
+	resp, err = makeRequest(ctxm, rawConn)
+	require.NoError(t, err)
 
 	json, err := marshalOptions.Marshal(resp)
 	require.NoError(t, err)
@@ -993,6 +975,10 @@ func runGRPCWebAuthTest(t *testing.T, hostPort, uiPassword, grpcWebURI string,
 			t, responseHeader.Get("grpc-message"), disableErr,
 		)
 
+		if noAuth {
+			return
+		}
+
 	case noAuth:
 		require.Empty(t, responseHeader.Get("grpc-message"))
 		require.Empty(t, responseHeader.Get("grpc-status"))
@@ -1076,17 +1062,22 @@ func runRESTAuthTest(t *testing.T, hostPort, uiPassword, macaroonPath, restURI,
 		responseHeader.Get("content-type"),
 	)
 
-	if noMac {
-		require.Contains(t, body, successPattern)
-		return
-	}
-
-	if disabled {
+	switch {
+	case disabled:
 		require.Empty(
 			t, responseHeader.Get("grpc-metadata-content-type"),
 		)
 		require.Contains(t, body, "Not Found")
-	} else {
+
+		if noMac {
+			return
+		}
+
+	case noMac:
+		require.Contains(t, body, successPattern)
+		return
+
+	default:
 		require.Equalf(
 			t, "application/grpc",
 			responseHeader.Get("grpc-metadata-content-type"),
@@ -1113,7 +1104,7 @@ func runRESTAuthTest(t *testing.T, hostPort, uiPassword, macaroonPath, restURI,
 	}
 
 	// And finally, try with the given macaroon.
-	macBytes, err := ioutil.ReadFile(macaroonPath)
+	macBytes, err := os.ReadFile(macaroonPath)
 	require.NoError(t, err)
 
 	macaroonHeader := http.Header{
@@ -1150,12 +1141,14 @@ func runLNCAuthTest(t *testing.T, rawLNCConn grpc.ClientConnInterface,
 	// macaroon permissions properly set up).
 	resp, err := makeRequest(ctxt, rawLNCConn)
 
-	if noMac {
-		if disabled {
-			require.ErrorContains(t, err, "unknown gRPC web "+
-				"request")
-			return
-		}
+	switch {
+	// The call should be allowed, so we expect no error unless this is
+	// for a disabled sub-server.
+	case disabled:
+		require.ErrorContains(t, err, "unknown request")
+		return
+
+	case noMac:
 		require.NoError(t, err)
 
 		json, err := marshalOptions.Marshal(resp)
@@ -1163,28 +1156,14 @@ func runLNCAuthTest(t *testing.T, rawLNCConn grpc.ClientConnInterface,
 		require.Contains(t, string(json), successContent)
 
 		return
-	}
 
 	// Is this a disallowed call?
-	if !callAllowed {
-		if disabled {
-			require.ErrorContains(t, err, "unknown permissions "+
-				"required for method")
-		} else {
-			require.ErrorContains(t, err, expectErrContains)
-		}
+	case !callAllowed:
+		require.ErrorContains(t, err, expectErrContains)
 
 		return
-	}
 
-	// The call should be allowed, so we expect no error unless this is
-	// for a disabled sub-server.
-	if disabled {
-		require.ErrorContains(t, err, "unknown permissions "+
-			"required for method")
-
-		return
-	} else {
+	default:
 		require.NoError(t, err)
 	}
 

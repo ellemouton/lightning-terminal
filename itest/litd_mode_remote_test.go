@@ -67,8 +67,7 @@ func remoteTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
 					endpoint.requestFn,
 					endpoint.successPattern,
 					endpointEnabled,
-					"unknown permissions required for "+
-						"method",
+					"unknown request",
 				)
 			})
 		}
@@ -95,8 +94,7 @@ func remoteTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
 					shouldFailWithoutMacaroon,
 					endpoint.successPattern,
 					endpointEnabled,
-					"unknown permissions required for "+
-						"method",
+					"unknown request",
 				)
 			})
 		}
@@ -119,8 +117,7 @@ func remoteTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
 					ttt, cfg.LitAddr(), cfg.UIPassword,
 					endpoint.grpcWebURI, withoutUIPassword,
 					endpointEnabled,
-					"unknown permissions required for "+
-						"method", endpoint.noAuth,
+					"unknown request", endpoint.noAuth,
 				)
 			})
 		}
@@ -148,8 +145,7 @@ func remoteTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
 					endpoint.requestFn,
 					endpoint.successPattern,
 					endpointEnabled,
-					"unknown permissions required for "+
-						"method",
+					"unknown request",
 				)
 			})
 		}
