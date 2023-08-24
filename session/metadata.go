@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/lightninglabs/lightning-terminal/session/migration1"
+	"github.com/lightninglabs/lightning-terminal/session/migration2"
 	"go.etcd.io/bbolt"
 )
 
@@ -32,6 +33,7 @@ var (
 	// apply to the current db.
 	dbVersions = []migration{
 		migration1.MigrateSessionIDToKeyIndex,
+		migration2.MigrateSessionIDToGroupIndex,
 	}
 
 	latestDBVersion = uint32(len(dbVersions))
