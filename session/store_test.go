@@ -33,9 +33,14 @@ func TestBasicSessionStore(t *testing.T) {
 	require.NoError(t, db.CreateSession(s2))
 	require.NoError(t, db.CreateSession(s3))
 
-	// Ensure that we can retrieve each session.
+	// Ensure that we can retrieve each session by both its local pub key
+	// and by its ID.
 	for _, s := range []*Session{s1, s2, s3} {
 		session, err := db.GetSession(s.LocalPublicKey)
+		require.NoError(t, err)
+		require.Equal(t, s.Label, session.Label)
+
+		session, err = db.GetSessionByID(s.ID)
 		require.NoError(t, err)
 		require.Equal(t, s.Label, session.Label)
 	}

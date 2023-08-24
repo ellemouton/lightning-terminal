@@ -141,4 +141,7 @@ type Store interface {
 	// to the session with the given local pub key.
 	UpdateSessionRemotePubKey(localPubKey,
 		remotePubKey *btcec.PublicKey) error
+
+	// GetSessionByID fetches the session with the given ID.
+	GetSessionByID(id ID) (*Session, error)
 }
