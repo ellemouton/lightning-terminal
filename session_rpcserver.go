@@ -41,7 +41,6 @@ type sessionRpcServer struct {
 	litrpc.UnimplementedAutopilotServer
 
 	cfg           *sessionRpcServerConfig
-	db            *session.DB
 	sessionServer *session.Server
 
 	quit     chan struct{}
@@ -52,8 +51,8 @@ type sessionRpcServer struct {
 // sessionRpcServerConfig holds the values used to configure the
 // sessionRpcServer.
 type sessionRpcServerConfig struct {
+	db                      *session.DB
 	basicAuth               string
-	dbDir                   string
 	grpcOptions             []grpc.ServerOption
 	registerGrpcServers     func(server *grpc.Server)
 	superMacBaker           session.MacaroonBaker
@@ -68,12 +67,6 @@ type sessionRpcServerConfig struct {
 // newSessionRPCServer creates a new sessionRpcServer using the passed config.
 func newSessionRPCServer(cfg *sessionRpcServerConfig) (*sessionRpcServer,
 	error) {
-
-	// Create an instance of the local Terminal Connect session store DB.
-	db, err := session.NewDB(cfg.dbDir, session.DBFilename)
-	if err != nil {
-		return nil, fmt.Errorf("error creating session DB: %v", err)
-	}
 
 	// Create the gRPC server that handles adding/removing sessions and the
 	// actual mailbox server that spins up the Terminal Connect server
@@ -91,7 +84,6 @@ func newSessionRPCServer(cfg *sessionRpcServerConfig) (*sessionRpcServer,
 
 	return &sessionRpcServer{
 		cfg:           cfg,
-		db:            db,
 		sessionServer: server,
 		quit:          make(chan struct{}),
 	}, nil
@@ -101,7 +93,7 @@ func newSessionRPCServer(cfg *sessionRpcServerConfig) (*sessionRpcServer,
 // requests. This includes resuming all non-revoked sessions.
 func (s *sessionRpcServer) start() error {
 	// Start up all previously created sessions.
-	sessions, err := s.db.ListSessions(nil)
+	sessions, err := s.cfg.db.ListSessions(nil)
 	if err != nil {
 		return fmt.Errorf("error listing sessions: %v", err)
 	}
@@ -152,7 +144,7 @@ func (s *sessionRpcServer) start() error {
 					err)
 
 				if perm {
-					err := s.db.RevokeSession(
+					err := s.cfg.db.RevokeSession(
 						sess.LocalPublicKey,
 					)
 					if err != nil {
@@ -177,7 +169,7 @@ func (s *sessionRpcServer) start() error {
 func (s *sessionRpcServer) stop() error {
 	var returnErr error
 	s.stopOnce.Do(func() {
-		if err := s.db.Close(); err != nil {
+		if err := s.cfg.db.Close(); err != nil {
 			log.Errorf("Error closing session DB: %v", err)
 			returnErr = err
 		}
@@ -323,7 +315,7 @@ func (s *sessionRpcServer) AddSession(_ context.Context,
 		return nil, fmt.Errorf("error creating new session: %v", err)
 	}
 
-	if err := s.db.CreateSession(sess); err != nil {
+	if err := s.cfg.db.CreateSession(sess); err != nil {
 		return nil, fmt.Errorf("error storing session: %v", err)
 	}
 
@@ -362,7 +354,7 @@ func (s *sessionRpcServer) resumeSession(sess *session.Session) error {
 		log.Debugf("Not resuming session %x with expiry %s",
 			pubKeyBytes, sess.Expiry)
 
-		if err := s.db.RevokeSession(pubKey); err != nil {
+		if err := s.cfg.db.RevokeSession(pubKey); err != nil {
 			return fmt.Errorf("error revoking session: %v", err)
 		}
 
@@ -442,7 +434,7 @@ func (s *sessionRpcServer) resumeSession(sess *session.Session) error {
 			log.Debugf("Deadline for session %x has already "+
 				"passed. Revoking session", pubKeyBytes)
 
-			return s.db.RevokeSession(pubKey)
+			return s.cfg.db.RevokeSession(pubKey)
 		}
 
 		// Start the deadline timer.
@@ -477,7 +469,7 @@ func (s *sessionRpcServer) resumeSession(sess *session.Session) error {
 
 	authData := []byte(fmt.Sprintf("%s: %s", HeaderMacaroon, mac))
 	sessionClosedSub, err := s.sessionServer.StartSession(
-		sess, authData, s.db.UpdateSessionRemotePubKey, onNewStatus,
+		sess, authData, s.cfg.db.UpdateSessionRemotePubKey, onNewStatus,
 	)
 	if err != nil {
 		return err
@@ -522,7 +514,7 @@ func (s *sessionRpcServer) resumeSession(sess *session.Session) error {
 			log.Debugf("Error stopping session: %v", err)
 		}
 
-		err = s.db.RevokeSession(pubKey)
+		err = s.cfg.db.RevokeSession(pubKey)
 		if err != nil {
 			log.Debugf("error revoking session: %v", err)
 		}
@@ -535,7 +527,7 @@ func (s *sessionRpcServer) resumeSession(sess *session.Session) error {
 func (s *sessionRpcServer) ListSessions(_ context.Context,
 	_ *litrpc.ListSessionsRequest) (*litrpc.ListSessionsResponse, error) {
 
-	sessions, err := s.db.ListSessions(nil)
+	sessions, err := s.cfg.db.ListSessions(nil)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching sessions: %v", err)
 	}
@@ -564,7 +556,7 @@ func (s *sessionRpcServer) RevokeSession(ctx context.Context,
 		return nil, fmt.Errorf("error parsing public key: %v", err)
 	}
 
-	if err := s.db.RevokeSession(pubKey); err != nil {
+	if err := s.cfg.db.RevokeSession(pubKey); err != nil {
 		return nil, fmt.Errorf("error revoking session: %v", err)
 	}
 
@@ -1015,7 +1007,7 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 	// We only persist this session if we successfully retrieved the
 	// autopilot's static key.
 	sess.RemotePublicKey = remoteKey
-	if err := s.db.CreateSession(sess); err != nil {
+	if err := s.cfg.db.CreateSession(sess); err != nil {
 		return nil, fmt.Errorf("error storing session: %v", err)
 	}
 
@@ -1039,7 +1031,7 @@ func (s *sessionRpcServer) ListAutopilotSessions(_ context.Context,
 	_ *litrpc.ListAutopilotSessionsRequest) (
 	*litrpc.ListAutopilotSessionsResponse, error) {
 
-	sessions, err := s.db.ListSessions(func(s *session.Session) bool {
+	sessions, err := s.cfg.db.ListSessions(func(s *session.Session) bool {
 		return s.Type == session.TypeAutopilot
 	})
 	if err != nil {
@@ -1070,7 +1062,7 @@ func (s *sessionRpcServer) RevokeAutopilotSession(ctx context.Context,
 		return nil, fmt.Errorf("error parsing public key: %v", err)
 	}
 
-	sess, err := s.db.GetSession(pubKey)
+	sess, err := s.cfg.db.GetSession(pubKey)
 	if err != nil {
 		return nil, err
 	}
