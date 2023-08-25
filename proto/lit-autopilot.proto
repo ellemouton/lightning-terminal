@@ -75,10 +75,9 @@ message AddAutopilotSessionRequest {
     bool no_privacy_mapper = 7;
 
     /*
-    Set to a previous, revoked session's ID in order to link the new session
-    to the previous one.
+    Set to the ID of the group to link this session to, if any.
     */
-    bytes prev_sess_id = 14;
+    bytes linked_group_id = 14;
 }
 
 message FeatureConfig {
