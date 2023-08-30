@@ -61,7 +61,8 @@ type Values interface {
 	// RealToPseudo converts the rule Values to a new one that uses pseudo
 	// keys, channel IDs, channel points etc. It returns a map of real to
 	// pseudo strings that should be persisted.
-	RealToPseudo() (Values, map[string]string, error)
+	RealToPseudo(db firewalldb.PrivacyMapDB) (Values, map[string]string,
+		error)
 
 	// PseudoToReal attempts to convert any appropriate pseudo fields in
 	// the rule Values to their corresponding real values. It uses the

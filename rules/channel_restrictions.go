@@ -363,14 +363,20 @@ func (c *ChannelRestrict) PseudoToReal(db firewalldb.PrivacyMapDB) (Values,
 // RealToPseudo converts all the channel IDs into pseudo IDs.
 //
 // NOTE: this is part of the Values interface.
-func (c *ChannelRestrict) RealToPseudo() (Values, map[string]string, error) {
+func (c *ChannelRestrict) RealToPseudo(db firewalldb.PrivacyMapDB) (Values,
+	map[string]string, error) {
+
 	pseudoIDs := make([]uint64, len(c.DenyList))
 	privMapPairs := make(map[string]string)
 	for i, c := range c.DenyList {
 		// TODO(elle): check that this channel actually exists
 
 		chanID := firewalldb.Uint64ToStr(c)
-		if pseudo, ok := privMapPairs[chanID]; ok {
+
+		pseudo, ok, err := pseudoFromReal(db, privMapPairs, chanID)
+		if err != nil {
+			return nil, nil, err
+		} else if ok {
 			p, err := firewalldb.StrToUint64(pseudo)
 			if err != nil {
 				return nil, nil, err

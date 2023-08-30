@@ -2,6 +2,7 @@ package rules
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -370,19 +371,24 @@ func (c *PeerRestrict) PseudoToReal(db firewalldb.PrivacyMapDB) (Values,
 // RealToPseudo converts all the real peer IDs into pseudo IDs.
 //
 // NOTE: this is part of the Values interface.
-func (c *PeerRestrict) RealToPseudo() (Values, map[string]string, error) {
+func (c *PeerRestrict) RealToPseudo(db firewalldb.PrivacyMapDB) (Values,
+	map[string]string, error) {
+
 	pseudoIDs := make([]string, len(c.DenyList))
 	privMapPairs := make(map[string]string)
 	for i, id := range c.DenyList {
 		// TODO(elle): check that this peer is actually one of our
 		//  channel peers.
 
-		if pseudo, ok := privMapPairs[id]; ok {
+		pseudo, ok, err := pseudoFromReal(db, privMapPairs, id)
+		if err != nil {
+			return nil, nil, err
+		} else if ok {
 			pseudoIDs[i] = pseudo
 			continue
 		}
 
-		pseudo, err := firewalldb.NewPseudoStr(len(id))
+		pseudo, err = firewalldb.NewPseudoStr(len(id))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -392,4 +398,53 @@ func (c *PeerRestrict) RealToPseudo() (Values, map[string]string, error) {
 	}
 
 	return &PeerRestrict{DenyList: pseudoIDs}, privMapPairs, nil
+}
+
+// pseudoFromReal is a helper that can be used to get the associated pseudo
+// value for a given real value from either the privacy map db if it is defined
+// or from a set of real-to-pseudo pairs.
+func pseudoFromReal(db firewalldb.PrivacyMapDB,
+	privMapPairs map[string]string, real string) (string, bool, error) {
+
+	pseudo, ok := privMapPairs[real]
+
+	switch {
+	// If the db is nil, then only the map needs to be checked.
+	case db == nil:
+		return pseudo, ok, nil
+
+	// If the value was found in the map, then return that.
+	case ok:
+		return pseudo, true, nil
+
+	// Otherwise, the DB is checked.
+	default:
+	}
+
+	err := db.View(func(tx firewalldb.PrivacyMapTx) error {
+		var err error
+		pseudo, err = tx.RealToPseudo(real)
+		switch {
+		// If the error is nil, an entry exists.
+		case err == nil:
+			ok = true
+
+			return nil
+
+		// Return any unexpected error.
+		case !errors.Is(err, firewalldb.ErrNoSuchKeyFound):
+			return err
+
+		// No key found.
+		default:
+			ok = false
+		}
+
+		return nil
+	})
+	if err != nil {
+		return "", false, err
+	}
+
+	return pseudo, ok, nil
 }
