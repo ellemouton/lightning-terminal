@@ -882,7 +882,9 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 
 				if privacy {
 					var privMapPairs map[string]string
-					v, privMapPairs, err = v.RealToPseudo()
+					v, privMapPairs, err = v.RealToPseudo(
+						nil,
+					)
 					if err != nil {
 						return nil, err
 					}

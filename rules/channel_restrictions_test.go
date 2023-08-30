@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/lightninglabs/lightning-terminal/firewall/mock"
 	"github.com/lightninglabs/lightning-terminal/firewalldb"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -160,4 +161,118 @@ func (m *mockLndClient) ListChannels(_ context.Context, _, _ bool) (
 	[]lndclient.ChannelInfo, error) {
 
 	return m.channels, nil
+}
+
+// TestChannelRestrictRealToPseudo tests that the ChannelRestrict's RealToPseudo
+// method correctly determines which real strings to generate pseudo pairs for
+// based on the privacy map db passed to it.
+func TestChannelRestrictRealToPseudo(t *testing.T) {
+	chanID1 := firewalldb.Uint64ToStr(1)
+	chanID2 := firewalldb.Uint64ToStr(2)
+	chanID3 := firewalldb.Uint64ToStr(3)
+	chanID2Obfuscated := firewalldb.Uint64ToStr(200)
+
+	tests := []struct {
+		name           string
+		dbPreLoad      map[string]string
+		expectNewPairs map[string]bool
+	}{
+		{
+			// If there is no preloaded DB, then we expect all the
+			// values in the deny list to be returned from the
+			// RealToPseudo method.
+			name: "no pre loaded db",
+			expectNewPairs: map[string]bool{
+				chanID1: true,
+				chanID2: true,
+				chanID3: true,
+			},
+		},
+		{
+			// If the DB is preloaded with an entry for "channel 2"
+			// then we don't expect that entry to be returned in the
+			// set of new pairs.
+			name: "partially pre-loaded DB",
+			dbPreLoad: map[string]string{
+				chanID2: chanID2Obfuscated,
+			},
+			expectNewPairs: map[string]bool{
+				chanID1: true,
+				chanID3: true,
+			},
+		},
+	}
+
+	cr := &ChannelRestrict{
+		DenyList: []uint64{
+			1,
+			2,
+			3,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Some of the tests will test a nil value privacy map
+			// DB. So We only initialise one if the test has
+			// values to preload the DB with.
+			var privDB firewalldb.PrivacyMapDB
+			if len(test.dbPreLoad) != 0 {
+				privDB = mock.NewPrivacyMapDB()
+			}
+
+			// Iterate over the preload key value pairs and load
+			// them into the DB.
+			var expectedDenyList []uint64
+			for r, p := range test.dbPreLoad {
+				err := privDB.View(
+					func(tx firewalldb.PrivacyMapTx) error {
+						return tx.NewPair(r, p)
+					},
+				)
+				require.NoError(t, err)
+
+				// Add the pseudo value to the expected deny
+				// list.
+				pInt, err := firewalldb.StrToUint64(p)
+				require.NoError(t, err)
+
+				expectedDenyList = append(
+					expectedDenyList, pInt,
+				)
+			}
+
+			// Call the RealToPseudo method on the ChannelRestrict
+			// rule. This will return the rule value in its pseudo
+			// form along with any new privacy map pairs that should
+			// be added to the DB.
+			v, newPairs, err := cr.RealToPseudo(privDB)
+			require.NoError(t, err)
+			require.Len(t, newPairs, len(test.expectNewPairs))
+
+			// We add each new pair to the expected deny list too.
+			for r, p := range newPairs {
+				require.True(t, test.expectNewPairs[r])
+
+				pInt, err := firewalldb.StrToUint64(p)
+				require.NoError(t, err)
+
+				expectedDenyList = append(
+					expectedDenyList, pInt,
+				)
+			}
+
+			denyList, ok := v.(*ChannelRestrict)
+			require.True(t, ok)
+
+			// Assert that the element in the resulting deny list
+			// matches all the elements in our expected deny list.
+			require.ElementsMatch(
+				t, denyList.DenyList, expectedDenyList,
+			)
+		})
+	}
 }
