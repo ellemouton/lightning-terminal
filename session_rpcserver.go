@@ -841,6 +841,55 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 	privacy := !req.NoPrivacyMapper
 	privacyMapPairs := make(map[string]string)
 
+	// If a previous session ID has been set to link this new one to, we
+	// first check if we have the referenced session, and we make sure it
+	// has been revoked.
+	var (
+		linkedGroupID      *session.ID
+		linkedGroupSession *session.Session
+		privDB             firewalldb.PrivacyMapDB
+	)
+	if len(req.LinkedGroupId) != 0 {
+		var groupID session.ID
+		copy(groupID[:], req.LinkedGroupId)
+
+		// Check that the group actually does exist.
+		groupSess, err := s.cfg.db.GetSessionByID(groupID)
+		if err != nil {
+			return nil, err
+		}
+
+		// Ensure that the linked session is in fact the first session
+		// in its group.
+		if groupSess.ID != groupSess.GroupID {
+			return nil, fmt.Errorf("can not link to session "+
+				"%x since it is not the first in the session "+
+				"group %x", groupSess.ID, groupSess.GroupID)
+		}
+
+		// Now we need to check that all the sessions in the group are
+		// no longer active.
+		ok, err := s.cfg.db.CheckSessionGroupPredicate(
+			groupID, func(s *session.Session) bool {
+				return s.State == session.StateRevoked ||
+					s.State == session.StateExpired
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if !ok {
+			return nil, fmt.Errorf("a linked session in group "+
+				"%x is still active", groupID)
+		}
+
+		linkedGroupID = &groupID
+		linkedGroupSession = groupSess
+
+		privDB = s.cfg.privMap(groupID)
+	}
+
 	// First need to fetch all the perms that need to be baked into this
 	// mac based on the features.
 	allFeatures, err := s.cfg.autopilot.ListFeatures(ctx)
@@ -883,7 +932,7 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 				if privacy {
 					var privMapPairs map[string]string
 					v, privMapPairs, err = v.RealToPseudo(
-						nil,
+						privDB,
 					)
 					if err != nil {
 						return nil, err
@@ -1014,52 +1063,6 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 		caveats = append(caveats, firewall.MetaPrivacyCaveat)
 	}
 
-	// If a previous session ID has been set to link this new one to, we
-	// first check if we have the referenced session, and we make sure it
-	// has been revoked.
-	var (
-		linkedGroupID      *session.ID
-		linkedGroupSession *session.Session
-	)
-	if len(req.LinkedGroupId) != 0 {
-		var groupID session.ID
-		copy(groupID[:], req.LinkedGroupId)
-
-		// Check that the group actually does exist.
-		groupSess, err := s.cfg.db.GetSessionByID(groupID)
-		if err != nil {
-			return nil, err
-		}
-
-		// Ensure that the linked session is in fact the first session
-		// in its group.
-		if groupSess.ID != groupSess.GroupID {
-			return nil, fmt.Errorf("can not link to session "+
-				"%x since it is not the first in the session "+
-				"group %x", groupSess.ID, groupSess.GroupID)
-		}
-
-		// Now we need to check that all the sessions in the group are
-		// no longer active.
-		ok, err := s.cfg.db.CheckSessionGroupPredicate(
-			groupID, func(s *session.Session) bool {
-				return s.State == session.StateRevoked ||
-					s.State == session.StateExpired
-			},
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if !ok {
-			return nil, fmt.Errorf("a linked session in group "+
-				"%x is still active", groupID)
-		}
-
-		linkedGroupID = &groupID
-		linkedGroupSession = groupSess
-	}
-
 	s.sessRegMu.Lock()
 	defer s.sessRegMu.Unlock()
 
@@ -1096,7 +1099,7 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 	}
 
 	// Register all the privacy map pairs for this session ID.
-	privDB := s.cfg.privMap(sess.GroupID)
+	privDB = s.cfg.privMap(sess.GroupID)
 	err = privDB.Update(func(tx firewalldb.PrivacyMapTx) error {
 		for r, p := range privacyMapPairs {
 			err := tx.NewPair(r, p)
