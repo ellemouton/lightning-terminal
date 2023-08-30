@@ -273,10 +273,12 @@ func (r *RateLimit) PseudoToReal(_ firewalldb.PrivacyMapDB) (Values,
 }
 
 // RealToPseudo converts the rule Values to a new one that uses pseudo keys,
-// channel IDs, channel points etc. It returns a map of real to pseudo strings
-// that should be persisted. This is a no-op for the RateLimit rule.
+// channel IDs, channel points etc. It returns a map of any new real to pseudo
+// strings that should be persisted. This is a no-op for the RateLimit rule.
 //
 // NOTE: this is part of the Values interface.
-func (r *RateLimit) RealToPseudo() (Values, map[string]string, error) {
+func (r *RateLimit) RealToPseudo(_ firewalldb.PrivacyMapDB) (Values,
+	map[string]string, error) {
+
 	return r, nil, nil
 }
