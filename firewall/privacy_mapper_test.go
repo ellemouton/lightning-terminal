@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightninglabs/lightning-terminal/firewall/mock"
 	"github.com/lightninglabs/lightning-terminal/firewalldb"
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -445,7 +446,7 @@ func TestPrivacyMapper(t *testing.T) {
 }
 
 type mockDB struct {
-	privDB map[string]*mockPrivacyMapDB
+	privDB map[string]*mock.PrivacyMapDB
 
 	sessionIDIndex map[session.ID]session.ID
 	groupIDIndex   map[session.ID][]session.ID
@@ -455,7 +456,7 @@ func newMockDB(t *testing.T, preloadRealToPseudo map[string]string,
 	sessID session.ID) mockDB {
 
 	db := mockDB{
-		privDB:         make(map[string]*mockPrivacyMapDB),
+		privDB:         make(map[string]*mock.PrivacyMapDB),
 		sessionIDIndex: make(map[session.ID]session.ID),
 		groupIDIndex:   make(map[session.ID][]session.ID),
 	}
@@ -477,7 +478,7 @@ func (m mockDB) NewSessionDB(sessionID session.ID) firewalldb.PrivacyMapDB {
 		return db
 	}
 
-	newDB := newMockPrivacyMapDB()
+	newDB := mock.NewPrivacyMapDB()
 	m.privDB[string(sessionID[:])] = newDB
 
 	return newDB
@@ -506,56 +507,6 @@ func (m mockDB) GetSessionIDs(groupID session.ID) ([]session.ID, error) {
 
 	return sessionIDs, nil
 }
-
-func newMockPrivacyMapDB() *mockPrivacyMapDB {
-	return &mockPrivacyMapDB{
-		r2p: make(map[string]string),
-		p2r: make(map[string]string),
-	}
-}
-
-type mockPrivacyMapDB struct {
-	r2p map[string]string
-	p2r map[string]string
-}
-
-func (m *mockPrivacyMapDB) Update(
-	f func(tx firewalldb.PrivacyMapTx) error) error {
-
-	return f(m)
-}
-
-func (m *mockPrivacyMapDB) View(
-	f func(tx firewalldb.PrivacyMapTx) error) error {
-
-	return f(m)
-}
-
-func (m *mockPrivacyMapDB) NewPair(real, pseudo string) error {
-	m.r2p[real] = pseudo
-	m.p2r[pseudo] = real
-	return nil
-}
-
-func (m *mockPrivacyMapDB) PseudoToReal(pseudo string) (string, error) {
-	r, ok := m.p2r[pseudo]
-	if !ok {
-		return "", firewalldb.ErrNoSuchKeyFound
-	}
-
-	return r, nil
-}
-
-func (m *mockPrivacyMapDB) RealToPseudo(real string) (string, error) {
-	p, ok := m.r2p[real]
-	if !ok {
-		return "", firewalldb.ErrNoSuchKeyFound
-	}
-
-	return p, nil
-}
-
-var _ firewalldb.PrivacyMapDB = (*mockPrivacyMapDB)(nil)
 
 // TestRandBetween tests random number generation for numbers in an interval.
 func TestRandBetween(t *testing.T) {
