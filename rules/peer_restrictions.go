@@ -2,7 +2,6 @@ package rules
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -372,7 +371,7 @@ func (c *PeerRestrict) PseudoToReal(db firewalldb.PrivacyMapDB) (Values,
 // of any _new_ real to pseudo strings that should be persisted.
 //
 // NOTE: this is part of the Values interface.
-func (c *PeerRestrict) RealToPseudo(db firewalldb.PrivacyMapDB) (Values,
+func (c *PeerRestrict) RealToPseudo(db firewalldb.PrivacyMapReader) (Values,
 	map[string]string, error) {
 
 	pseudoIDs := make([]string, len(c.DenyList))
@@ -404,48 +403,17 @@ func (c *PeerRestrict) RealToPseudo(db firewalldb.PrivacyMapDB) (Values,
 // pseudoFromReal is a helper that can be used to get the associated pseudo
 // value for a given real value from either the privacy map db if it is defined
 // or from a set of real-to-pseudo pairs.
-func pseudoFromReal(db firewalldb.PrivacyMapDB,
+func pseudoFromReal(db firewalldb.PrivacyMapReader,
 	privMapPairs map[string]string, real string) (string, bool, error) {
 
+	// First check the map.
 	pseudo, ok := privMapPairs[real]
-
-	switch {
-	// If the db is nil, then only the map needs to be checked.
-	case db == nil:
-		return pseudo, ok, nil
-
-	// If the value was found in the map, then return that.
-	case ok:
+	if ok {
 		return pseudo, true, nil
-
-	// Otherwise, the DB is checked.
-	default:
 	}
 
-	err := db.View(func(tx firewalldb.PrivacyMapTx) error {
-		var err error
-		pseudo, err = tx.RealToPseudo(real)
-		switch {
-		// If the error is nil, an entry exists.
-		case err == nil:
-			ok = true
-
-			return nil
-
-		// Return any unexpected error.
-		case !errors.Is(err, firewalldb.ErrNoSuchKeyFound):
-			return err
-
-		// No key found.
-		default:
-			ok = false
-		}
-
-		return nil
-	})
-	if err != nil {
-		return "", false, err
-	}
+	// Then check the DB reader.
+	pseudo, ok = db.Get(real)
 
 	return pseudo, ok, nil
 }

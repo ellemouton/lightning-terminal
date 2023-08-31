@@ -838,8 +838,14 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 		return nil, fmt.Errorf("expiry must be in the future")
 	}
 
-	privacy := !req.NoPrivacyMapper
-	privacyMapPairs := make(map[string]string)
+	// If the privacy mapper is being used for this session, then we need
+	// to keep track of all our known privacy map pairs for this session
+	// along with any new pairs that we need to persist.
+	var (
+		privacy           = !req.NoPrivacyMapper
+		knownPrivMapPairs = firewalldb.NewPrivacyMapPairs(nil)
+		newPrivMapPairs   = make(map[string]string)
+	)
 
 	// If a previous session ID has been set to link this new one to, we
 	// first check if we have the referenced session, and we make sure it
@@ -847,7 +853,6 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 	var (
 		linkedGroupID      *session.ID
 		linkedGroupSession *session.Session
-		privDB             firewalldb.PrivacyMapDB
 	)
 	if len(req.LinkedGroupId) != 0 {
 		var groupID session.ID
@@ -887,7 +892,15 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 		linkedGroupID = &groupID
 		linkedGroupSession = groupSess
 
-		privDB = s.cfg.privMap(groupID)
+		privDB := s.cfg.privMap(groupID)
+		err = privDB.View(func(tx firewalldb.PrivacyMapTx) error {
+			knownPrivMapPairs, err = tx.FetchAllPairs()
+
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// First need to fetch all the perms that need to be baked into this
@@ -932,14 +945,24 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 				if privacy {
 					var privMapPairs map[string]string
 					v, privMapPairs, err = v.RealToPseudo(
-						privDB,
+						knownPrivMapPairs,
 					)
 					if err != nil {
 						return nil, err
 					}
 
+					// Store the new privacy map pairs in
+					// the newPrivMap pairs map so that
+					// they are later persisted to the real
+					// priv map db.
 					for k, v := range privMapPairs {
-						privacyMapPairs[k] = v
+						newPrivMapPairs[k] = v
+					}
+
+					// Also add the new pairs to the
+					err = knownPrivMapPairs.Add(privMapPairs)
+					if err != nil {
+						return nil, err
 					}
 				}
 
@@ -1098,10 +1121,10 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 		prevSessionPub = linkedGroupSession.LocalPublicKey
 	}
 
-	// Register all the privacy map pairs for this session ID.
-	privDB = s.cfg.privMap(sess.GroupID)
+	// Register all the new privacy map pairs for this session ID.
+	privDB := s.cfg.privMap(sess.GroupID)
 	err = privDB.Update(func(tx firewalldb.PrivacyMapTx) error {
-		for r, p := range privacyMapPairs {
+		for r, p := range newPrivMapPairs {
 			err := tx.NewPair(r, p)
 			if err != nil {
 				return err

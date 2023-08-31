@@ -36,6 +36,13 @@ func TestPrivacyMapStorage(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "real", real)
 
+		pairs, err := tx.FetchAllPairs()
+		require.NoError(t, err)
+
+		require.EqualValues(t, pairs.pairs, map[string]string{
+			"real": "pseudo",
+		})
+
 		return nil
 	})
 
@@ -59,6 +66,13 @@ func TestPrivacyMapStorage(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "real 2", real)
 
+		pairs, err := tx.FetchAllPairs()
+		require.NoError(t, err)
+
+		require.EqualValues(t, pairs.pairs, map[string]string{
+			"real 2": "pseudo 2",
+		})
+
 		return nil
 	})
 
@@ -80,6 +94,27 @@ func TestPrivacyMapStorage(t *testing.T) {
 		err = tx.NewPair("real 2", "pseudo 1")
 		require.ErrorContains(t, err, "an entry already exists for "+
 			"pseudo value")
+
+		// Add a few more pairs.
+		err = tx.NewPair("real 2", "pseudo 2")
+		require.NoError(t, err)
+
+		err = tx.NewPair("real 3", "pseudo 3")
+		require.NoError(t, err)
+
+		err = tx.NewPair("real 4", "pseudo 4")
+		require.NoError(t, err)
+
+		// Check that FetchAllPairs correctly returns all the pairs.
+		pairs, err := tx.FetchAllPairs()
+		require.NoError(t, err)
+
+		require.EqualValues(t, pairs.pairs, map[string]string{
+			"real 1": "pseudo 1",
+			"real 2": "pseudo 2",
+			"real 3": "pseudo 3",
+			"real 4": "pseudo 4",
+		})
 
 		return nil
 	})

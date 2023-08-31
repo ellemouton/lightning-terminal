@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/lightninglabs/lightning-terminal/firewall/mock"
 	"github.com/lightninglabs/lightning-terminal/firewalldb"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -200,27 +199,14 @@ func TestPeerRestrictRealToPseudo(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Some of the tests will test a nil value privacy map
-			// DB. So We only initialise one if the test has
-			// values to preload the DB with.
-			var privDB firewalldb.PrivacyMapDB
-			if len(test.dbPreLoad) != 0 {
-				privDB = mock.NewPrivacyMapDB()
-			}
+			privMapPairDB := firewalldb.NewPrivacyMapPairs(
+				test.dbPreLoad,
+			)
 
-			// Iterate over the preload key value pairs and load
-			// them into the DB.
+			// Add the pseudo values from the preloaded DB to the
+			// expected deny list.
 			var expectedDenyList []string
-			for r, p := range test.dbPreLoad {
-				err := privDB.View(
-					func(tx firewalldb.PrivacyMapTx) error {
-						return tx.NewPair(r, p)
-					},
-				)
-				require.NoError(t, err)
-
-				// Add the pseudo value to the expected deny
-				// list.
+			for _, p := range test.dbPreLoad {
 				expectedDenyList = append(expectedDenyList, p)
 			}
 
@@ -228,7 +214,7 @@ func TestPeerRestrictRealToPseudo(t *testing.T) {
 			// rule. This will return the rule value in its pseudo
 			// form along with any new privacy map pairs that should
 			// be added to the DB.
-			v, newPairs, err := pr.RealToPseudo(privDB)
+			v, newPairs, err := pr.RealToPseudo(privMapPairDB)
 			require.NoError(t, err)
 			require.Len(t, newPairs, len(test.expectNewPairs))
 

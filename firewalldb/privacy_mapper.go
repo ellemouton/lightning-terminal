@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/lightninglabs/lightning-terminal/session"
 	"go.etcd.io/bbolt"
@@ -78,6 +79,9 @@ type PrivacyMapTx interface {
 	// RealToPseudo returns the pseudo value associated with the given real
 	// value. If no such pair is found, then ErrNoSuchKeyFound is returned.
 	RealToPseudo(real string) (string, error)
+
+	// FetchAllPairs loads and returns the real-to-pseudo pairs.
+	FetchAllPairs() (*PrivacyMapPairs, error)
 }
 
 // privacyMapDB is an implementation of PrivacyMapDB.
@@ -166,6 +170,90 @@ func (p *privacyMapDB) View(f func(tx PrivacyMapTx) error) error {
 type privacyMapTx struct {
 	*privacyMapDB
 	boltTx *bbolt.Tx
+}
+
+type PrivacyMapReader interface {
+	Get(real string) (string, bool)
+}
+
+type PrivacyMapPairs struct {
+	pairs map[string]string
+
+	mu sync.Mutex
+}
+
+func NewPrivacyMapPairs(m map[string]string) *PrivacyMapPairs {
+	if m != nil {
+		return &PrivacyMapPairs{
+			pairs: m,
+		}
+	}
+
+	return &PrivacyMapPairs{
+		pairs: make(map[string]string),
+	}
+}
+
+func (p *PrivacyMapPairs) Get(real string) (string, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	pseudo, ok := p.pairs[real]
+
+	return pseudo, ok
+}
+
+func (p *PrivacyMapPairs) Add(pairs map[string]string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	for realStr, pseudoStr := range pairs {
+		ps, ok := p.pairs[realStr]
+		switch {
+		case ok && ps == pseudoStr:
+			return nil
+
+		case ok && ps != pseudoStr:
+			return fmt.Errorf("cannot replace existing pseudo "+
+				"entry for real value: %s", realStr)
+
+		default:
+		}
+
+		p.pairs[realStr] = pseudoStr
+	}
+
+	return nil
+}
+
+// FetchAllPairs loads and returns the real-to-pseudo pairs.
+func (p *privacyMapTx) FetchAllPairs() (*PrivacyMapPairs, error) {
+	privacyBucket, err := getBucket(p.boltTx, privacyBucketKey)
+	if err != nil {
+		return nil, err
+	}
+
+	sessBucket := privacyBucket.Bucket(p.groupID[:])
+	if sessBucket == nil {
+		return nil, ErrNoSuchKeyFound
+	}
+
+	realToPseudoBucket := sessBucket.Bucket(realToPseudoKey)
+	if realToPseudoBucket == nil {
+		return nil, ErrNoSuchKeyFound
+	}
+
+	pairs := make(map[string]string)
+	err = realToPseudoBucket.ForEach(func(r, p []byte) error {
+		pairs[string(r)] = string(p)
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return NewPrivacyMapPairs(pairs), nil
 }
 
 // NewPair inserts a new real-pseudo pair into the db.

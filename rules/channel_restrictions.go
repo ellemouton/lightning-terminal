@@ -364,7 +364,7 @@ func (c *ChannelRestrict) PseudoToReal(db firewalldb.PrivacyMapDB) (Values,
 // of any _new_ real to pseudo strings that should be persisted.
 //
 // NOTE: this is part of the Values interface.
-func (c *ChannelRestrict) RealToPseudo(db firewalldb.PrivacyMapDB) (Values,
+func (c *ChannelRestrict) RealToPseudo(db firewalldb.PrivacyMapReader) (Values,
 	map[string]string, error) {
 
 	pseudoIDs := make([]uint64, len(c.DenyList))
