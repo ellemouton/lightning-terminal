@@ -132,6 +132,47 @@ var (
 	}
 )
 
+// testFirewallRules tests that the various firewall rules are enforced
+// correctly.
+func testFirewallRules(ctx context.Context, net *NetworkHarness,
+	t *harnessTest) {
+
+	// Some very basic functionality tests to make sure lnd is working fine
+	// in integrated mode.
+	net.SendCoins(t.t, btcutil.SatoshiPerBitcoin, net.Alice)
+
+	// We expect a non-empty alias (truncated node ID) to be returned.
+	resp, err := net.Alice.GetInfo(ctx, &lnrpc.GetInfoRequest{})
+	require.NoError(t.t, err)
+	require.NotEmpty(t.t, resp.Alias)
+	require.Contains(t.t, resp.Alias, "0")
+
+	// Open a channel between Alice and Bob so that we have something to
+	// query later.
+	channelOp := openChannelAndAssert(
+		t, net, net.Alice, net.Bob, lntest.OpenChannelParams{
+			Amt: 100000,
+		},
+	)
+	defer closeChannelAndAssert(t, net, net.Alice, channelOp, true)
+
+	t.t.Run("history limit rule", func(_ *testing.T) {
+		testHistoryLimitRule(net, t)
+	})
+
+	t.t.Run("channel policy bounds rule", func(_ *testing.T) {
+		testChanPolicyBoundsRule(net, t)
+	})
+
+	t.t.Run("peer and channel restrict rules", func(_ *testing.T) {
+		testPeerAndChannelRestrictRules(net, t)
+	})
+
+	t.t.Run("firewall rate limit and privacy mapper", func(_ *testing.T) {
+		testFWRateLimitAndPrivacyMapper(net, t)
+	})
+}
+
 // testFWRateLimitAndPrivacyMapper tests that an Autopilot session is forced to
 // adhere to the rate limits applied to the features of a session. Along the
 // way, the privacy mapper is also tested.
@@ -374,43 +415,6 @@ func testFWRateLimitAndPrivacyMapper(net *NetworkHarness, t *harnessTest) {
 func assertStatusErr(t *testing.T, err error, code codes.Code) {
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), code.String()))
-}
-
-// testFirewallRules tests that the various firewall rules are enforced
-// correctly.
-func testFirewallRules(ctx context.Context, net *NetworkHarness,
-	t *harnessTest) {
-
-	// Some very basic functionality tests to make sure lnd is working fine
-	// in integrated mode.
-	net.SendCoins(t.t, btcutil.SatoshiPerBitcoin, net.Alice)
-
-	// We expect a non-empty alias (truncated node ID) to be returned.
-	resp, err := net.Alice.GetInfo(ctx, &lnrpc.GetInfoRequest{})
-	require.NoError(t.t, err)
-	require.NotEmpty(t.t, resp.Alias)
-	require.Contains(t.t, resp.Alias, "0")
-
-	// Open a channel between Alice and Bob so that we have something to
-	// query later.
-	channelOp := openChannelAndAssert(
-		t, net, net.Alice, net.Bob, lntest.OpenChannelParams{
-			Amt: 100000,
-		},
-	)
-	defer closeChannelAndAssert(t, net, net.Alice, channelOp, true)
-
-	t.t.Run("history limit rule", func(_ *testing.T) {
-		testHistoryLimitRule(net, t)
-	})
-
-	t.t.Run("channel policy bounds rule", func(_ *testing.T) {
-		testChanPolicyBoundsRule(net, t)
-	})
-
-	t.t.Run("peer and channel restrict rules", func(_ *testing.T) {
-		testPeerAndChannelRestrictRules(net, t)
-	})
 }
 
 // testHistoryLimitRule tests that the autopilot server is forced to adhere to
@@ -935,6 +939,8 @@ func testPeerAndChannelRestrictRules(net *NetworkHarness, t *harnessTest) {
 	)
 	require.NoError(t.t, err)
 
+	// Alice's privacy map DB should already contain
+
 	// From the response, we can extract Lit's local public key.
 	litdPub, err := btcec.ParsePubKey(sessResp.Session.LocalPublicKey)
 	require.NoError(t.t, err)
@@ -1140,6 +1146,96 @@ func testPeerAndChannelRestrictRules(net *NetworkHarness, t *harnessTest) {
 		}, caveatCreds,
 	)
 	require.NoError(t.t, err)
+
+	/*
+		The second part of this test will test that the peer and channel
+		restriction lists along with the channel points received by the
+		autopilot server remain the same if session linking is used.
+	*/
+	// If Alice tries to create a session linked to the existing session,
+	// this should fail due to the linked session still being active.
+	_, err = litCAutopilotClient.AddAutopilotSession(
+		ctxm, &litrpc.AddAutopilotSessionRequest{
+			Label: "integration-test",
+			ExpiryTimestampSeconds: uint64(
+				time.Now().Add(5 * time.Minute).Unix(),
+			),
+			MailboxServerAddr: mailboxServerAddr,
+			Features: map[string]*litrpc.FeatureConfig{
+				"AutoFees": {
+					Rules: &litrpc.RulesMap{
+						Rules: map[string]*litrpc.RuleValue{
+							rules.PeersRestrictName: {
+								Value: peerRestrict,
+							},
+							rules.ChannelRestrictName: {
+								Value: channelRestrict,
+							},
+						},
+					},
+				},
+			},
+			LinkedGroupId: sessResp.Session.GroupId,
+		},
+	)
+	require.ErrorContains(t.t, err, "is still active")
+
+	// Revoke the old session and try again. This should now succeed.
+	_, err = litCAutopilotClient.RevokeAutopilotSession(
+		ctxm, &litrpc.RevokeAutopilotSessionRequest{
+			LocalPublicKey: sessResp.Session.LocalPublicKey,
+		},
+	)
+	require.NoError(t.t, err)
+
+	sessResp2, err := litCAutopilotClient.AddAutopilotSession(
+		ctxm, &litrpc.AddAutopilotSessionRequest{
+			Label: "integration-test",
+			ExpiryTimestampSeconds: uint64(
+				time.Now().Add(5 * time.Minute).Unix(),
+			),
+			MailboxServerAddr: mailboxServerAddr,
+			Features: map[string]*litrpc.FeatureConfig{
+				"AutoFees": {
+					Rules: &litrpc.RulesMap{
+						Rules: map[string]*litrpc.RuleValue{
+							rules.PeersRestrictName: {
+								Value: peerRestrict,
+							},
+							rules.ChannelRestrictName: {
+								Value: channelRestrict,
+							},
+						},
+					},
+				},
+			},
+			LinkedGroupId: sessResp.Session.GroupId,
+		},
+	)
+	require.NoError(t.t, err)
+
+	// From the response, we can extract Lit's local public key.
+	litdPub, err = btcec.ParsePubKey(sessResp2.Session.LocalPublicKey)
+	require.NoError(t.t, err)
+
+	// We then query the autopilot server to extract the private key that
+	// it will be using for this session.
+	pilotPriv, err = net.autopilotServer.GetPrivKey(litdPub)
+	require.NoError(t.t, err)
+
+	// Now we can connect to the mailbox from the PoV of the autopilot
+	// server.
+	pilotConn, metaDataInjector, err = connectMailboxWithRemoteKey(
+		ctx, pilotPriv, litdPub,
+	)
+	require.NoError(t.t, err)
+	defer pilotConn.Close()
+	lndConn = lnrpc.NewLightningClient(pilotConn)
+
+	// The autopilot server is expected to add a MetaInfo caveat to any
+	// request that it makes. So we add that now and specify that it is
+	// initially making requests on behalf of the HealthCheck feature.
+	caveatCreds := metaDataInjector.addCaveat(caveat)
 }
 
 func testLargeHttpHeader(ctx context.Context, net *NetworkHarness,
