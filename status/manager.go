@@ -19,14 +19,19 @@ type SubServerStatus struct {
 	// been started.
 	Running bool
 
+	Status string
+
 	// Err will be a non-empty string if the sub-server failed to start.
 	Err string
+
+	overrides map[string]func() bool
 }
 
 // newSubServerStatus constructs a new SubServerStatus.
-func newSubServerStatus() *SubServerStatus {
+func newSubServerStatus(o map[string]func() bool) *SubServerStatus {
 	return &SubServerStatus{
-		Disabled: true,
+		Disabled:  true,
+		overrides: o,
 	}
 }
 
@@ -45,6 +50,28 @@ func NewStatusManager() *Manager {
 	return &Manager{
 		subServers: make(map[string]*SubServerStatus),
 	}
+}
+
+func (s *Manager) IsSystemReady(name, req string) (bool, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	server, ok := s.subServers[name]
+	if !ok {
+		return false, false, errors.New("a sub-server with " +
+			"name %s has not yet been registered")
+	}
+
+	if server.Disabled {
+		return false, true, nil
+	}
+
+	fn, ok := server.overrides[req]
+	if !ok {
+		return server.Running, false, nil
+	}
+
+	return fn(), false, nil
 }
 
 // SubServerStatus queries the current status of a given sub-server.
@@ -73,20 +100,24 @@ func (s *Manager) SubServerStatus(_ context.Context,
 
 // RegisterSubServer will create a new sub-server entry for the Manager to
 // keep track of.
-func (s *Manager) RegisterSubServer(name string) {
+func (s *Manager) RegisterSubServer(name string,
+	overrides map[string]func() bool) {
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	s.subServers[name] = newSubServerStatus()
+	s.subServers[name] = newSubServerStatus(overrides)
 }
 
 // RegisterAndEnableSubServer will create a new sub-server entry for the
 // Manager to keep track of and will set it as enabled.
-func (s *Manager) RegisterAndEnableSubServer(name string) {
+func (s *Manager) RegisterAndEnableSubServer(name string,
+	overrides map[string]func() bool) {
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	ss := newSubServerStatus()
+	ss := newSubServerStatus(overrides)
 	ss.Disabled = false
 
 	s.subServers[name] = ss

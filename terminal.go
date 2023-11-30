@@ -157,6 +157,7 @@ type LightningTerminal struct {
 	wg       sync.WaitGroup
 	errQueue *queue.ConcurrentQueue[error]
 
+	walletReady bool
 	lndConn     *grpc.ClientConn
 	lndClient   *lndclient.GrpcLndServices
 	basicClient lnrpc.LightningClient
@@ -233,7 +234,11 @@ func (g *LightningTerminal) Run() error {
 	}
 
 	// Register LND, LiT and Accounts with the status manager.
-	g.statusMgr.RegisterAndEnableSubServer(subservers.LND)
+	g.statusMgr.RegisterAndEnableSubServer(subservers.LND, map[string]func() bool{
+		"Wallet": func() bool {
+			return g.walletReady
+		},
+	})
 	g.statusMgr.RegisterAndEnableSubServer(subservers.LIT)
 	g.statusMgr.RegisterSubServer(subservers.ACCOUNTS)
 
@@ -551,7 +556,8 @@ func (g *LightningTerminal) start() error {
 	// We can now set the status of LND as running.
 	// This is done _before_ we wait for the macaroon so that
 	// LND commands to create and unlock a wallet can be allowed.
-	g.statusMgr.SetRunning(subservers.LND)
+	g.walletReady = true
+	g.statusMgr.SetManualStatus(subservers.LND, "Wallet Ready")
 
 	// Now that we have started the main UI web server, show some useful
 	// information to the user so they can access the web UI easily.

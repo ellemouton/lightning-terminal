@@ -52,7 +52,7 @@ func NewManager(permsMgr *perms.Manager,
 // AddServer adds a new subServer to the manager's set.
 func (s *Manager) AddServer(ss SubServer, enable bool) {
 	// Register all sub-servers with the status server.
-	s.statusServer.RegisterSubServer(ss.Name())
+	s.statusServer.RegisterSubServer(ss.Name(), nil)
 
 	// If the sub-server has explicitly been disabled, then we don't add it
 	// to the set of servers tracked by the Manager.
