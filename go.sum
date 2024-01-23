@@ -571,6 +571,8 @@ github.com/dsnet/compress v0.0.1/go.mod h1:Aw8dCMJ7RioblQeTqt88akK31OvO8Dhf5Jflh
 github.com/dsnet/golib v0.0.0-20171103203638-1ea166775780/go.mod h1:Lj+Z9rebOhdfkVLjJ8T6VcRQv3SXugXy999NBtR9aFY=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
+github.com/ellemouton/lnd v0.8.0-beta-rc3.0.20240123185454-fa37528a64eb h1:zWgeWNtaIWiAVvF+C9GOlQ5omOatpeOHGN/+9NO/4uY=
+github.com/ellemouton/lnd v0.8.0-beta-rc3.0.20240123185454-fa37528a64eb/go.mod h1:zKLs8Rb+jhXML7R9juPPNm6rjnINJ7Ry3haoM6jQeWo=
 github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.1-0.20191026205805-5f8ba28d4473/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1mIlRU8Am5FuJP05cCM98=
@@ -957,8 +959,6 @@ github.com/lightninglabs/taproot-assets v0.3.2 h1:98edA51OCqjSN+t59nMA77YtgD8rfB
 github.com/lightninglabs/taproot-assets v0.3.2/go.mod h1:obkMZ4yBOZ1WzlQIa7yqDpcQ58BJhjul7e54po3sloQ=
 github.com/lightningnetwork/lightning-onion v1.2.1-0.20230823005744-06182b1d7d2f h1:Pua7+5TcFEJXIIZ1I2YAUapmbcttmLj4TTi786bIi3s=
 github.com/lightningnetwork/lightning-onion v1.2.1-0.20230823005744-06182b1d7d2f/go.mod h1:c0kvRShutpj3l6B9WtTsNTBUtjSmjZXbJd9ZBRQOSKI=
-github.com/lightningnetwork/lnd v0.17.3-beta h1:RB0bHq55SV1K5/tQxVCvkR+cwfIt38va5922qXTZ8KA=
-github.com/lightningnetwork/lnd v0.17.3-beta/go.mod h1:zKLs8Rb+jhXML7R9juPPNm6rjnINJ7Ry3haoM6jQeWo=
 github.com/lightningnetwork/lnd/cert v1.2.2 h1:71YK6hogeJtxSxw2teq3eGeuy4rHGKcFf0d0Uy4qBjI=
 github.com/lightningnetwork/lnd/cert v1.2.2/go.mod h1:jQmFn/Ez4zhDgq2hnYSw8r35bqGVxViXhX6Cd7HXM6U=
 github.com/lightningnetwork/lnd/clock v1.0.1/go.mod h1:KnQudQ6w0IAMZi1SgvecLZQZ43ra2vpDNj7H/aasemg=
