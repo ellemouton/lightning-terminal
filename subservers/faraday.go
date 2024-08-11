@@ -5,6 +5,7 @@ import (
 
 	restProxy "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/lightninglabs/faraday"
+	"github.com/lightninglabs/faraday/chain"
 	"github.com/lightninglabs/faraday/frdrpc"
 	"github.com/lightninglabs/faraday/frdrpcserver"
 	"github.com/lightninglabs/faraday/frdrpcserver/perms"
@@ -28,15 +29,31 @@ var _ SubServer = (*faradaySubServer)(nil)
 
 // NewFaradaySubServer returns a new faraday implementation of the SubServer
 // interface.
-func NewFaradaySubServer(cfg *faraday.Config, rpcCfg *frdrpcserver.Config,
-	remoteCfg *RemoteDaemonConfig, remote bool) SubServer {
+func NewFaradaySubServer(cfg *faraday.Config, remoteCfg *RemoteDaemonConfig,
+	remote bool) (SubServer, error) {
+
+	var rpcCfg frdrpcserver.Config
+	if !remote {
+		rpcCfg.FaradayDir = cfg.FaradayDir
+		rpcCfg.MacaroonPath = cfg.MacaroonPath
+
+		if cfg.ChainConn {
+			var err error
+			rpcCfg.BitcoinClient, err = chain.NewBitcoinClient(
+				cfg.Bitcoin,
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	return &faradaySubServer{
-		RPCServer: frdrpcserver.NewRPCServer(rpcCfg),
+		RPCServer: frdrpcserver.NewRPCServer(&rpcCfg),
 		cfg:       cfg,
 		remoteCfg: remoteCfg,
 		remote:    remote,
-	}
+	}, nil
 }
 
 // Name returns the name of the sub-server.

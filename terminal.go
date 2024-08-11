@@ -272,7 +272,10 @@ func (g *LightningTerminal) Run() error {
 
 	// Register our sub-servers. This must be done before the REST proxy is
 	// set up so that the correct REST handlers are registered.
-	g.initSubServers()
+	err = g.initSubServers()
+	if err != nil {
+		return fmt.Errorf("could not initialise subservers: %w", err)
+	}
 
 	// Construct the rpcProxy. It must be initialised before the main web
 	// server is started.
@@ -1643,12 +1646,17 @@ func (g *LightningTerminal) validateSuperMacaroon(ctx context.Context,
 
 // initSubServers registers the faraday and loop sub-servers with the
 // subServerMgr.
-func (g *LightningTerminal) initSubServers() {
+func (g *LightningTerminal) initSubServers() error {
+	faraday, err := subservers.NewFaradaySubServer(
+		g.cfg.Faraday, g.cfg.Remote.Faraday,
+		g.cfg.FaradayMode == ModeRemote,
+	)
+	if err != nil {
+		return err
+	}
+
 	g.subServerMgr.AddServer(
-		subservers.NewFaradaySubServer(
-			g.cfg.Faraday, g.cfg.faradayRpcConfig,
-			g.cfg.Remote.Faraday, g.cfg.FaradayMode == ModeRemote,
-		), g.cfg.FaradayMode != ModeDisable,
+		faraday, g.cfg.FaradayMode != ModeDisable,
 	)
 
 	g.subServerMgr.AddServer(
@@ -1672,6 +1680,8 @@ func (g *LightningTerminal) initSubServers() {
 			g.cfg.TaprootAssetsMode == ModeRemote, g.cfg.lndRemote,
 		), g.cfg.TaprootAssetsMode != ModeDisable,
 	)
+
+	return nil
 }
 
 // BakeSuperMacaroon uses the lnd client to bake a macaroon that can include
