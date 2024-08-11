@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/lightninglabs/lightning-terminal/config"
 	grpcProxy "github.com/mwitkow/grpc-proxy/proxy"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
@@ -14,11 +15,11 @@ import (
 )
 
 // connectLND sets up LiT's LND connection.
-func connectLND(cfg *Config, bufListener *bufconn.Listener) (*grpc.ClientConn,
+func connectLND(cfg *config.Config, bufListener *bufconn.Listener) (*grpc.ClientConn,
 	error) {
 
-	if cfg.lndRemote {
-		host, _, tlsPath, _, _ := cfg.lndConnectParams()
+	if cfg.LndRemote {
+		host, _, tlsPath, _, _ := cfg.LndConnectParams()
 		return dialBackend("lnd", host, tlsPath)
 	}
 

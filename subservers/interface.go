@@ -22,6 +22,8 @@ type SubServer interface {
 	// Name returns the name of the sub-server.
 	Name() string
 
+	Enabled() bool
+
 	// Remote returns true if the sub-server is running remotely and so
 	// should be connected to instead of spinning up an integrated server.
 	Remote() bool

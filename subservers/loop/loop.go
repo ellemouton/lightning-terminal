@@ -1,9 +1,11 @@
-package subservers
+package loop
 
 import (
 	"context"
 
 	restProxy "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/lightninglabs/lightning-terminal/config"
+	"github.com/lightninglabs/lightning-terminal/subservers"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightninglabs/loop"
 	"github.com/lightninglabs/loop/loopd"
@@ -17,18 +19,18 @@ import (
 // loopSubServer implements the SubServer interface.
 type loopSubServer struct {
 	*loopd.Daemon
-	remote    bool
+	mode      string
 	cfg       *loopd.Config
-	remoteCfg *RemoteDaemonConfig
+	remoteCfg *subservers.RemoteDaemonConfig
 }
 
 // A compile-time check to ensure that loopSubServer implements SubServer.
-var _ SubServer = (*loopSubServer)(nil)
+var _ subservers.SubServer = (*loopSubServer)(nil)
 
-// NewLoopSubServer returns a new loop implementation of the SubServer
+// newLoopSubServer returns a new loop implementation of the SubServer
 // interface.
-func NewLoopSubServer(cfg *loopd.Config, remoteCfg *RemoteDaemonConfig,
-	remote bool) SubServer {
+func newLoopSubServer(cfg *loopd.Config, remoteCfg *subservers.RemoteDaemonConfig,
+	mode string) subservers.SubServer {
 
 	// Overwrite the loop daemon's user agent name, so it sends "litd"
 	// instead of "loopd".
@@ -38,7 +40,7 @@ func NewLoopSubServer(cfg *loopd.Config, remoteCfg *RemoteDaemonConfig,
 		Daemon:    loopd.New(cfg, nil),
 		cfg:       cfg,
 		remoteCfg: remoteCfg,
-		remote:    remote,
+		mode:      mode,
 	}
 }
 
@@ -46,7 +48,7 @@ func NewLoopSubServer(cfg *loopd.Config, remoteCfg *RemoteDaemonConfig,
 //
 // NOTE: this is part of the SubServer interface.
 func (l *loopSubServer) Name() string {
-	return LOOP
+	return subservers.LOOP
 }
 
 // Remote returns true if the sub-server is running remotely and so should be
@@ -54,14 +56,18 @@ func (l *loopSubServer) Name() string {
 //
 // NOTE: this is part of the SubServer interface.
 func (l *loopSubServer) Remote() bool {
-	return l.remote
+	return l.mode == config.ModeRemote
+}
+
+func (l *loopSubServer) Enabled() bool {
+	return l.mode != config.ModeDisable
 }
 
 // RemoteConfig returns the config required to connect to the sub-server if it
 // is running in remote mode.
 //
 // NOTE: this is part of the SubServer interface.
-func (l *loopSubServer) RemoteConfig() *RemoteDaemonConfig {
+func (l *loopSubServer) RemoteConfig() *subservers.RemoteDaemonConfig {
 	return l.remoteCfg
 }
 

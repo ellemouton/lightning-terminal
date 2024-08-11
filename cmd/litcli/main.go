@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	terminal "github.com/lightninglabs/lightning-terminal"
+	"github.com/lightninglabs/lightning-terminal/config"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightningnetwork/lnd/lncfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -32,24 +33,24 @@ var (
 
 	baseDirFlag = cli.StringFlag{
 		Name:  "basedir",
-		Value: terminal.DefaultLitDir,
+		Value: config.DefaultLitDir,
 		Usage: "Path to LiT's base directory",
 	}
 	networkFlag = cli.StringFlag{
 		Name: "network, n",
 		Usage: "The network litd is running on e.g. mainnet, " +
 			"testnet, etc.",
-		Value: terminal.DefaultNetwork,
+		Value: config.DefaultNetwork,
 	}
 	tlsCertFlag = cli.StringFlag{
 		Name:  "tlscertpath",
 		Usage: "Path to lit's TLS certificate",
-		Value: terminal.DefaultTLSCertPath,
+		Value: config.DefaultTLSCertPath,
 	}
 	macaroonPathFlag = cli.StringFlag{
 		Name:  "macaroonpath",
 		Usage: "Path to lit's macaroon file",
-		Value: terminal.DefaultMacaroonPath,
+		Value: config.DefaultMacaroonPath,
 	}
 )
 
@@ -163,9 +164,9 @@ func extractPathArgs(ctx *cli.Context) (string, string, error) {
 	// If the macaroon path flag has not been set to a custom value,
 	// then reconstruct it with the possibly new base dir and network
 	// values.
-	if macaroonPath == terminal.DefaultMacaroonPath {
+	if macaroonPath == config.DefaultMacaroonPath {
 		macaroonPath = filepath.Join(
-			baseDir, networkStr, terminal.DefaultMacaroonFilename,
+			baseDir, networkStr, config.DefaultMacaroonFilename,
 		)
 	}
 
@@ -174,7 +175,7 @@ func extractPathArgs(ctx *cli.Context) (string, string, error) {
 	))
 
 	// If a custom TLS path was set, use it as is.
-	if tlsCertPath != terminal.DefaultTLSCertPath {
+	if tlsCertPath != config.DefaultTLSCertPath {
 		return tlsCertPath, macaroonPath, nil
 	}
 
@@ -183,9 +184,9 @@ func extractPathArgs(ctx *cli.Context) (string, string, error) {
 	// paths so they can be found within the custom base directory set.
 	// This allows us to set a custom base directory, along with custom
 	// paths to the TLS cert file.
-	if baseDir != terminal.DefaultLitDir {
+	if baseDir != config.DefaultLitDir {
 		tlsCertPath = filepath.Join(
-			baseDir, terminal.DefaultTLSCertFilename,
+			baseDir, config.DefaultTLSCertFilename,
 		)
 	}
 

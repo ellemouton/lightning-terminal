@@ -1,4 +1,4 @@
-package terminal
+package config
 
 import (
 	"crypto/tls"
@@ -208,19 +208,19 @@ type Config struct {
 
 	Accounts *accounts.Config `group:"Accounts options" namespace:"accounts"`
 
-	// lndRemote is a convenience bool variable that is parsed from the
+	// LndRemote is a convenience bool variable that is parsed from the
 	// LndMode string variable on startup.
-	lndRemote bool
+	LndRemote bool
 
-	// lndAdminMacaroon is the admin macaroon that is given to us by lnd
+	// LndAdminMacaroon is the admin macaroon that is given to us by lnd
 	// over an in-memory connection on startup. This is only set in
 	// integrated lnd mode.
-	lndAdminMacaroon []byte
+	LndAdminMacaroon []byte
 }
 
-// lndConnectParams returns the connection parameters to connect to the local
+// LndConnectParams returns the connection parameters to connect to the local
 // lnd instance.
-func (c *Config) lndConnectParams() (string, lndclient.Network, string,
+func (c *Config) LndConnectParams() (string, lndclient.Network, string,
 	string, []byte) {
 
 	// In remote lnd mode, we just pass along what was configured in the
@@ -252,7 +252,7 @@ func (c *Config) lndConnectParams() (string, lndclient.Network, string,
 	}
 
 	return lndDialAddr, lndclient.Network(c.Network), "", "",
-		c.lndAdminMacaroon
+		c.LndAdminMacaroon
 }
 
 // defaultConfig returns a configuration struct with all default values set.
@@ -318,9 +318,14 @@ func defaultConfig() *Config {
 	}
 }
 
-// loadAndValidateConfig loads the terminal's main configuration and validates
+type LoggerSetup func(root *build.RotatingLogWriter,
+	intercept signal.Interceptor)
+
+// LoadAndValidateConfig loads the terminal's main configuration and validates
 // its content.
-func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
+func LoadAndValidateConfig(interceptor signal.Interceptor,
+	loggerSetup LoggerSetup) (*Config, error) {
+
 	// Start with the default configuration.
 	preCfg := defaultConfig()
 
@@ -344,7 +349,7 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 	// This must be done before the config is validated if LND is running
 	// in integrated mode so that the log levels for various non-LND related
 	// subsystems can be set via the `lnd.debuglevel` flag.
-	SetupLoggers(preCfg.Lnd.LogWriter, interceptor)
+	loggerSetup(preCfg.Lnd.LogWriter, interceptor)
 
 	// Load the main configuration file and parse any command line options.
 	// This function will also set up logging properly.
@@ -355,13 +360,13 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 
 	// Translate the more user friendly string modes into the more developer
 	// friendly internal bool variables now.
-	cfg.lndRemote = cfg.LndMode == ModeRemote
+	cfg.LndRemote = cfg.LndMode == ModeRemote
 
 	// Now that we've registered all loggers, let's parse, validate, and set
 	// the debug log level(s). In remote lnd mode we have a global log level
 	// that overwrites all others. In integrated mode we use the lnd log
 	// level as the master level.
-	if cfg.lndRemote {
+	if cfg.LndRemote {
 		err = build.ParseAndSetDebugLevels(
 			cfg.Remote.LitDebugLevel, cfg.Lnd.LogWriter,
 		)
@@ -378,7 +383,7 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 	// middleware interceptor to be enabled. In remote mode we can't
 	// influence whether that's enabled on lnd. But in integrated mode we
 	// can overwrite the flag here.
-	if !cfg.lndRemote && !cfg.RPCMiddleware.Disabled {
+	if !cfg.LndRemote && !cfg.RPCMiddleware.Disabled {
 		cfg.Lnd.RPCMiddleware.Enable = true
 	}
 
@@ -758,7 +763,7 @@ func readUIPassword(config *Config) error {
 		"variable that contains the password")
 }
 
-func buildTLSConfigForHttp2(config *Config) (*tls.Config, error) {
+func BuildTLSConfigForHttp2(config *Config) (*tls.Config, error) {
 	var tlsConfig *tls.Config
 
 	if config.LetsEncrypt {
@@ -871,15 +876,21 @@ func makeDirectories(fullDir string) error {
 	return nil
 }
 
-// onDemandListener is a net.Listener that only actually starts to listen on a
+// OnDemandListener is a net.Listener that only actually starts to listen on a
 // network port once the Accept method is called.
-type onDemandListener struct {
+type OnDemandListener struct {
 	addr net.Addr
 	lis  net.Listener
 }
 
+func NewOnDemandListener(addr net.Addr) *OnDemandListener {
+	return &OnDemandListener{
+		addr: addr,
+	}
+}
+
 // Accept waits for and returns the next connection to the listener.
-func (l *onDemandListener) Accept() (net.Conn, error) {
+func (l *OnDemandListener) Accept() (net.Conn, error) {
 	if l.lis == nil {
 		var err error
 		l.lis, err = net.Listen(parseNetwork(l.addr), l.addr.String())
@@ -892,7 +903,7 @@ func (l *onDemandListener) Accept() (net.Conn, error) {
 
 // Close closes the listener.
 // Any blocked Accept operations will be unblocked and return errors.
-func (l *onDemandListener) Close() error {
+func (l *OnDemandListener) Close() error {
 	if l.lis != nil {
 		return l.lis.Close()
 	}
@@ -901,7 +912,7 @@ func (l *onDemandListener) Close() error {
 }
 
 // Addr returns the listener's network address.
-func (l *onDemandListener) Addr() net.Addr {
+func (l *OnDemandListener) Addr() net.Addr {
 	return l.addr
 }
 

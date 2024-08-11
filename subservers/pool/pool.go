@@ -1,9 +1,11 @@
-package subservers
+package pool
 
 import (
 	"context"
 
 	restProxy "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/lightninglabs/lightning-terminal/config"
+	"github.com/lightninglabs/lightning-terminal/subservers"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightninglabs/pool"
 	"github.com/lightninglabs/pool/perms"
@@ -16,18 +18,18 @@ import (
 // poolSubServer implements the SubServer interface.
 type poolSubServer struct {
 	*pool.Server
-	remote    bool
+	mode      string
 	cfg       *pool.Config
-	remoteCfg *RemoteDaemonConfig
+	remoteCfg *subservers.RemoteDaemonConfig
 }
 
 // A compile-time check to ensure that poolSubServer implements SubServer.
-var _ SubServer = (*poolSubServer)(nil)
+var _ subservers.SubServer = (*poolSubServer)(nil)
 
-// NewPoolSubServer returns a new pool implementation of the SubServer
+// newPoolSubServer returns a new pool implementation of the SubServer
 // interface.
-func NewPoolSubServer(cfg *pool.Config, remoteCfg *RemoteDaemonConfig,
-	remote bool) SubServer {
+func newPoolSubServer(cfg *pool.Config, remoteCfg *subservers.RemoteDaemonConfig,
+	mode string) subservers.SubServer {
 
 	// Overwrite the pool daemon's user agent name, so it sends "litd"
 	// instead of and "poold".
@@ -37,7 +39,7 @@ func NewPoolSubServer(cfg *pool.Config, remoteCfg *RemoteDaemonConfig,
 		Server:    pool.NewServer(cfg),
 		cfg:       cfg,
 		remoteCfg: remoteCfg,
-		remote:    remote,
+		mode:      mode,
 	}
 }
 
@@ -45,7 +47,7 @@ func NewPoolSubServer(cfg *pool.Config, remoteCfg *RemoteDaemonConfig,
 //
 // NOTE: this is part of the SubServer interface.
 func (p *poolSubServer) Name() string {
-	return POOL
+	return subservers.POOL
 }
 
 // Remote returns true if the sub-server is running remotely and so should be
@@ -53,14 +55,18 @@ func (p *poolSubServer) Name() string {
 //
 // NOTE: this is part of the SubServer interface.
 func (p *poolSubServer) Remote() bool {
-	return p.remote
+	return p.mode == config.ModeRemote
+}
+
+func (p *poolSubServer) Enabled() bool {
+	return p.mode != config.ModeDisable
 }
 
 // RemoteConfig returns the config required to connect to the sub-server if it
 // is running in remote mode.
 //
 // NOTE: this is part of the SubServer interface.
-func (p *poolSubServer) RemoteConfig() *RemoteDaemonConfig {
+func (p *poolSubServer) RemoteConfig() *subservers.RemoteDaemonConfig {
 	return p.remoteCfg
 }
 

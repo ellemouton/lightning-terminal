@@ -1,4 +1,4 @@
-package subservers
+package faraday
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"github.com/lightninglabs/faraday/frdrpc"
 	"github.com/lightninglabs/faraday/frdrpcserver"
 	"github.com/lightninglabs/faraday/frdrpcserver/perms"
+	"github.com/lightninglabs/lightning-terminal/config"
+	"github.com/lightninglabs/lightning-terminal/subservers"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"google.golang.org/grpc"
@@ -19,21 +21,29 @@ import (
 type faradaySubServer struct {
 	*frdrpcserver.RPCServer
 
-	remote    bool
+	mode string
+
 	cfg       *faraday.Config
-	remoteCfg *RemoteDaemonConfig
+	remoteCfg *subservers.RemoteDaemonConfig
 }
 
 // A compile-time check to ensure that faradaySubServer implements SubServer.
-var _ SubServer = (*faradaySubServer)(nil)
+var _ subservers.SubServer = (*faradaySubServer)(nil)
 
-// NewFaradaySubServer returns a new faraday implementation of the SubServer
+// newFaradaySubServer returns a new faraday implementation of the SubServer
 // interface.
-func NewFaradaySubServer(cfg *faraday.Config, remoteCfg *RemoteDaemonConfig,
-	remote bool) (SubServer, error) {
+func newFaradaySubServer(cfg *faraday.Config,
+	remoteCfg *subservers.RemoteDaemonConfig, mode string) (
+	subservers.SubServer, error) {
+
+	subserver := &faradaySubServer{
+		mode:      mode,
+		cfg:       cfg,
+		remoteCfg: remoteCfg,
+	}
 
 	var rpcCfg frdrpcserver.Config
-	if !remote {
+	if !subserver.Remote() {
 		rpcCfg.FaradayDir = cfg.FaradayDir
 		rpcCfg.MacaroonPath = cfg.MacaroonPath
 
@@ -52,7 +62,7 @@ func NewFaradaySubServer(cfg *faraday.Config, remoteCfg *RemoteDaemonConfig,
 		RPCServer: frdrpcserver.NewRPCServer(&rpcCfg),
 		cfg:       cfg,
 		remoteCfg: remoteCfg,
-		remote:    remote,
+		mode:      mode,
 	}, nil
 }
 
@@ -60,7 +70,7 @@ func NewFaradaySubServer(cfg *faraday.Config, remoteCfg *RemoteDaemonConfig,
 //
 // NOTE: this is part of the SubServer interface.
 func (f *faradaySubServer) Name() string {
-	return FARADAY
+	return subservers.FARADAY
 }
 
 // Remote returns true if the sub-server is running remotely and so
@@ -68,14 +78,18 @@ func (f *faradaySubServer) Name() string {
 //
 // NOTE: this is part of the SubServer interface.
 func (f *faradaySubServer) Remote() bool {
-	return f.remote
+	return f.mode == config.ModeRemote
+}
+
+func (f *faradaySubServer) Enabled() bool {
+	return f.mode != config.ModeDisable
 }
 
 // RemoteConfig returns the config required to connect to the sub-server
 // if it is running in remote mode.
 //
 // NOTE: this is part of the SubServer interface.
-func (f *faradaySubServer) RemoteConfig() *RemoteDaemonConfig {
+func (f *faradaySubServer) RemoteConfig() *subservers.RemoteDaemonConfig {
 	return f.remoteCfg
 }
 
