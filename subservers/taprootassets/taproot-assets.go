@@ -25,6 +25,8 @@ import (
 	"gopkg.in/macaroon-bakery.v2/bakery"
 )
 
+const TAP subservers.Name = "taproot-assets"
+
 // taprootAssetsSubServer implements the SubServer interface.
 type taprootAssetsSubServer struct {
 	*tap.Server
@@ -33,7 +35,7 @@ type taprootAssetsSubServer struct {
 	lndRemote bool
 
 	cfg       *tapcfg.Config
-	remoteCfg *subservers.RemoteDaemonConfig
+	remoteCfg *config.RemoteDaemonConfig
 
 	errChan chan error
 
@@ -47,7 +49,7 @@ var _ subservers.SubServer = (*taprootAssetsSubServer)(nil)
 // newTaprootAssetsSubServer returns a new tap implementation of the SubServer
 // interface.
 func newTaprootAssetsSubServer(network string, cfg *tapcfg.Config,
-	remoteCfg *subservers.RemoteDaemonConfig, mode string, lndRemote bool,
+	remoteCfg *config.RemoteDaemonConfig, mode string, lndRemote bool,
 	logger btclog.Logger) subservers.SubServer {
 
 	// Overwrite the tap daemon's user agent name, so it sends "litd"
@@ -77,7 +79,7 @@ func newTaprootAssetsSubServer(network string, cfg *tapcfg.Config,
 //
 // NOTE: this is part of the SubServer interface.
 func (t *taprootAssetsSubServer) Name() string {
-	return subservers.TAP
+	return string(TAP)
 }
 
 // Remote returns true if the sub-server is running remotely and so should be
@@ -96,7 +98,7 @@ func (t *taprootAssetsSubServer) Enabled() bool {
 // is running in remote mode.
 //
 // NOTE: this is part of the SubServer interface.
-func (t *taprootAssetsSubServer) RemoteConfig() *subservers.RemoteDaemonConfig {
+func (t *taprootAssetsSubServer) RemoteConfig() *config.RemoteDaemonConfig {
 	return t.remoteCfg
 }
 

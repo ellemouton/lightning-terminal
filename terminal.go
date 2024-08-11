@@ -19,7 +19,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/btcsuite/btclog"
 	restProxy "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/jessevdk/go-flags"
 	"github.com/lightninglabs/lightning-terminal/accounts"
@@ -35,10 +34,11 @@ import (
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightninglabs/lightning-terminal/status"
 	"github.com/lightninglabs/lightning-terminal/subservers"
-	"github.com/lightninglabs/lightning-terminal/subservers/faraday"
-	"github.com/lightninglabs/lightning-terminal/subservers/loop"
-	"github.com/lightninglabs/lightning-terminal/subservers/pool"
-	"github.com/lightninglabs/lightning-terminal/subservers/taprootassets"
+	_ "github.com/lightninglabs/lightning-terminal/subservers/faraday"
+	_ "github.com/lightninglabs/lightning-terminal/subservers/loop"
+	subservermgr "github.com/lightninglabs/lightning-terminal/subservers/manager"
+	_ "github.com/lightninglabs/lightning-terminal/subservers/pool"
+	_ "github.com/lightninglabs/lightning-terminal/subservers/taprootassets"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightningnetwork/lnd"
 	"github.com/lightningnetwork/lnd/build"
@@ -151,15 +151,6 @@ var (
 			"signrpc", "walletrpc", "chainrpc", "invoicesrpc",
 		},
 	}
-
-	servers = []func(*config.Config, btclog.Logger) (subservers.SubServer,
-		error){
-
-		faraday.RegisterSubServer,
-		loop.RegisterSubServer,
-		pool.RegisterSubServer,
-		taprootassets.RegisterSubServer,
-	}
 )
 
 // LightningTerminal is the main grand unified binary instance. Its task is to
@@ -183,7 +174,7 @@ type LightningTerminal struct {
 	lndClient   *lndclient.GrpcLndServices
 	basicClient lnrpc.LightningClient
 
-	subServerMgr *subservers.Manager
+	subServerMgr *subservermgr.Manager
 	statusMgr    *status.Manager
 
 	autopilotClient autopilotserver.Autopilot
@@ -273,19 +264,19 @@ func (g *LightningTerminal) Run() error {
 
 	// Register LND, LiT and Accounts with the status manager.
 	g.statusMgr.RegisterAndEnableSubServer(
-		subservers.LND, status.WithIsReadyOverride(lndOverride),
+		subservermgr.LND, status.WithIsReadyOverride(lndOverride),
 	)
-	g.statusMgr.RegisterAndEnableSubServer(subservers.LIT)
-	g.statusMgr.RegisterSubServer(subservers.ACCOUNTS)
+	g.statusMgr.RegisterAndEnableSubServer(subservermgr.LIT)
+	g.statusMgr.RegisterSubServer(subservermgr.ACCOUNTS)
 
 	// Also enable the accounts subserver if it's not disabled.
 	if !g.cfg.Accounts.Disable {
-		g.statusMgr.SetEnabled(subservers.ACCOUNTS)
+		g.statusMgr.SetEnabled(subservermgr.ACCOUNTS)
 	}
 
 	// Create the instances of our subservers now so we can hook them up to
 	// lnd once it's fully started.
-	g.subServerMgr = subservers.NewManager(g.permsMgr, g.statusMgr)
+	g.subServerMgr = subservermgr.NewManager(g.permsMgr, g.statusMgr)
 
 	// Register our sub-servers. This must be done before the REST proxy is
 	// set up so that the correct REST handlers are registered.
@@ -328,7 +319,7 @@ func (g *LightningTerminal) Run() error {
 	startErr := g.start()
 	if startErr != nil {
 		g.statusMgr.SetErrored(
-			subservers.LIT, "could not start Lit: %v", startErr,
+			subservermgr.LIT, "could not start Lit: %v", startErr,
 		)
 	}
 
@@ -357,7 +348,7 @@ func (g *LightningTerminal) start() error {
 
 	accountServiceErrCallback := func(err error) {
 		g.statusMgr.SetErrored(
-			subservers.ACCOUNTS,
+			subservermgr.ACCOUNTS,
 			err.Error(),
 		)
 
@@ -510,7 +501,7 @@ func (g *LightningTerminal) start() error {
 					"lnd: %v", err)
 				log.Errorf(errStr)
 
-				g.statusMgr.SetErrored(subservers.LND, errStr)
+				g.statusMgr.SetErrored(subservermgr.LND, errStr)
 				g.errQueue.ChanIn() <- err
 
 				return
@@ -539,14 +530,14 @@ func (g *LightningTerminal) start() error {
 
 	case err := <-g.errQueue.ChanOut():
 		g.statusMgr.SetErrored(
-			subservers.LND, "error from errQueue channel",
+			subservermgr.LND, "error from errQueue channel",
 		)
 
 		return fmt.Errorf("could not start LND: %v", err)
 
 	case <-lndQuit:
 		g.statusMgr.SetErrored(
-			subservers.LND, "lndQuit channel closed",
+			subservermgr.LND, "lndQuit channel closed",
 		)
 
 		return fmt.Errorf("LND has stopped")
@@ -559,7 +550,7 @@ func (g *LightningTerminal) start() error {
 	g.lndConn, err = connectLND(g.cfg, bufRpcListener)
 	if err != nil {
 		g.statusMgr.SetErrored(
-			subservers.LND, "could not connect to LND: %v", err,
+			subservermgr.LND, "could not connect to LND: %v", err,
 		)
 
 		return fmt.Errorf("could not connect to LND")
@@ -606,7 +597,7 @@ func (g *LightningTerminal) start() error {
 	// This is done _before_ we have set up the lnd clients so that the
 	// litcli status command won't error before the lnd sub-server has
 	// been marked as running.
-	g.statusMgr.SetCustomStatus(subservers.LND, lndWalletReadyStatus)
+	g.statusMgr.SetCustomStatus(subservermgr.LND, lndWalletReadyStatus)
 
 	// Now that we have started the main UI web server, show some useful
 	// information to the user so they can access the web UI easily.
@@ -628,7 +619,7 @@ func (g *LightningTerminal) start() error {
 
 		case <-lndQuit:
 			g.statusMgr.SetErrored(
-				subservers.LND, "lndQuit channel closed",
+				subservermgr.LND, "lndQuit channel closed",
 			)
 
 			return fmt.Errorf("LND has stopped")
@@ -668,7 +659,7 @@ func (g *LightningTerminal) start() error {
 	err = g.setUpLNDClients(lndQuit)
 	if err != nil {
 		g.statusMgr.SetErrored(
-			subservers.LND, "could not set up LND clients: %v", err,
+			subservermgr.LND, "could not set up LND clients: %v", err,
 		)
 
 		return fmt.Errorf("could not start LND")
@@ -676,7 +667,7 @@ func (g *LightningTerminal) start() error {
 
 	// Mark that lnd is now completely running after connecting the
 	// lnd clients.
-	g.statusMgr.SetRunning(subservers.LND)
+	g.statusMgr.SetRunning(subservermgr.LND)
 
 	// If we're in integrated and stateless init mode, we won't create
 	// macaroon files in any of the subserver daemons.
@@ -705,7 +696,7 @@ func (g *LightningTerminal) start() error {
 	}
 
 	// We can now set the status of LiT as running.
-	g.statusMgr.SetRunning(subservers.LIT)
+	g.statusMgr.SetRunning(subservermgr.LIT)
 
 	// Now block until we receive an error or the main shutdown signal.
 	select {
@@ -717,7 +708,7 @@ func (g *LightningTerminal) start() error {
 
 	case <-lndQuit:
 		g.statusMgr.SetErrored(
-			subservers.LND, "lndQuit channel closed",
+			subservermgr.LND, "lndQuit channel closed",
 		)
 
 		return fmt.Errorf("LND is not running")
@@ -795,7 +786,7 @@ func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
 		}
 
 		g.statusMgr.SetErrored(
-			subservers.LIT,
+			subservermgr.LIT,
 			"Error when setting up basic LND Client: %v", err,
 		)
 
@@ -854,7 +845,7 @@ func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
 		}
 
 		g.statusMgr.SetErrored(
-			subservers.LIT,
+			subservermgr.LIT,
 			"Error when creating LND Services client: %v",
 			err,
 		)
@@ -986,11 +977,11 @@ func (g *LightningTerminal) startInternalSubServers(
 			log.Errorf("error starting account service: %v, "+
 				"disabling account service", err)
 
-			g.statusMgr.SetErrored(subservers.ACCOUNTS, err.Error())
+			g.statusMgr.SetErrored(subservermgr.ACCOUNTS, err.Error())
 
 			closeAccountService()
 		} else {
-			g.statusMgr.SetRunning(subservers.ACCOUNTS)
+			g.statusMgr.SetRunning(subservermgr.ACCOUNTS)
 
 			g.accountServiceStarted = true
 		}
@@ -1212,7 +1203,7 @@ func (g *LightningTerminal) ValidateMacaroon(ctx context.Context,
 		return err
 	}
 
-	if g.permsMgr.IsSubServerURI(subservers.LIT, fullMethod) {
+	if g.permsMgr.IsSubServerURI(subservermgr.LIT, fullMethod) {
 		if !g.macaroonServiceStarted {
 			return fmt.Errorf("the macaroon service has not " +
 				"started yet")
@@ -1664,8 +1655,8 @@ func (g *LightningTerminal) validateSuperMacaroon(ctx context.Context,
 // initSubServers registers the faraday and loop sub-servers with the
 // subServerMgr.
 func (g *LightningTerminal) initSubServers() error {
-	for _, ss := range servers {
-		server, err := ss(g.cfg, log)
+	for _, ss := range subservers.RegisteredSubServers() {
+		server, err := ss.InitSubServer(g.cfg, log)
 		if err != nil {
 			return err
 		}

@@ -26,7 +26,7 @@ import (
 	"github.com/lightninglabs/faraday/frdrpc"
 	terminal "github.com/lightninglabs/lightning-terminal/config"
 	"github.com/lightninglabs/lightning-terminal/litrpc"
-	"github.com/lightninglabs/lightning-terminal/subservers"
+	subservers "github.com/lightninglabs/lightning-terminal/subservers/manager"
 	"github.com/lightninglabs/loop/looprpc"
 	"github.com/lightninglabs/pool/poolrpc"
 	"github.com/lightninglabs/taproot-assets/taprpc"

@@ -24,7 +24,7 @@ import (
 	"github.com/lightninglabs/lightning-terminal/litrpc"
 	"github.com/lightninglabs/lightning-terminal/perms"
 	"github.com/lightninglabs/lightning-terminal/session"
-	"github.com/lightninglabs/lightning-terminal/subservers"
+	subservers "github.com/lightninglabs/lightning-terminal/subservers/manager"
 	loop "github.com/lightninglabs/loop/loopd/perms"
 	"github.com/lightninglabs/loop/looprpc"
 	pool "github.com/lightninglabs/pool/perms"

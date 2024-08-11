@@ -17,6 +17,8 @@ import (
 	"gopkg.in/macaroon-bakery.v2/bakery"
 )
 
+const FARADAY subservers.Name = "faraday"
+
 // faradaySubServer implements the SubServer interface.
 type faradaySubServer struct {
 	*frdrpcserver.RPCServer
@@ -24,7 +26,7 @@ type faradaySubServer struct {
 	mode string
 
 	cfg       *faraday.Config
-	remoteCfg *subservers.RemoteDaemonConfig
+	remoteCfg *config.RemoteDaemonConfig
 }
 
 // A compile-time check to ensure that faradaySubServer implements SubServer.
@@ -33,7 +35,7 @@ var _ subservers.SubServer = (*faradaySubServer)(nil)
 // newFaradaySubServer returns a new faraday implementation of the SubServer
 // interface.
 func newFaradaySubServer(cfg *faraday.Config,
-	remoteCfg *subservers.RemoteDaemonConfig, mode string) (
+	remoteCfg *config.RemoteDaemonConfig, mode string) (
 	subservers.SubServer, error) {
 
 	subserver := &faradaySubServer{
@@ -70,7 +72,7 @@ func newFaradaySubServer(cfg *faraday.Config,
 //
 // NOTE: this is part of the SubServer interface.
 func (f *faradaySubServer) Name() string {
-	return subservers.FARADAY
+	return string(FARADAY)
 }
 
 // Remote returns true if the sub-server is running remotely and so
@@ -89,7 +91,7 @@ func (f *faradaySubServer) Enabled() bool {
 // if it is running in remote mode.
 //
 // NOTE: this is part of the SubServer interface.
-func (f *faradaySubServer) RemoteConfig() *subservers.RemoteDaemonConfig {
+func (f *faradaySubServer) RemoteConfig() *config.RemoteDaemonConfig {
 	return f.remoteCfg
 }
 

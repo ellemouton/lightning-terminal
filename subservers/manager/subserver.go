@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/lightninglabs/lightning-terminal/subservers"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightningnetwork/lnd/lncfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -13,17 +14,13 @@ import (
 const (
 	LND      string = "lnd"
 	LIT      string = "lit"
-	LOOP     string = "loop"
-	POOL     string = "pool"
-	TAP      string = "taproot-assets"
-	FARADAY  string = "faraday"
 	ACCOUNTS string = "accounts"
 )
 
 // subServerWrapper is a wrapper around the SubServer interface and is used by
 // the subServerMgr to manage a SubServer.
 type subServerWrapper struct {
-	SubServer
+	subservers.SubServer
 
 	integratedStarted bool
 	startedMu         sync.RWMutex
@@ -141,7 +138,7 @@ func (s *subServerWrapper) connectRemote() error {
 	cfg := s.RemoteConfig()
 	certPath := lncfg.CleanAndExpandPath(cfg.TLSCertPath)
 	name := s.Name()
-	conn, err := dialBackend(name, cfg.RPCServer, certPath)
+	conn, err := dialBackend(string(name), cfg.RPCServer, certPath)
 	if err != nil {
 		return fmt.Errorf("remote dial error: %v", err)
 	}

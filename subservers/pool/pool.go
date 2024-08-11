@@ -15,12 +15,14 @@ import (
 	"gopkg.in/macaroon-bakery.v2/bakery"
 )
 
+const POOL subservers.Name = "pool"
+
 // poolSubServer implements the SubServer interface.
 type poolSubServer struct {
 	*pool.Server
 	mode      string
 	cfg       *pool.Config
-	remoteCfg *subservers.RemoteDaemonConfig
+	remoteCfg *config.RemoteDaemonConfig
 }
 
 // A compile-time check to ensure that poolSubServer implements SubServer.
@@ -28,7 +30,7 @@ var _ subservers.SubServer = (*poolSubServer)(nil)
 
 // newPoolSubServer returns a new pool implementation of the SubServer
 // interface.
-func newPoolSubServer(cfg *pool.Config, remoteCfg *subservers.RemoteDaemonConfig,
+func newPoolSubServer(cfg *pool.Config, remoteCfg *config.RemoteDaemonConfig,
 	mode string) subservers.SubServer {
 
 	// Overwrite the pool daemon's user agent name, so it sends "litd"
@@ -47,7 +49,7 @@ func newPoolSubServer(cfg *pool.Config, remoteCfg *subservers.RemoteDaemonConfig
 //
 // NOTE: this is part of the SubServer interface.
 func (p *poolSubServer) Name() string {
-	return subservers.POOL
+	return string(POOL)
 }
 
 // Remote returns true if the sub-server is running remotely and so should be
@@ -66,7 +68,7 @@ func (p *poolSubServer) Enabled() bool {
 // is running in remote mode.
 //
 // NOTE: this is part of the SubServer interface.
-func (p *poolSubServer) RemoteConfig() *subservers.RemoteDaemonConfig {
+func (p *poolSubServer) RemoteConfig() *config.RemoteDaemonConfig {
 	return p.remoteCfg
 }
 

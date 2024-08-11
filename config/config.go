@@ -19,7 +19,6 @@ import (
 	"github.com/lightninglabs/lightning-terminal/autopilotserver"
 	"github.com/lightninglabs/lightning-terminal/firewall"
 	mid "github.com/lightninglabs/lightning-terminal/rpcmiddleware"
-	"github.com/lightninglabs/lightning-terminal/subservers"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightninglabs/loop/loopd"
 	"github.com/lightninglabs/pool"
@@ -177,7 +176,7 @@ type Config struct {
 	// That way only one global network flag is needed.
 	Network string `long:"network" description:"The network the UI and all its components run on" choice:"regtest" choice:"testnet" choice:"mainnet" choice:"simnet"`
 
-	Remote *subservers.RemoteConfig `group:"Remote mode options (use when lnd-mode=remote)" namespace:"remote"`
+	Remote *RemoteConfig `group:"Remote mode options (use when lnd-mode=remote)" namespace:"remote"`
 
 	// LndMode is the selected mode to run lnd in. The supported modes are
 	// 'integrated' and 'remote'. We only use a string instead of a bool
@@ -261,32 +260,32 @@ func defaultConfig() *Config {
 		HTTPSListen: defaultHTTPSListen,
 		TLSCertPath: DefaultTLSCertPath,
 		TLSKeyPath:  defaultTLSKeyPath,
-		Remote: &subservers.RemoteConfig{
+		Remote: &RemoteConfig{
 			LitDebugLevel:     defaultLogLevel,
 			LitLogDir:         defaultLogDir,
 			LitMaxLogFiles:    defaultMaxLogFiles,
 			LitMaxLogFileSize: defaultMaxLogFileSize,
-			Lnd: &subservers.RemoteDaemonConfig{
+			Lnd: &RemoteDaemonConfig{
 				RPCServer:    defaultRemoteLndRpcServer,
 				MacaroonPath: DefaultRemoteLndMacaroonPath,
 				TLSCertPath:  lndDefaultConfig.TLSCertPath,
 			},
-			Faraday: &subservers.RemoteDaemonConfig{
+			Faraday: &RemoteDaemonConfig{
 				RPCServer:    defaultRemoteFaradayRpcServer,
 				MacaroonPath: faradayDefaultConfig.MacaroonPath,
 				TLSCertPath:  faradayDefaultConfig.TLSCertPath,
 			},
-			Loop: &subservers.RemoteDaemonConfig{
+			Loop: &RemoteDaemonConfig{
 				RPCServer:    defaultRemoteLoopRpcServer,
 				MacaroonPath: loopDefaultConfig.MacaroonPath,
 				TLSCertPath:  loopDefaultConfig.TLSCertPath,
 			},
-			Pool: &subservers.RemoteDaemonConfig{
+			Pool: &RemoteDaemonConfig{
 				RPCServer:    defaultRemotePoolRpcServer,
 				MacaroonPath: poolDefaultConfig.MacaroonPath,
 				TLSCertPath:  poolDefaultConfig.TLSCertPath,
 			},
-			TaprootAssets: &subservers.RemoteDaemonConfig{
+			TaprootAssets: &RemoteDaemonConfig{
 				RPCServer:    defaultRemoteTapRpcServer,
 				MacaroonPath: tapDefaultConfig.RpcConf.MacaroonPath,
 				TLSCertPath:  tapDefaultConfig.RpcConf.TLSCertPath,

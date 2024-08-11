@@ -3,13 +3,19 @@ package subservers
 import (
 	"context"
 
+	"github.com/btcsuite/btclog"
 	restProxy "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/lightninglabs/lightning-terminal/config"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
 	"google.golang.org/grpc"
 	"gopkg.in/macaroon-bakery.v2/bakery"
 )
+
+type Name string
+
+type InitSubServer func(*config.Config, btclog.Logger) (SubServer, error)
 
 // SubServer defines an interface that should be implemented by any sub-server
 // that the subServer manager should manage. A sub-server can be run in either
@@ -30,7 +36,7 @@ type SubServer interface {
 
 	// RemoteConfig returns the config required to connect to the sub-server
 	// if it is running in remote mode.
-	RemoteConfig() *RemoteDaemonConfig
+	RemoteConfig() *config.RemoteDaemonConfig
 
 	// Start starts the sub-server in integrated mode.
 	Start(lnrpc.LightningClient, *lndclient.GrpcLndServices, bool) error

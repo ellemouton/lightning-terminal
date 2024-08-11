@@ -13,7 +13,7 @@ import (
 	"github.com/lightninglabs/lightning-terminal/rules"
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightninglabs/lightning-terminal/status"
-	"github.com/lightninglabs/lightning-terminal/subservers"
+	subservers "github.com/lightninglabs/lightning-terminal/subservers/manager"
 	"github.com/lightninglabs/loop/loopd"
 	"github.com/lightninglabs/pool"
 	tap "github.com/lightninglabs/taproot-assets"

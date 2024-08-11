@@ -16,12 +16,14 @@ import (
 	"gopkg.in/macaroon-bakery.v2/bakery"
 )
 
+const LOOP subservers.Name = "loop"
+
 // loopSubServer implements the SubServer interface.
 type loopSubServer struct {
 	*loopd.Daemon
 	mode      string
 	cfg       *loopd.Config
-	remoteCfg *subservers.RemoteDaemonConfig
+	remoteCfg *config.RemoteDaemonConfig
 }
 
 // A compile-time check to ensure that loopSubServer implements SubServer.
@@ -29,7 +31,7 @@ var _ subservers.SubServer = (*loopSubServer)(nil)
 
 // newLoopSubServer returns a new loop implementation of the SubServer
 // interface.
-func newLoopSubServer(cfg *loopd.Config, remoteCfg *subservers.RemoteDaemonConfig,
+func newLoopSubServer(cfg *loopd.Config, remoteCfg *config.RemoteDaemonConfig,
 	mode string) subservers.SubServer {
 
 	// Overwrite the loop daemon's user agent name, so it sends "litd"
@@ -48,7 +50,7 @@ func newLoopSubServer(cfg *loopd.Config, remoteCfg *subservers.RemoteDaemonConfi
 //
 // NOTE: this is part of the SubServer interface.
 func (l *loopSubServer) Name() string {
-	return subservers.LOOP
+	return string(LOOP)
 }
 
 // Remote returns true if the sub-server is running remotely and so should be
@@ -67,7 +69,7 @@ func (l *loopSubServer) Enabled() bool {
 // is running in remote mode.
 //
 // NOTE: this is part of the SubServer interface.
-func (l *loopSubServer) RemoteConfig() *subservers.RemoteDaemonConfig {
+func (l *loopSubServer) RemoteConfig() *config.RemoteDaemonConfig {
 	return l.remoteCfg
 }
 

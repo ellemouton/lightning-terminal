@@ -17,7 +17,7 @@ import (
 	"github.com/lightninglabs/lightning-terminal/perms"
 	"github.com/lightninglabs/lightning-terminal/session"
 	litstatus "github.com/lightninglabs/lightning-terminal/status"
-	"github.com/lightninglabs/lightning-terminal/subservers"
+	subservers "github.com/lightninglabs/lightning-terminal/subservers/manager"
 	"github.com/lightningnetwork/lnd/lncfg"
 	"github.com/lightningnetwork/lnd/macaroons"
 	grpcProxy "github.com/mwitkow/grpc-proxy/proxy"
