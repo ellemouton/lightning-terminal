@@ -216,11 +216,7 @@ type Config struct {
 
 	// lndRemote is a convenience bool variable that is parsed from the
 	// LndMode string variable on startup.
-	lndRemote     bool
-	faradayRemote bool
-	loopRemote    bool
-	poolRemote    bool
-	tapRemote     bool
+	lndRemote bool
 
 	// lndAdminMacaroon is the admin macaroon that is given to us by lnd
 	// over an in-memory connection on startup. This is only set in
@@ -367,10 +363,6 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 	// Translate the more user friendly string modes into the more developer
 	// friendly internal bool variables now.
 	cfg.lndRemote = cfg.LndMode == ModeRemote
-	cfg.faradayRemote = cfg.FaradayMode == ModeRemote
-	cfg.loopRemote = cfg.LoopMode == ModeRemote
-	cfg.poolRemote = cfg.PoolMode == ModeRemote
-	cfg.tapRemote = cfg.TaprootAssetsMode == ModeRemote
 
 	// Now that we've registered all loggers, let's parse, validate, and set
 	// the debug log level(s). In remote lnd mode we have a global log level
@@ -487,7 +479,7 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 	// remote mode and not mainnet, we want to update our default paths for
 	// the remote connection as well.
 	defaultFaradayCfg := faraday.DefaultConfig()
-	if cfg.faradayRemote && cfg.Network != DefaultNetwork {
+	if cfg.FaradayMode == ModeRemote && cfg.Network != DefaultNetwork {
 		if cfg.Remote.Faraday.MacaroonPath == defaultFaradayCfg.MacaroonPath {
 			cfg.Remote.Faraday.MacaroonPath = cfg.Faraday.MacaroonPath
 		}
@@ -497,7 +489,7 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 	}
 
 	// If the client chose to connect to a bitcoin client, get one now.
-	if !cfg.faradayRemote {
+	if cfg.FaradayMode != ModeRemote {
 		cfg.faradayRpcConfig.FaradayDir = cfg.Faraday.FaradayDir
 		cfg.faradayRpcConfig.MacaroonPath = cfg.Faraday.MacaroonPath
 
@@ -511,7 +503,7 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 		}
 	}
 
-	if cfg.loopRemote && cfg.Network != DefaultNetwork {
+	if cfg.LoopMode == ModeRemote && cfg.Network != DefaultNetwork {
 		if cfg.Remote.Loop.MacaroonPath == defaultLoopCfg.MacaroonPath {
 			cfg.Remote.Loop.MacaroonPath = cfg.Loop.MacaroonPath
 		}
@@ -521,7 +513,7 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 	}
 
 	defaultPoolCfg := pool.DefaultConfig()
-	if cfg.poolRemote && cfg.Network != DefaultNetwork {
+	if cfg.PoolMode == ModeRemote && cfg.Network != DefaultNetwork {
 		if cfg.Remote.Pool.MacaroonPath == defaultPoolCfg.MacaroonPath {
 			cfg.Remote.Pool.MacaroonPath = cfg.Pool.MacaroonPath
 		}
@@ -531,7 +523,9 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 	}
 
 	defaultTapCfg := tapcfg.DefaultConfig()
-	if cfg.tapRemote && cfg.Network != DefaultNetwork {
+	if cfg.TaprootAssetsMode == ModeRemote &&
+		cfg.Network != DefaultNetwork {
+
 		if cfg.Remote.TaprootAssets.MacaroonPath == defaultTapCfg.RpcConf.MacaroonPath {
 			macaroonPath := cfg.TaprootAssets.RpcConf.MacaroonPath
 			cfg.Remote.TaprootAssets.MacaroonPath = macaroonPath
