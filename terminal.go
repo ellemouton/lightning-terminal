@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/btcsuite/btclog"
 	restProxy "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/jessevdk/go-flags"
 	"github.com/lightninglabs/lightning-terminal/accounts"
@@ -149,6 +150,15 @@ var (
 		BuildTags: []string{
 			"signrpc", "walletrpc", "chainrpc", "invoicesrpc",
 		},
+	}
+
+	servers = []func(*config.Config, btclog.Logger) (subservers.SubServer,
+		error){
+
+		faraday.RegisterSubServer,
+		loop.RegisterSubServer,
+		pool.RegisterSubServer,
+		taprootassets.RegisterSubServer,
 	}
 )
 
@@ -1654,30 +1664,14 @@ func (g *LightningTerminal) validateSuperMacaroon(ctx context.Context,
 // initSubServers registers the faraday and loop sub-servers with the
 // subServerMgr.
 func (g *LightningTerminal) initSubServers() error {
-	faraday, err := faraday.RegisterSubServer(g.cfg, log)
-	if err != nil {
-		return err
-	}
-	g.subServerMgr.AddServer(faraday)
+	for _, ss := range servers {
+		server, err := ss(g.cfg, log)
+		if err != nil {
+			return err
+		}
 
-	loop, err := loop.RegisterSubServer(g.cfg, log)
-	if err != nil {
-		return err
+		g.subServerMgr.AddServer(server)
 	}
-	g.subServerMgr.AddServer(loop)
-
-	pool, err := pool.RegisterSubServer(g.cfg, log)
-	if err != nil {
-		return err
-	}
-	g.subServerMgr.AddServer(pool)
-
-	assets, err := taprootassets.RegisterSubServer(g.cfg, log)
-	if err != nil {
-		return err
-	}
-
-	g.subServerMgr.AddServer(assets)
 
 	return nil
 }
