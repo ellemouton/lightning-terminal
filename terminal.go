@@ -81,6 +81,10 @@ const (
 	defaultServerTimeout  = 10 * time.Second
 	defaultConnectTimeout = 15 * time.Second
 	defaultStartupTimeout = 5 * time.Second
+
+	LND      string = "lnd"
+	LIT      string = "lit"
+	ACCOUNTS string = "accounts"
 )
 
 // restRegistration is a function type that represents a REST proxy
@@ -264,14 +268,14 @@ func (g *LightningTerminal) Run() error {
 
 	// Register LND, LiT and Accounts with the status manager.
 	g.statusMgr.RegisterAndEnableSubServer(
-		subservermgr.LND, status.WithIsReadyOverride(lndOverride),
+		LND, status.WithIsReadyOverride(lndOverride),
 	)
-	g.statusMgr.RegisterAndEnableSubServer(subservermgr.LIT)
-	g.statusMgr.RegisterSubServer(subservermgr.ACCOUNTS)
+	g.statusMgr.RegisterAndEnableSubServer(LIT)
+	g.statusMgr.RegisterSubServer(ACCOUNTS)
 
 	// Also enable the accounts subserver if it's not disabled.
 	if !g.cfg.Accounts.Disable {
-		g.statusMgr.SetEnabled(subservermgr.ACCOUNTS)
+		g.statusMgr.SetEnabled(ACCOUNTS)
 	}
 
 	// Create the instances of our subservers now so we can hook them up to
@@ -319,7 +323,7 @@ func (g *LightningTerminal) Run() error {
 	startErr := g.start()
 	if startErr != nil {
 		g.statusMgr.SetErrored(
-			subservermgr.LIT, "could not start Lit: %v", startErr,
+			LIT, "could not start Lit: %v", startErr,
 		)
 	}
 
@@ -348,7 +352,7 @@ func (g *LightningTerminal) start() error {
 
 	accountServiceErrCallback := func(err error) {
 		g.statusMgr.SetErrored(
-			subservermgr.ACCOUNTS,
+			ACCOUNTS,
 			err.Error(),
 		)
 
@@ -501,7 +505,7 @@ func (g *LightningTerminal) start() error {
 					"lnd: %v", err)
 				log.Errorf(errStr)
 
-				g.statusMgr.SetErrored(subservermgr.LND, errStr)
+				g.statusMgr.SetErrored(LND, errStr)
 				g.errQueue.ChanIn() <- err
 
 				return
@@ -530,14 +534,14 @@ func (g *LightningTerminal) start() error {
 
 	case err := <-g.errQueue.ChanOut():
 		g.statusMgr.SetErrored(
-			subservermgr.LND, "error from errQueue channel",
+			LND, "error from errQueue channel",
 		)
 
 		return fmt.Errorf("could not start LND: %v", err)
 
 	case <-lndQuit:
 		g.statusMgr.SetErrored(
-			subservermgr.LND, "lndQuit channel closed",
+			LND, "lndQuit channel closed",
 		)
 
 		return fmt.Errorf("LND has stopped")
@@ -550,7 +554,7 @@ func (g *LightningTerminal) start() error {
 	g.lndConn, err = connectLND(g.cfg, bufRpcListener)
 	if err != nil {
 		g.statusMgr.SetErrored(
-			subservermgr.LND, "could not connect to LND: %v", err,
+			LND, "could not connect to LND: %v", err,
 		)
 
 		return fmt.Errorf("could not connect to LND")
@@ -597,7 +601,7 @@ func (g *LightningTerminal) start() error {
 	// This is done _before_ we have set up the lnd clients so that the
 	// litcli status command won't error before the lnd sub-server has
 	// been marked as running.
-	g.statusMgr.SetCustomStatus(subservermgr.LND, lndWalletReadyStatus)
+	g.statusMgr.SetCustomStatus(LND, lndWalletReadyStatus)
 
 	// Now that we have started the main UI web server, show some useful
 	// information to the user so they can access the web UI easily.
@@ -619,7 +623,7 @@ func (g *LightningTerminal) start() error {
 
 		case <-lndQuit:
 			g.statusMgr.SetErrored(
-				subservermgr.LND, "lndQuit channel closed",
+				LND, "lndQuit channel closed",
 			)
 
 			return fmt.Errorf("LND has stopped")
@@ -659,7 +663,7 @@ func (g *LightningTerminal) start() error {
 	err = g.setUpLNDClients(lndQuit)
 	if err != nil {
 		g.statusMgr.SetErrored(
-			subservermgr.LND, "could not set up LND clients: %v", err,
+			LND, "could not set up LND clients: %v", err,
 		)
 
 		return fmt.Errorf("could not start LND")
@@ -667,7 +671,7 @@ func (g *LightningTerminal) start() error {
 
 	// Mark that lnd is now completely running after connecting the
 	// lnd clients.
-	g.statusMgr.SetRunning(subservermgr.LND)
+	g.statusMgr.SetRunning(LND)
 
 	// If we're in integrated and stateless init mode, we won't create
 	// macaroon files in any of the subserver daemons.
@@ -696,7 +700,7 @@ func (g *LightningTerminal) start() error {
 	}
 
 	// We can now set the status of LiT as running.
-	g.statusMgr.SetRunning(subservermgr.LIT)
+	g.statusMgr.SetRunning(LIT)
 
 	// Now block until we receive an error or the main shutdown signal.
 	select {
@@ -708,7 +712,7 @@ func (g *LightningTerminal) start() error {
 
 	case <-lndQuit:
 		g.statusMgr.SetErrored(
-			subservermgr.LND, "lndQuit channel closed",
+			LND, "lndQuit channel closed",
 		)
 
 		return fmt.Errorf("LND is not running")
@@ -786,7 +790,7 @@ func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
 		}
 
 		g.statusMgr.SetErrored(
-			subservermgr.LIT,
+			LIT,
 			"Error when setting up basic LND Client: %v", err,
 		)
 
@@ -845,7 +849,7 @@ func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
 		}
 
 		g.statusMgr.SetErrored(
-			subservermgr.LIT,
+			LIT,
 			"Error when creating LND Services client: %v",
 			err,
 		)
@@ -977,11 +981,11 @@ func (g *LightningTerminal) startInternalSubServers(
 			log.Errorf("error starting account service: %v, "+
 				"disabling account service", err)
 
-			g.statusMgr.SetErrored(subservermgr.ACCOUNTS, err.Error())
+			g.statusMgr.SetErrored(ACCOUNTS, err.Error())
 
 			closeAccountService()
 		} else {
-			g.statusMgr.SetRunning(subservermgr.ACCOUNTS)
+			g.statusMgr.SetRunning(ACCOUNTS)
 
 			g.accountServiceStarted = true
 		}
@@ -1203,7 +1207,7 @@ func (g *LightningTerminal) ValidateMacaroon(ctx context.Context,
 		return err
 	}
 
-	if g.permsMgr.IsSubServerURI(subservermgr.LIT, fullMethod) {
+	if g.permsMgr.IsSubServerURI(LIT, fullMethod) {
 		if !g.macaroonServiceStarted {
 			return fmt.Errorf("the macaroon service has not " +
 				"started yet")

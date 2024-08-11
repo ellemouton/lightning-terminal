@@ -360,7 +360,7 @@ func (p *rpcProxy) makeDirector(allowLitRPC bool) func(ctx context.Context,
 		}
 
 		// Calls to LiT session RPC aren't allowed in some cases.
-		isLit := p.permsMgr.IsSubServerURI(subservers.LIT, requestURI)
+		isLit := p.permsMgr.IsSubServerURI(LIT, requestURI)
 		if isLit && !allowLitRPC {
 			return outCtx, nil, status.Errorf(
 				codes.Unimplemented, "unknown service %s",
@@ -521,10 +521,10 @@ func (p *rpcProxy) basicAuthToMacaroon(basicAuth, requestURI string,
 	switch {
 	case handled:
 
-	case p.permsMgr.IsSubServerURI(subservers.LND, requestURI):
+	case p.permsMgr.IsSubServerURI(LND, requestURI):
 		_, _, _, macPath, macData = p.cfg.LndConnectParams()
 
-	case p.permsMgr.IsSubServerURI(subservers.LIT, requestURI):
+	case p.permsMgr.IsSubServerURI(LIT, requestURI):
 		macPath = p.cfg.MacaroonPath
 
 	default:
@@ -625,13 +625,13 @@ func (p *rpcProxy) checkSubSystemStarted(requestURI string) error {
 	case handled:
 
 	case isAccountsReq(requestURI):
-		system = subservers.ACCOUNTS
+		system = ACCOUNTS
 
-	case p.permsMgr.IsSubServerURI(subservers.LIT, requestURI):
-		system = subservers.LIT
+	case p.permsMgr.IsSubServerURI(LIT, requestURI):
+		system = LIT
 
-	case p.permsMgr.IsSubServerURI(subservers.LND, requestURI):
-		system = subservers.LND
+	case p.permsMgr.IsSubServerURI(LND, requestURI):
+		system = LND
 
 	default:
 		return ErrUnknownRequest

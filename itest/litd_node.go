@@ -24,9 +24,9 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/lightninglabs/faraday/frdrpc"
+	terminal2 "github.com/lightninglabs/lightning-terminal"
 	terminal "github.com/lightninglabs/lightning-terminal/config"
 	"github.com/lightninglabs/lightning-terminal/litrpc"
-	subservers "github.com/lightninglabs/lightning-terminal/subservers/manager"
 	"github.com/lightninglabs/loop/looprpc"
 	"github.com/lightninglabs/pool/poolrpc"
 	"github.com/lightninglabs/taproot-assets/taprpc"
@@ -747,7 +747,7 @@ func (hn *HarnessNode) WaitUntilStarted(conn grpc.ClientConnInterface,
 			return err
 		}
 
-		lndStatus, ok := states.SubServers[subservers.LND]
+		lndStatus, ok := states.SubServers[terminal2.LND]
 		if !ok || !lndStatus.Running {
 			return fmt.Errorf("LND has not yet started")
 		}

@@ -11,12 +11,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-const (
-	LND      string = "lnd"
-	LIT      string = "lit"
-	ACCOUNTS string = "accounts"
-)
-
 // subServerWrapper is a wrapper around the SubServer interface and is used by
 // the subServerMgr to manage a SubServer.
 type subServerWrapper struct {
