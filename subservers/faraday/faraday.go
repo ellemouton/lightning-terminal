@@ -17,7 +17,7 @@ import (
 	"gopkg.in/macaroon-bakery.v2/bakery"
 )
 
-const FARADAY subservers.Name = "faraday"
+const FARADAY string = "faraday"
 
 // faradaySubServer implements the SubServer interface.
 type faradaySubServer struct {
@@ -72,7 +72,7 @@ func newFaradaySubServer(cfg *faraday.Config,
 //
 // NOTE: this is part of the SubServer interface.
 func (f *faradaySubServer) Name() string {
-	return string(FARADAY)
+	return FARADAY
 }
 
 // Remote returns true if the sub-server is running remotely and so

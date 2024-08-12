@@ -15,7 +15,7 @@ import (
 	"gopkg.in/macaroon-bakery.v2/bakery"
 )
 
-const POOL subservers.Name = "pool"
+const POOL string = "pool"
 
 // poolSubServer implements the SubServer interface.
 type poolSubServer struct {
@@ -49,7 +49,7 @@ func newPoolSubServer(cfg *pool.Config, remoteCfg *config.RemoteDaemonConfig,
 //
 // NOTE: this is part of the SubServer interface.
 func (p *poolSubServer) Name() string {
-	return string(POOL)
+	return POOL
 }
 
 // Remote returns true if the sub-server is running remotely and so should be

@@ -25,7 +25,7 @@ import (
 	"gopkg.in/macaroon-bakery.v2/bakery"
 )
 
-const TAP subservers.Name = "taproot-assets"
+const TAP string = "taproot-assets"
 
 // taprootAssetsSubServer implements the SubServer interface.
 type taprootAssetsSubServer struct {
@@ -79,7 +79,7 @@ func newTaprootAssetsSubServer(network string, cfg *tapcfg.Config,
 //
 // NOTE: this is part of the SubServer interface.
 func (t *taprootAssetsSubServer) Name() string {
-	return string(TAP)
+	return TAP
 }
 
 // Remote returns true if the sub-server is running remotely and so should be

@@ -18,18 +18,21 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/lightninglabs/faraday/frdrpc"
-	faraday "github.com/lightninglabs/faraday/frdrpcserver/perms"
+	faradayperms "github.com/lightninglabs/faraday/frdrpcserver/perms"
 	"github.com/lightninglabs/lightning-node-connect/mailbox"
 	terminal "github.com/lightninglabs/lightning-terminal"
 	"github.com/lightninglabs/lightning-terminal/litrpc"
 	"github.com/lightninglabs/lightning-terminal/perms"
 	"github.com/lightninglabs/lightning-terminal/session"
-	subservers "github.com/lightninglabs/lightning-terminal/subservers/manager"
-	loop "github.com/lightninglabs/loop/loopd/perms"
+	"github.com/lightninglabs/lightning-terminal/subservers/faraday"
+	"github.com/lightninglabs/lightning-terminal/subservers/loop"
+	"github.com/lightninglabs/lightning-terminal/subservers/pool"
+	"github.com/lightninglabs/lightning-terminal/subservers/taprootassets"
+	loopperms "github.com/lightninglabs/loop/loopd/perms"
 	"github.com/lightninglabs/loop/looprpc"
-	pool "github.com/lightninglabs/pool/perms"
+	poolperms "github.com/lightninglabs/pool/perms"
 	"github.com/lightninglabs/pool/poolrpc"
-	tap "github.com/lightninglabs/taproot-assets/perms"
+	tapperms "github.com/lightninglabs/taproot-assets/perms"
 	"github.com/lightninglabs/taproot-assets/taprpc"
 	"github.com/lightninglabs/taproot-assets/taprpc/universerpc"
 	"github.com/lightningnetwork/lnd/keychain"
@@ -1417,19 +1420,16 @@ func bakeSuperMacaroon(cfg *LitNodeConfig, readOnly bool) (string, error) {
 	}
 
 	permsMgr.RegisterSubServer(
-		subservers.LOOP, loop.RequiredPermissions, nil,
+		loop.LOOP, loopperms.RequiredPermissions, nil,
 	)
 	permsMgr.RegisterSubServer(
-		subservers.POOL, pool.RequiredPermissions, nil,
+		pool.POOL, poolperms.RequiredPermissions, nil,
 	)
 	permsMgr.RegisterSubServer(
-		subservers.TAP, tap.RequiredPermissions, nil,
+		taprootassets.TAP, tapperms.RequiredPermissions, nil,
 	)
 	permsMgr.RegisterSubServer(
-		subservers.FARADAY, faraday.RequiredPermissions, nil,
-	)
-	permsMgr.RegisterSubServer(
-		subservers.TAP, tap.RequiredPermissions, nil,
+		faraday.FARADAY, faradayperms.RequiredPermissions, nil,
 	)
 
 	superMacPermissions := permsMgr.ActivePermissions(readOnly)
