@@ -23,6 +23,7 @@ import (
 	"github.com/jessevdk/go-flags"
 	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/autopilotserver"
+	"github.com/lightninglabs/lightning-terminal/config"
 	"github.com/lightninglabs/lightning-terminal/firewall"
 	"github.com/lightninglabs/lightning-terminal/firewalldb"
 	"github.com/lightninglabs/lightning-terminal/litrpc"
@@ -33,6 +34,11 @@ import (
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightninglabs/lightning-terminal/status"
 	"github.com/lightninglabs/lightning-terminal/subservers"
+	_ "github.com/lightninglabs/lightning-terminal/subservers/faraday"
+	_ "github.com/lightninglabs/lightning-terminal/subservers/loop"
+	subservermgr "github.com/lightninglabs/lightning-terminal/subservers/manager"
+	_ "github.com/lightninglabs/lightning-terminal/subservers/pool"
+	_ "github.com/lightninglabs/lightning-terminal/subservers/taprootassets"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightningnetwork/lnd"
 	"github.com/lightningnetwork/lnd/build"
@@ -75,6 +81,10 @@ const (
 	defaultServerTimeout  = 10 * time.Second
 	defaultConnectTimeout = 15 * time.Second
 	defaultStartupTimeout = 5 * time.Second
+
+	LND      string = "lnd"
+	LIT      string = "lit"
+	ACCOUNTS string = "accounts"
 )
 
 // restRegistration is a function type that represents a REST proxy
@@ -150,7 +160,7 @@ var (
 // LightningTerminal is the main grand unified binary instance. Its task is to
 // start an lnd node then start and register external subservers to it.
 type LightningTerminal struct {
-	cfg *Config
+	cfg *config.Config
 
 	defaultImplCfg *lnd.ImplementationCfg
 
@@ -168,7 +178,7 @@ type LightningTerminal struct {
 	lndClient   *lndclient.GrpcLndServices
 	basicClient lnrpc.LightningClient
 
-	subServerMgr *subservers.Manager
+	subServerMgr *subservermgr.Manager
 	statusMgr    *status.Manager
 
 	autopilotClient autopilotserver.Autopilot
@@ -216,7 +226,9 @@ func (g *LightningTerminal) Run() error {
 		return fmt.Errorf("could not intercept signals: %v", err)
 	}
 
-	cfg, err := loadAndValidateConfig(shutdownInterceptor)
+	cfg, err := config.LoadAndValidateConfig(
+		shutdownInterceptor, SetupLoggers,
+	)
 	if err != nil {
 		return fmt.Errorf("could not load config: %w", err)
 	}
@@ -256,23 +268,26 @@ func (g *LightningTerminal) Run() error {
 
 	// Register LND, LiT and Accounts with the status manager.
 	g.statusMgr.RegisterAndEnableSubServer(
-		subservers.LND, status.WithIsReadyOverride(lndOverride),
+		LND, status.WithIsReadyOverride(lndOverride),
 	)
-	g.statusMgr.RegisterAndEnableSubServer(subservers.LIT)
-	g.statusMgr.RegisterSubServer(subservers.ACCOUNTS)
+	g.statusMgr.RegisterAndEnableSubServer(LIT)
+	g.statusMgr.RegisterSubServer(ACCOUNTS)
 
 	// Also enable the accounts subserver if it's not disabled.
 	if !g.cfg.Accounts.Disable {
-		g.statusMgr.SetEnabled(subservers.ACCOUNTS)
+		g.statusMgr.SetEnabled(ACCOUNTS)
 	}
 
 	// Create the instances of our subservers now so we can hook them up to
 	// lnd once it's fully started.
-	g.subServerMgr = subservers.NewManager(g.permsMgr, g.statusMgr)
+	g.subServerMgr = subservermgr.NewManager(g.permsMgr, g.statusMgr)
 
 	// Register our sub-servers. This must be done before the REST proxy is
 	// set up so that the correct REST handlers are registered.
-	g.initSubServers()
+	err = g.initSubServers()
+	if err != nil {
+		return fmt.Errorf("could not initialise subservers: %w", err)
+	}
 
 	// Construct the rpcProxy. It must be initialised before the main web
 	// server is started.
@@ -308,7 +323,7 @@ func (g *LightningTerminal) Run() error {
 	startErr := g.start()
 	if startErr != nil {
 		g.statusMgr.SetErrored(
-			subservers.LIT, "could not start Lit: %v", startErr,
+			LIT, "could not start Lit: %v", startErr,
 		)
 	}
 
@@ -337,7 +352,7 @@ func (g *LightningTerminal) start() error {
 
 	accountServiceErrCallback := func(err error) {
 		g.statusMgr.SetErrored(
-			subservers.ACCOUNTS,
+			ACCOUNTS,
 			err.Error(),
 		)
 
@@ -455,12 +470,12 @@ func (g *LightningTerminal) start() error {
 		lndQuit        = make(chan struct{})
 		macChan        = make(chan []byte, 1)
 	)
-	if g.cfg.LndMode == ModeIntegrated {
+	if g.cfg.LndMode == config.ModeIntegrated {
 		lisCfg := lnd.ListenerCfg{
 			RPCListeners: []*lnd.ListenerWithSignal{{
-				Listener: &onDemandListener{
-					addr: g.cfg.Lnd.RPCListeners[0],
-				},
+				Listener: config.NewOnDemandListener(
+					g.cfg.Lnd.RPCListeners[0],
+				),
 				Ready: readyChan,
 			}, {
 				Listener: bufRpcListener,
@@ -490,7 +505,7 @@ func (g *LightningTerminal) start() error {
 					"lnd: %v", err)
 				log.Errorf(errStr)
 
-				g.statusMgr.SetErrored(subservers.LND, errStr)
+				g.statusMgr.SetErrored(LND, errStr)
 				g.errQueue.ChanIn() <- err
 
 				return
@@ -519,14 +534,14 @@ func (g *LightningTerminal) start() error {
 
 	case err := <-g.errQueue.ChanOut():
 		g.statusMgr.SetErrored(
-			subservers.LND, "error from errQueue channel",
+			LND, "error from errQueue channel",
 		)
 
 		return fmt.Errorf("could not start LND: %v", err)
 
 	case <-lndQuit:
 		g.statusMgr.SetErrored(
-			subservers.LND, "lndQuit channel closed",
+			LND, "lndQuit channel closed",
 		)
 
 		return fmt.Errorf("LND has stopped")
@@ -539,7 +554,7 @@ func (g *LightningTerminal) start() error {
 	g.lndConn, err = connectLND(g.cfg, bufRpcListener)
 	if err != nil {
 		g.statusMgr.SetErrored(
-			subservers.LND, "could not connect to LND: %v", err,
+			LND, "could not connect to LND: %v", err,
 		)
 
 		return fmt.Errorf("could not connect to LND")
@@ -586,7 +601,7 @@ func (g *LightningTerminal) start() error {
 	// This is done _before_ we have set up the lnd clients so that the
 	// litcli status command won't error before the lnd sub-server has
 	// been marked as running.
-	g.statusMgr.SetCustomStatus(subservers.LND, lndWalletReadyStatus)
+	g.statusMgr.SetCustomStatus(LND, lndWalletReadyStatus)
 
 	// Now that we have started the main UI web server, show some useful
 	// information to the user so they can access the web UI easily.
@@ -608,7 +623,7 @@ func (g *LightningTerminal) start() error {
 
 		case <-lndQuit:
 			g.statusMgr.SetErrored(
-				subservers.LND, "lndQuit channel closed",
+				LND, "lndQuit channel closed",
 			)
 
 			return fmt.Errorf("LND has stopped")
@@ -625,7 +640,7 @@ func (g *LightningTerminal) start() error {
 
 	// If we're in integrated mode, we'll need to wait for lnd to send the
 	// macaroon after unlock before going any further.
-	if g.cfg.LndMode == ModeIntegrated {
+	if g.cfg.LndMode == config.ModeIntegrated {
 		if err = waitForSignal(bufReadyChan); err != nil {
 			return err
 		}
@@ -635,7 +650,7 @@ func (g *LightningTerminal) start() error {
 		// close this channel when the macaroon has been received.
 		macReady := make(chan struct{})
 		go func() {
-			g.cfg.lndAdminMacaroon = <-macChan
+			g.cfg.LndAdminMacaroon = <-macChan
 			close(macReady)
 		}()
 
@@ -648,7 +663,7 @@ func (g *LightningTerminal) start() error {
 	err = g.setUpLNDClients(lndQuit)
 	if err != nil {
 		g.statusMgr.SetErrored(
-			subservers.LND, "could not set up LND clients: %v", err,
+			LND, "could not set up LND clients: %v", err,
 		)
 
 		return fmt.Errorf("could not start LND")
@@ -656,12 +671,12 @@ func (g *LightningTerminal) start() error {
 
 	// Mark that lnd is now completely running after connecting the
 	// lnd clients.
-	g.statusMgr.SetRunning(subservers.LND)
+	g.statusMgr.SetRunning(LND)
 
 	// If we're in integrated and stateless init mode, we won't create
 	// macaroon files in any of the subserver daemons.
 	createDefaultMacaroons := true
-	if g.cfg.LndMode == ModeIntegrated && g.lndInterceptorChain != nil &&
+	if g.cfg.LndMode == config.ModeIntegrated && g.lndInterceptorChain != nil &&
 		g.lndInterceptorChain.MacaroonService() != nil {
 
 		// If the wallet was initialized in stateless mode, we don't
@@ -685,7 +700,7 @@ func (g *LightningTerminal) start() error {
 	}
 
 	// We can now set the status of LiT as running.
-	g.statusMgr.SetRunning(subservers.LIT)
+	g.statusMgr.SetRunning(LIT)
 
 	// Now block until we receive an error or the main shutdown signal.
 	select {
@@ -697,7 +712,7 @@ func (g *LightningTerminal) start() error {
 
 	case <-lndQuit:
 		g.statusMgr.SetErrored(
-			subservers.LND, "lndQuit channel closed",
+			LND, "lndQuit channel closed",
 		)
 
 		return fmt.Errorf("LND is not running")
@@ -717,7 +732,7 @@ func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
 		clientOptions []lndclient.BasicClientOption
 	)
 
-	host, network, tlsPath, macPath, macData := g.cfg.lndConnectParams()
+	host, network, tlsPath, macPath, macData := g.cfg.LndConnectParams()
 	clientOptions = append(clientOptions, lndclient.MacaroonData(
 		hex.EncodeToString(macData),
 	))
@@ -727,7 +742,7 @@ func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
 
 	// If we're in integrated mode, we can retrieve the macaroon string
 	// from lnd directly, rather than grabbing it from disk.
-	if g.cfg.LndMode == ModeIntegrated {
+	if g.cfg.LndMode == config.ModeIntegrated {
 		// Set to true in integrated mode, since we will not require tls
 		// when communicating with lnd via a bufconn.
 		insecure = true
@@ -775,7 +790,7 @@ func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
 		}
 
 		g.statusMgr.SetErrored(
-			subservers.LIT,
+			LIT,
 			"Error when setting up basic LND Client: %v", err,
 		)
 
@@ -834,7 +849,7 @@ func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
 		}
 
 		g.statusMgr.SetErrored(
-			subservers.LIT,
+			LIT,
 			"Error when creating LND Services client: %v",
 			err,
 		)
@@ -854,7 +869,7 @@ func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
 	// In the integrated mode, we received an admin macaroon once lnd was
 	// ready. We can now bake a "super macaroon" that contains all
 	// permissions of all daemons that we can use for any internal calls.
-	if g.cfg.LndMode == ModeIntegrated {
+	if g.cfg.LndMode == config.ModeIntegrated {
 		// Create a super macaroon that can be used to control lnd,
 		// faraday, loop, and pool, all at the same time.
 		log.Infof("Baking internal super macaroon")
@@ -966,11 +981,11 @@ func (g *LightningTerminal) startInternalSubServers(
 			log.Errorf("error starting account service: %v, "+
 				"disabling account service", err)
 
-			g.statusMgr.SetErrored(subservers.ACCOUNTS, err.Error())
+			g.statusMgr.SetErrored(ACCOUNTS, err.Error())
 
 			closeAccountService()
 		} else {
-			g.statusMgr.SetRunning(subservers.ACCOUNTS)
+			g.statusMgr.SetRunning(ACCOUNTS)
 
 			g.accountServiceStarted = true
 		}
@@ -1192,7 +1207,7 @@ func (g *LightningTerminal) ValidateMacaroon(ctx context.Context,
 		return err
 	}
 
-	if g.permsMgr.IsSubServerURI(subservers.LIT, fullMethod) {
+	if g.permsMgr.IsSubServerURI(LIT, fullMethod) {
 		if !g.macaroonServiceStarted {
 			return fmt.Errorf("the macaroon service has not " +
 				"started yet")
@@ -1476,7 +1491,7 @@ func (g *LightningTerminal) startMainWebServer() error {
 		return fmt.Errorf("unable to listen on %v: %v",
 			g.cfg.HTTPSListen, err)
 	}
-	tlsConfig, err := buildTLSConfigForHttp2(g.cfg)
+	tlsConfig, err := config.BuildTLSConfigForHttp2(g.cfg)
 	if err != nil {
 		return fmt.Errorf("unable to create TLS config: %v", err)
 	}
@@ -1643,33 +1658,17 @@ func (g *LightningTerminal) validateSuperMacaroon(ctx context.Context,
 
 // initSubServers registers the faraday and loop sub-servers with the
 // subServerMgr.
-func (g *LightningTerminal) initSubServers() {
-	g.subServerMgr.AddServer(
-		subservers.NewFaradaySubServer(
-			g.cfg.Faraday, g.cfg.faradayRpcConfig,
-			g.cfg.Remote.Faraday, g.cfg.faradayRemote,
-		), g.cfg.FaradayMode != ModeDisable,
-	)
+func (g *LightningTerminal) initSubServers() error {
+	for _, ss := range subservers.RegisteredSubServers() {
+		server, err := ss.InitSubServer(g.cfg, log)
+		if err != nil {
+			return err
+		}
 
-	g.subServerMgr.AddServer(
-		subservers.NewLoopSubServer(
-			g.cfg.Loop, g.cfg.Remote.Loop, g.cfg.loopRemote,
-		), g.cfg.LoopMode != ModeDisable,
-	)
+		g.subServerMgr.AddServer(server)
+	}
 
-	g.subServerMgr.AddServer(
-		subservers.NewPoolSubServer(
-			g.cfg.Pool, g.cfg.Remote.Pool, g.cfg.poolRemote,
-		), g.cfg.PoolMode != ModeDisable,
-	)
-
-	g.subServerMgr.AddServer(
-		subservers.NewTaprootAssetsSubServer(
-			g.cfg.Network, g.cfg.TaprootAssets,
-			g.cfg.Remote.TaprootAssets,
-			g.cfg.tapRemote, g.cfg.lndRemote,
-		), g.cfg.TaprootAssetsMode != ModeDisable,
-	)
+	return nil
 }
 
 // BakeSuperMacaroon uses the lnd client to bake a macaroon that can include
@@ -1794,10 +1793,10 @@ func (g *LightningTerminal) showStartupInfo() error {
 	}
 
 	// In remote mode we try to query the info.
-	if g.cfg.LndMode == ModeRemote {
+	if g.cfg.LndMode == config.ModeRemote {
 		// We try to query GetInfo on the remote node to find out the
 		// alias. But the wallet might be locked.
-		host, network, tlsPath, macPath, _ := g.cfg.lndConnectParams()
+		host, network, tlsPath, macPath, _ := g.cfg.LndConnectParams()
 		basicClient, err := lndclient.NewBasicClient(
 			host, tlsPath, filepath.Dir(macPath), string(network),
 			lndclient.MacFilename(filepath.Base(macPath)),
@@ -1826,7 +1825,7 @@ func (g *LightningTerminal) showStartupInfo() error {
 	}
 
 	// In integrated mode, we can derive the state from our configuration.
-	if g.cfg.LndMode == ModeIntegrated {
+	if g.cfg.LndMode == config.ModeIntegrated {
 		// If the integrated node is running with no seed backup, the
 		// wallet cannot be locked and the node is online right away.
 		if g.cfg.Lnd.NoSeedBackup {

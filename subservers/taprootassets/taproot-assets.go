@@ -1,11 +1,14 @@
-package subservers
+package taprootassets
 
 import (
 	"context"
 	"strings"
 
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btclog"
 	restProxy "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/lightninglabs/lightning-terminal/config"
+	"github.com/lightninglabs/lightning-terminal/subservers"
 	"github.com/lightninglabs/lndclient"
 	tap "github.com/lightninglabs/taproot-assets"
 	"github.com/lightninglabs/taproot-assets/address"
@@ -22,27 +25,32 @@ import (
 	"gopkg.in/macaroon-bakery.v2/bakery"
 )
 
+const TAP string = "taproot-assets"
+
 // taprootAssetsSubServer implements the SubServer interface.
 type taprootAssetsSubServer struct {
 	*tap.Server
 
-	remote    bool
+	mode      string
 	lndRemote bool
 
 	cfg       *tapcfg.Config
-	remoteCfg *RemoteDaemonConfig
+	remoteCfg *config.RemoteDaemonConfig
 
 	errChan chan error
+
+	logger btclog.Logger
 }
 
 // A compile-time check to ensure that taprootAssetsSubServer implements
 // SubServer.
-var _ SubServer = (*taprootAssetsSubServer)(nil)
+var _ subservers.SubServer = (*taprootAssetsSubServer)(nil)
 
-// NewTaprootAssetsSubServer returns a new tap implementation of the SubServer
+// newTaprootAssetsSubServer returns a new tap implementation of the SubServer
 // interface.
-func NewTaprootAssetsSubServer(network string, cfg *tapcfg.Config,
-	remoteCfg *RemoteDaemonConfig, remote, lndRemote bool) SubServer {
+func newTaprootAssetsSubServer(network string, cfg *tapcfg.Config,
+	remoteCfg *config.RemoteDaemonConfig, mode string, lndRemote bool,
+	logger btclog.Logger) subservers.SubServer {
 
 	// Overwrite the tap daemon's user agent name, so it sends "litd"
 	// instead of "tapd".
@@ -60,8 +68,9 @@ func NewTaprootAssetsSubServer(network string, cfg *tapcfg.Config,
 		Server:    tap.NewServer(&chainCfg, nil),
 		cfg:       cfg,
 		remoteCfg: remoteCfg,
-		remote:    remote,
+		mode:      mode,
 		lndRemote: lndRemote,
+		logger:    logger,
 		errChan:   make(chan error, 1),
 	}
 }
@@ -78,14 +87,18 @@ func (t *taprootAssetsSubServer) Name() string {
 //
 // NOTE: this is part of the SubServer interface.
 func (t *taprootAssetsSubServer) Remote() bool {
-	return t.remote
+	return t.mode == config.ModeRemote
+}
+
+func (t *taprootAssetsSubServer) Enabled() bool {
+	return t.mode != config.ModeDisable
 }
 
 // RemoteConfig returns the config required to connect to the sub-server if it
 // is running in remote mode.
 //
 // NOTE: this is part of the SubServer interface.
-func (t *taprootAssetsSubServer) RemoteConfig() *RemoteDaemonConfig {
+func (t *taprootAssetsSubServer) RemoteConfig() *config.RemoteDaemonConfig {
 	return t.remoteCfg
 }
 
@@ -98,7 +111,7 @@ func (t *taprootAssetsSubServer) Start(_ lnrpc.LightningClient,
 	t.cfg.RpcConf.NoMacaroons = !withMacaroonService
 
 	var err error
-	t.cfg, err = tapcfg.ValidateConfig(*t.cfg, log)
+	t.cfg, err = tapcfg.ValidateConfig(*t.cfg, t.logger)
 	if err != nil {
 		return err
 	}
@@ -108,7 +121,7 @@ func (t *taprootAssetsSubServer) Start(_ lnrpc.LightningClient,
 	const enableChannelFeatures = false
 
 	err = tapcfg.ConfigureSubServer(
-		t.Server, t.cfg, log, &lndGrpc.LndServices,
+		t.Server, t.cfg, t.logger, &lndGrpc.LndServices,
 		enableChannelFeatures, t.errChan,
 	)
 	if err != nil {
@@ -233,8 +246,8 @@ func (t *taprootAssetsSubServer) WhiteListedURLs() map[string]struct{} {
 	)
 
 	return perms.MacaroonWhitelist(
-		publicUniRead || t.remote, publicUniWrite || t.remote,
-		t.cfg.RpcConf.AllowPublicUniProofCourier || t.remote,
-		t.cfg.RpcConf.AllowPublicStats || t.remote,
+		publicUniRead || t.Remote(), publicUniWrite || t.Remote(),
+		t.cfg.RpcConf.AllowPublicUniProofCourier || t.Remote(),
+		t.cfg.RpcConf.AllowPublicStats || t.Remote(),
 	)
 }

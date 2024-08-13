@@ -1,4 +1,4 @@
-package terminal
+package config
 
 import (
 	"crypto/tls"
@@ -15,13 +15,10 @@ import (
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/jessevdk/go-flags"
 	"github.com/lightninglabs/faraday"
-	"github.com/lightninglabs/faraday/chain"
-	"github.com/lightninglabs/faraday/frdrpcserver"
 	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/autopilotserver"
 	"github.com/lightninglabs/lightning-terminal/firewall"
 	mid "github.com/lightninglabs/lightning-terminal/rpcmiddleware"
-	"github.com/lightninglabs/lightning-terminal/subservers"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightninglabs/loop/loopd"
 	"github.com/lightninglabs/pool"
@@ -179,7 +176,7 @@ type Config struct {
 	// That way only one global network flag is needed.
 	Network string `long:"network" description:"The network the UI and all its components run on" choice:"regtest" choice:"testnet" choice:"mainnet" choice:"simnet"`
 
-	Remote *subservers.RemoteConfig `group:"Remote mode options (use when lnd-mode=remote)" namespace:"remote"`
+	Remote *RemoteConfig `group:"Remote mode options (use when lnd-mode=remote)" namespace:"remote"`
 
 	// LndMode is the selected mode to run lnd in. The supported modes are
 	// 'integrated' and 'remote'. We only use a string instead of a bool
@@ -210,27 +207,19 @@ type Config struct {
 
 	Accounts *accounts.Config `group:"Accounts options" namespace:"accounts"`
 
-	// faradayRpcConfig is a subset of faraday's full configuration that is
-	// passed into faraday's RPC server.
-	faradayRpcConfig *frdrpcserver.Config
-
-	// lndRemote is a convenience bool variable that is parsed from the
+	// LndRemote is a convenience bool variable that is parsed from the
 	// LndMode string variable on startup.
-	lndRemote     bool
-	faradayRemote bool
-	loopRemote    bool
-	poolRemote    bool
-	tapRemote     bool
+	LndRemote bool
 
-	// lndAdminMacaroon is the admin macaroon that is given to us by lnd
+	// LndAdminMacaroon is the admin macaroon that is given to us by lnd
 	// over an in-memory connection on startup. This is only set in
 	// integrated lnd mode.
-	lndAdminMacaroon []byte
+	LndAdminMacaroon []byte
 }
 
-// lndConnectParams returns the connection parameters to connect to the local
+// LndConnectParams returns the connection parameters to connect to the local
 // lnd instance.
-func (c *Config) lndConnectParams() (string, lndclient.Network, string,
+func (c *Config) LndConnectParams() (string, lndclient.Network, string,
 	string, []byte) {
 
 	// In remote lnd mode, we just pass along what was configured in the
@@ -262,7 +251,7 @@ func (c *Config) lndConnectParams() (string, lndclient.Network, string,
 	}
 
 	return lndDialAddr, lndclient.Network(c.Network), "", "",
-		c.lndAdminMacaroon
+		c.LndAdminMacaroon
 }
 
 // defaultConfig returns a configuration struct with all default values set.
@@ -271,32 +260,32 @@ func defaultConfig() *Config {
 		HTTPSListen: defaultHTTPSListen,
 		TLSCertPath: DefaultTLSCertPath,
 		TLSKeyPath:  defaultTLSKeyPath,
-		Remote: &subservers.RemoteConfig{
+		Remote: &RemoteConfig{
 			LitDebugLevel:     defaultLogLevel,
 			LitLogDir:         defaultLogDir,
 			LitMaxLogFiles:    defaultMaxLogFiles,
 			LitMaxLogFileSize: defaultMaxLogFileSize,
-			Lnd: &subservers.RemoteDaemonConfig{
+			Lnd: &RemoteDaemonConfig{
 				RPCServer:    defaultRemoteLndRpcServer,
 				MacaroonPath: DefaultRemoteLndMacaroonPath,
 				TLSCertPath:  lndDefaultConfig.TLSCertPath,
 			},
-			Faraday: &subservers.RemoteDaemonConfig{
+			Faraday: &RemoteDaemonConfig{
 				RPCServer:    defaultRemoteFaradayRpcServer,
 				MacaroonPath: faradayDefaultConfig.MacaroonPath,
 				TLSCertPath:  faradayDefaultConfig.TLSCertPath,
 			},
-			Loop: &subservers.RemoteDaemonConfig{
+			Loop: &RemoteDaemonConfig{
 				RPCServer:    defaultRemoteLoopRpcServer,
 				MacaroonPath: loopDefaultConfig.MacaroonPath,
 				TLSCertPath:  loopDefaultConfig.TLSCertPath,
 			},
-			Pool: &subservers.RemoteDaemonConfig{
+			Pool: &RemoteDaemonConfig{
 				RPCServer:    defaultRemotePoolRpcServer,
 				MacaroonPath: poolDefaultConfig.MacaroonPath,
 				TLSCertPath:  poolDefaultConfig.TLSCertPath,
 			},
-			TaprootAssets: &subservers.RemoteDaemonConfig{
+			TaprootAssets: &RemoteDaemonConfig{
 				RPCServer:    defaultRemoteTapRpcServer,
 				MacaroonPath: tapDefaultConfig.RpcConf.MacaroonPath,
 				TLSCertPath:  tapDefaultConfig.RpcConf.TLSCertPath,
@@ -312,7 +301,6 @@ func defaultConfig() *Config {
 		ConfigFile:           defaultConfigFile,
 		FaradayMode:          defaultFaradayMode,
 		Faraday:              &faradayDefaultConfig,
-		faradayRpcConfig:     &frdrpcserver.Config{},
 		LoopMode:             defaultLoopMode,
 		Loop:                 &loopDefaultConfig,
 		PoolMode:             defaultPoolMode,
@@ -329,9 +317,14 @@ func defaultConfig() *Config {
 	}
 }
 
-// loadAndValidateConfig loads the terminal's main configuration and validates
+type LoggerSetup func(root *build.RotatingLogWriter,
+	intercept signal.Interceptor)
+
+// LoadAndValidateConfig loads the terminal's main configuration and validates
 // its content.
-func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
+func LoadAndValidateConfig(interceptor signal.Interceptor,
+	loggerSetup LoggerSetup) (*Config, error) {
+
 	// Start with the default configuration.
 	preCfg := defaultConfig()
 
@@ -355,7 +348,7 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 	// This must be done before the config is validated if LND is running
 	// in integrated mode so that the log levels for various non-LND related
 	// subsystems can be set via the `lnd.debuglevel` flag.
-	SetupLoggers(preCfg.Lnd.LogWriter, interceptor)
+	loggerSetup(preCfg.Lnd.LogWriter, interceptor)
 
 	// Load the main configuration file and parse any command line options.
 	// This function will also set up logging properly.
@@ -366,17 +359,13 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 
 	// Translate the more user friendly string modes into the more developer
 	// friendly internal bool variables now.
-	cfg.lndRemote = cfg.LndMode == ModeRemote
-	cfg.faradayRemote = cfg.FaradayMode == ModeRemote
-	cfg.loopRemote = cfg.LoopMode == ModeRemote
-	cfg.poolRemote = cfg.PoolMode == ModeRemote
-	cfg.tapRemote = cfg.TaprootAssetsMode == ModeRemote
+	cfg.LndRemote = cfg.LndMode == ModeRemote
 
 	// Now that we've registered all loggers, let's parse, validate, and set
 	// the debug log level(s). In remote lnd mode we have a global log level
 	// that overwrites all others. In integrated mode we use the lnd log
 	// level as the master level.
-	if cfg.lndRemote {
+	if cfg.LndRemote {
 		err = build.ParseAndSetDebugLevels(
 			cfg.Remote.LitDebugLevel, cfg.Lnd.LogWriter,
 		)
@@ -393,7 +382,7 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 	// middleware interceptor to be enabled. In remote mode we can't
 	// influence whether that's enabled on lnd. But in integrated mode we
 	// can overwrite the flag here.
-	if !cfg.lndRemote && !cfg.RPCMiddleware.Disabled {
+	if !cfg.LndRemote && !cfg.RPCMiddleware.Disabled {
 		cfg.Lnd.RPCMiddleware.Enable = true
 	}
 
@@ -487,7 +476,7 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 	// remote mode and not mainnet, we want to update our default paths for
 	// the remote connection as well.
 	defaultFaradayCfg := faraday.DefaultConfig()
-	if cfg.faradayRemote && cfg.Network != DefaultNetwork {
+	if cfg.FaradayMode == ModeRemote && cfg.Network != DefaultNetwork {
 		if cfg.Remote.Faraday.MacaroonPath == defaultFaradayCfg.MacaroonPath {
 			cfg.Remote.Faraday.MacaroonPath = cfg.Faraday.MacaroonPath
 		}
@@ -496,22 +485,7 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 		}
 	}
 
-	// If the client chose to connect to a bitcoin client, get one now.
-	if !cfg.faradayRemote {
-		cfg.faradayRpcConfig.FaradayDir = cfg.Faraday.FaradayDir
-		cfg.faradayRpcConfig.MacaroonPath = cfg.Faraday.MacaroonPath
-
-		if cfg.Faraday.ChainConn {
-			cfg.faradayRpcConfig.BitcoinClient, err = chain.NewBitcoinClient(
-				cfg.Faraday.Bitcoin,
-			)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	if cfg.loopRemote && cfg.Network != DefaultNetwork {
+	if cfg.LoopMode == ModeRemote && cfg.Network != DefaultNetwork {
 		if cfg.Remote.Loop.MacaroonPath == defaultLoopCfg.MacaroonPath {
 			cfg.Remote.Loop.MacaroonPath = cfg.Loop.MacaroonPath
 		}
@@ -521,7 +495,7 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 	}
 
 	defaultPoolCfg := pool.DefaultConfig()
-	if cfg.poolRemote && cfg.Network != DefaultNetwork {
+	if cfg.PoolMode == ModeRemote && cfg.Network != DefaultNetwork {
 		if cfg.Remote.Pool.MacaroonPath == defaultPoolCfg.MacaroonPath {
 			cfg.Remote.Pool.MacaroonPath = cfg.Pool.MacaroonPath
 		}
@@ -531,7 +505,9 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 	}
 
 	defaultTapCfg := tapcfg.DefaultConfig()
-	if cfg.tapRemote && cfg.Network != DefaultNetwork {
+	if cfg.TaprootAssetsMode == ModeRemote &&
+		cfg.Network != DefaultNetwork {
+
 		if cfg.Remote.TaprootAssets.MacaroonPath == defaultTapCfg.RpcConf.MacaroonPath {
 			macaroonPath := cfg.TaprootAssets.RpcConf.MacaroonPath
 			cfg.Remote.TaprootAssets.MacaroonPath = macaroonPath
@@ -786,7 +762,7 @@ func readUIPassword(config *Config) error {
 		"variable that contains the password")
 }
 
-func buildTLSConfigForHttp2(config *Config) (*tls.Config, error) {
+func BuildTLSConfigForHttp2(config *Config) (*tls.Config, error) {
 	var tlsConfig *tls.Config
 
 	if config.LetsEncrypt {
@@ -899,15 +875,21 @@ func makeDirectories(fullDir string) error {
 	return nil
 }
 
-// onDemandListener is a net.Listener that only actually starts to listen on a
+// OnDemandListener is a net.Listener that only actually starts to listen on a
 // network port once the Accept method is called.
-type onDemandListener struct {
+type OnDemandListener struct {
 	addr net.Addr
 	lis  net.Listener
 }
 
+func NewOnDemandListener(addr net.Addr) *OnDemandListener {
+	return &OnDemandListener{
+		addr: addr,
+	}
+}
+
 // Accept waits for and returns the next connection to the listener.
-func (l *onDemandListener) Accept() (net.Conn, error) {
+func (l *OnDemandListener) Accept() (net.Conn, error) {
 	if l.lis == nil {
 		var err error
 		l.lis, err = net.Listen(parseNetwork(l.addr), l.addr.String())
@@ -920,7 +902,7 @@ func (l *onDemandListener) Accept() (net.Conn, error) {
 
 // Close closes the listener.
 // Any blocked Accept operations will be unblocked and return errors.
-func (l *onDemandListener) Close() error {
+func (l *OnDemandListener) Close() error {
 	if l.lis != nil {
 		return l.lis.Close()
 	}
@@ -929,7 +911,7 @@ func (l *onDemandListener) Close() error {
 }
 
 // Addr returns the listener's network address.
-func (l *onDemandListener) Addr() net.Addr {
+func (l *OnDemandListener) Addr() net.Addr {
 	return l.addr
 }
 

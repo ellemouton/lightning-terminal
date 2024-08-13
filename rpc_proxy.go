@@ -12,11 +12,12 @@ import (
 	"time"
 
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
+	"github.com/lightninglabs/lightning-terminal/config"
 	"github.com/lightninglabs/lightning-terminal/litrpc"
 	"github.com/lightninglabs/lightning-terminal/perms"
 	"github.com/lightninglabs/lightning-terminal/session"
 	litstatus "github.com/lightninglabs/lightning-terminal/status"
-	"github.com/lightninglabs/lightning-terminal/subservers"
+	subservers "github.com/lightninglabs/lightning-terminal/subservers/manager"
 	"github.com/lightningnetwork/lnd/lncfg"
 	"github.com/lightningnetwork/lnd/macaroons"
 	grpcProxy "github.com/mwitkow/grpc-proxy/proxy"
@@ -66,7 +67,7 @@ func (e *proxyErr) Unwrap() error {
 // newRpcProxy creates a new RPC proxy that can take any native gRPC, grpc-web
 // or REST request and delegate (and convert if necessary) it to the correct
 // component.
-func newRpcProxy(cfg *Config, validator macaroons.MacaroonValidator,
+func newRpcProxy(cfg *config.Config, validator macaroons.MacaroonValidator,
 	superMacValidator session.SuperMacaroonValidator,
 	permsMgr *perms.Manager, subServerMgr *subservers.Manager,
 	statusMgr *litstatus.Manager) *rpcProxy {
@@ -161,7 +162,7 @@ type rpcProxy struct {
 	// must only ever be used atomically.
 	started int32
 
-	cfg          *Config
+	cfg          *config.Config
 	basicAuth    string
 	permsMgr     *perms.Manager
 	subServerMgr *subservers.Manager
@@ -359,7 +360,7 @@ func (p *rpcProxy) makeDirector(allowLitRPC bool) func(ctx context.Context,
 		}
 
 		// Calls to LiT session RPC aren't allowed in some cases.
-		isLit := p.permsMgr.IsSubServerURI(subservers.LIT, requestURI)
+		isLit := p.permsMgr.IsSubServerURI(LIT, requestURI)
 		if isLit && !allowLitRPC {
 			return outCtx, nil, status.Errorf(
 				codes.Unimplemented, "unknown service %s",
@@ -520,10 +521,10 @@ func (p *rpcProxy) basicAuthToMacaroon(basicAuth, requestURI string,
 	switch {
 	case handled:
 
-	case p.permsMgr.IsSubServerURI(subservers.LND, requestURI):
-		_, _, _, macPath, macData = p.cfg.lndConnectParams()
+	case p.permsMgr.IsSubServerURI(LND, requestURI):
+		_, _, _, macPath, macData = p.cfg.LndConnectParams()
 
-	case p.permsMgr.IsSubServerURI(subservers.LIT, requestURI):
+	case p.permsMgr.IsSubServerURI(LIT, requestURI):
 		macPath = p.cfg.MacaroonPath
 
 	default:
@@ -624,13 +625,13 @@ func (p *rpcProxy) checkSubSystemStarted(requestURI string) error {
 	case handled:
 
 	case isAccountsReq(requestURI):
-		system = subservers.ACCOUNTS
+		system = ACCOUNTS
 
-	case p.permsMgr.IsSubServerURI(subservers.LIT, requestURI):
-		system = subservers.LIT
+	case p.permsMgr.IsSubServerURI(LIT, requestURI):
+		system = LIT
 
-	case p.permsMgr.IsSubServerURI(subservers.LND, requestURI):
-		system = subservers.LND
+	case p.permsMgr.IsSubServerURI(LND, requestURI):
+		system = LND
 
 	default:
 		return ErrUnknownRequest

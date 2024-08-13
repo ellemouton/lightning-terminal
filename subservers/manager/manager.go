@@ -10,6 +10,7 @@ import (
 	restProxy "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/lightninglabs/lightning-terminal/perms"
 	"github.com/lightninglabs/lightning-terminal/status"
+	"github.com/lightninglabs/lightning-terminal/subservers"
 	"github.com/lightninglabs/lndclient"
 	"github.com/lightningnetwork/lnd/lncfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -50,13 +51,13 @@ func NewManager(permsMgr *perms.Manager,
 }
 
 // AddServer adds a new subServer to the manager's set.
-func (s *Manager) AddServer(ss SubServer, enable bool) {
+func (s *Manager) AddServer(ss subservers.SubServer) {
 	// Register all sub-servers with the status server.
 	s.statusServer.RegisterSubServer(ss.Name())
 
 	// If the sub-server has explicitly been disabled, then we don't add it
 	// to the set of servers tracked by the Manager.
-	if !enable {
+	if !ss.Enabled() {
 		return
 	}
 

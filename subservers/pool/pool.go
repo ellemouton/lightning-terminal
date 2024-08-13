@@ -1,105 +1,103 @@
-package subservers
+package pool
 
 import (
 	"context"
 
 	restProxy "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/lightninglabs/lightning-terminal/config"
+	"github.com/lightninglabs/lightning-terminal/subservers"
 	"github.com/lightninglabs/lndclient"
-	"github.com/lightninglabs/loop"
-	"github.com/lightninglabs/loop/loopd"
-	"github.com/lightninglabs/loop/loopd/perms"
-	"github.com/lightninglabs/loop/looprpc"
+	"github.com/lightninglabs/pool"
+	"github.com/lightninglabs/pool/perms"
+	"github.com/lightninglabs/pool/poolrpc"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"google.golang.org/grpc"
 	"gopkg.in/macaroon-bakery.v2/bakery"
 )
 
-// loopSubServer implements the SubServer interface.
-type loopSubServer struct {
-	*loopd.Daemon
-	remote    bool
-	cfg       *loopd.Config
-	remoteCfg *RemoteDaemonConfig
+const POOL string = "pool"
+
+// poolSubServer implements the SubServer interface.
+type poolSubServer struct {
+	*pool.Server
+	mode      string
+	cfg       *pool.Config
+	remoteCfg *config.RemoteDaemonConfig
 }
 
-// A compile-time check to ensure that loopSubServer implements SubServer.
-var _ SubServer = (*loopSubServer)(nil)
+// A compile-time check to ensure that poolSubServer implements SubServer.
+var _ subservers.SubServer = (*poolSubServer)(nil)
 
-// NewLoopSubServer returns a new loop implementation of the SubServer
+// newPoolSubServer returns a new pool implementation of the SubServer
 // interface.
-func NewLoopSubServer(cfg *loopd.Config, remoteCfg *RemoteDaemonConfig,
-	remote bool) SubServer {
+func newPoolSubServer(cfg *pool.Config, remoteCfg *config.RemoteDaemonConfig,
+	mode string) subservers.SubServer {
 
-	// Overwrite the loop daemon's user agent name, so it sends "litd"
-	// instead of "loopd".
-	loop.AgentName = "litd"
+	// Overwrite the pool daemon's user agent name, so it sends "litd"
+	// instead of and "poold".
+	pool.SetAgentName("litd")
 
-	return &loopSubServer{
-		Daemon:    loopd.New(cfg, nil),
+	return &poolSubServer{
+		Server:    pool.NewServer(cfg),
 		cfg:       cfg,
 		remoteCfg: remoteCfg,
-		remote:    remote,
+		mode:      mode,
 	}
 }
 
 // Name returns the name of the sub-server.
 //
 // NOTE: this is part of the SubServer interface.
-func (l *loopSubServer) Name() string {
-	return LOOP
+func (p *poolSubServer) Name() string {
+	return POOL
 }
 
 // Remote returns true if the sub-server is running remotely and so should be
 // connected to instead of spinning up an integrated server.
 //
 // NOTE: this is part of the SubServer interface.
-func (l *loopSubServer) Remote() bool {
-	return l.remote
+func (p *poolSubServer) Remote() bool {
+	return p.mode == config.ModeRemote
+}
+
+func (p *poolSubServer) Enabled() bool {
+	return p.mode != config.ModeDisable
 }
 
 // RemoteConfig returns the config required to connect to the sub-server if it
 // is running in remote mode.
 //
 // NOTE: this is part of the SubServer interface.
-func (l *loopSubServer) RemoteConfig() *RemoteDaemonConfig {
-	return l.remoteCfg
+func (p *poolSubServer) RemoteConfig() *config.RemoteDaemonConfig {
+	return p.remoteCfg
 }
 
 // Start starts the sub-server in integrated mode.
 //
 // NOTE: this is part of the SubServer interface.
-func (l *loopSubServer) Start(_ lnrpc.LightningClient,
+func (p *poolSubServer) Start(lnClient lnrpc.LightningClient,
 	lndGrpc *lndclient.GrpcLndServices, withMacaroonService bool) error {
 
-	return l.StartAsSubserver(lndGrpc, withMacaroonService)
-}
-
-// Stop stops the sub-server in integrated mode.
-//
-// NOTE: this is part of the SubServer interface.
-func (l *loopSubServer) Stop() error {
-	l.Daemon.Stop()
-
-	return nil
+	return p.StartAsSubserver(lnClient, lndGrpc, withMacaroonService)
 }
 
 // RegisterGrpcService must register the sub-server's GRPC server with the given
 // registrar.
 //
 // NOTE: this is part of the SubServer interface.
-func (l *loopSubServer) RegisterGrpcService(registrar grpc.ServiceRegistrar) {
-	looprpc.RegisterSwapClientServer(registrar, l)
+func (p *poolSubServer) RegisterGrpcService(registrar grpc.ServiceRegistrar) {
+	poolrpc.RegisterTraderServer(registrar, p)
 }
 
 // RegisterRestService registers the sub-server's REST handlers with the given
 // endpoint.
 //
 // NOTE: this is part of the SubServer interface.
-func (l *loopSubServer) RegisterRestService(ctx context.Context,
+func (p *poolSubServer) RegisterRestService(ctx context.Context,
 	mux *restProxy.ServeMux, endpoint string,
 	dialOpts []grpc.DialOption) error {
 
-	return looprpc.RegisterSwapClientHandlerFromEndpoint(
+	return poolrpc.RegisterTraderHandlerFromEndpoint(
 		ctx, mux, endpoint, dialOpts,
 	)
 }
@@ -109,23 +107,23 @@ func (l *loopSubServer) RegisterRestService(ctx context.Context,
 // may be set to nil. This only applies in integrated mode.
 //
 // NOTE: this is part of the SubServer interface.
-func (l *loopSubServer) ServerErrChan() chan error {
-	return l.ErrChan
+func (p *poolSubServer) ServerErrChan() chan error {
+	return nil
 }
 
 // MacPath returns the path to the sub-server's macaroon if it is not running in
 // remote mode.
 //
 // NOTE: this is part of the SubServer interface.
-func (l *loopSubServer) MacPath() string {
-	return l.cfg.MacaroonPath
+func (p *poolSubServer) MacPath() string {
+	return p.cfg.MacaroonPath
 }
 
 // Permissions returns a map of all RPC methods and their required macaroon
 // permissions to access the sub-server.
 //
 // NOTE: this is part of the SubServer interface.
-func (l *loopSubServer) Permissions() map[string][]bakery.Op {
+func (p *poolSubServer) Permissions() map[string][]bakery.Op {
 	return perms.RequiredPermissions
 }
 
@@ -133,6 +131,6 @@ func (l *loopSubServer) Permissions() map[string][]bakery.Op {
 // accessed without a macaroon.
 //
 // NOTE: this is part of the SubServer interface.
-func (l *loopSubServer) WhiteListedURLs() map[string]struct{} {
+func (p *poolSubServer) WhiteListedURLs() map[string]struct{} {
 	return nil
 }
