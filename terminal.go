@@ -467,7 +467,16 @@ func (g *LightningTerminal) start() error {
 			}},
 		}
 
-		var auxComponents lnd.AuxComponents
+		auxProvider := &auxComponentsProvider{
+			auxProviderReady: func() (bool, error) {
+				ready, _, err := g.statusMgr.IsSystemReady(
+					subservers.TAP, "",
+				)
+
+				return ready, err
+			},
+		}
+
 		switch g.cfg.TaprootAssetsMode {
 		case ModeRemote, ModeDisable:
 			log.Warnf("Taproot Assets daemon is either disabled " +
@@ -483,17 +492,17 @@ func (g *LightningTerminal) start() error {
 					"components: %w", err)
 			}
 
-			auxComponents = *components
+			auxProvider.components = components
 		}
 
 		implCfg := &lnd.ImplementationCfg{
-			GrpcRegistrar:       g,
-			RestRegistrar:       g,
-			ExternalValidator:   g,
-			DatabaseBuilder:     g.defaultImplCfg.DatabaseBuilder,
-			WalletConfigBuilder: g,
-			ChainControlBuilder: g.defaultImplCfg.ChainControlBuilder,
-			AuxComponents:       auxComponents,
+			GrpcRegistrar:         g,
+			RestRegistrar:         g,
+			ExternalValidator:     g,
+			DatabaseBuilder:       g.defaultImplCfg.DatabaseBuilder,
+			WalletConfigBuilder:   g,
+			ChainControlBuilder:   g.defaultImplCfg.ChainControlBuilder,
+			AuxComponentsProvider: auxProvider,
 		}
 
 		g.wg.Add(1)
@@ -726,6 +735,32 @@ func (g *LightningTerminal) start() error {
 
 	return nil
 }
+
+type auxComponentsProvider struct {
+	components       *lnd.AuxComponents
+	auxProviderReady func() (bool, error)
+}
+
+func (a *auxComponentsProvider) FundingControllerProvided() bool {
+	return a.components != nil
+}
+
+func (a *auxComponentsProvider) GetAuxComponents() (*lnd.AuxComponents, error) {
+	ready, err := a.auxProviderReady()
+	if err != nil {
+		return nil, fmt.Errorf("error checking if aux components "+
+			"provider is ready: %w", err)
+	}
+
+	if !ready {
+		return nil, fmt.Errorf("aux components provider is not yet " +
+			"ready")
+	}
+
+	return a.components, nil
+}
+
+var _ lnd.AuxComponentsProvider = (*auxComponentsProvider)(nil)
 
 // setUpLNDClients sets up the various LND clients required by LiT.
 func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
@@ -1254,7 +1289,8 @@ func (g *LightningTerminal) Permissions() map[string][]bakery.Op {
 //
 // NOTE: This is part of the lnd.WalletConfigBuilder interface.
 func (g *LightningTerminal) BuildWalletConfig(ctx context.Context,
-	dbs *lnd.DatabaseInstances, auxComponents *lnd.AuxComponents,
+	dbs *lnd.DatabaseInstances,
+	auxComponentsProvider lnd.AuxComponentsProvider,
 	interceptorChain *rpcperms.InterceptorChain,
 	grpcListeners []*lnd.ListenerWithSignal) (*chainreg.PartialChainControl,
 	*btcwallet.Config, func(), error) {
@@ -1262,7 +1298,7 @@ func (g *LightningTerminal) BuildWalletConfig(ctx context.Context,
 	g.lndInterceptorChain = interceptorChain
 
 	return g.defaultImplCfg.WalletConfigBuilder.BuildWalletConfig(
-		ctx, dbs, auxComponents, interceptorChain, grpcListeners,
+		ctx, dbs, auxComponentsProvider, interceptorChain, grpcListeners,
 	)
 }
 
