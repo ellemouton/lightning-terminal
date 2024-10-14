@@ -269,11 +269,8 @@ func (n *NetworkHarness) Stop() {
 	n.autopilotServer.Stop()
 }
 
-// NewNode initializes a new HarnessNode.
-func (n *NetworkHarness) NewNode(t *testing.T, name string, extraArgs []string,
-	remoteMode bool, wait bool) (*HarnessNode, error) {
-
-	litArgs := []string{
+func (n *NetworkHarness) litArgs() []string {
+	return []string{
 		fmt.Sprintf("--loop.server.host=%s", n.server.ServerHost),
 		fmt.Sprintf("--loop.server.tlspath=%s", n.server.CertFile),
 		fmt.Sprintf("--pool.auctionserver=%s", n.server.ServerHost),
@@ -284,10 +281,68 @@ func (n *NetworkHarness) NewNode(t *testing.T, name string, extraArgs []string,
 			n.autopilotServer.GetPort(),
 		),
 	}
+}
+
+// NewNode initializes a new HarnessNode.
+func (n *NetworkHarness) NewNode(t *testing.T, name string, extraArgs []string,
+	remoteMode bool, wait bool) (*HarnessNode, error) {
 
 	return n.newNode(
-		t, name, extraArgs, litArgs, false, remoteMode, nil, wait,
+		t, name, extraArgs, n.litArgs(), false, remoteMode, nil, wait,
+		false,
 	)
+}
+
+// NewNodeWithSeed initializes a new HarnessNode.
+func (n *NetworkHarness) NewNodeWithSeed(t *testing.T, name string,
+	extraArgs []string, walletPassword []byte, remoteMode,
+	statelessInit bool) (*HarnessNode, []byte) {
+
+	node, err := n.newNode(
+		t, name, extraArgs, n.litArgs(), true, remoteMode,
+		walletPassword, false, true,
+	)
+	require.NoError(t, err)
+
+	conn, err := node.ConnectRPC(false)
+	require.NoError(t, err)
+
+	// Initially, we just care about LND's wallet being ready for unlock.
+	err = node.WaitForLNDWalletReady()
+	require.NoError(t, err)
+
+	// Set the wallet unlocker client.
+	node.WalletUnlockerClient = lnrpc.NewWalletUnlockerClient(conn)
+
+	ctxt, cancel := context.WithTimeout(
+		context.Background(), defaultTimeout,
+	)
+	defer cancel()
+
+	// Generate a new seed.
+	genSeedResp, err := node.GenSeed(ctxt, &lnrpc.GenSeedRequest{
+		AezeedPassphrase: walletPassword,
+	})
+	require.NoError(t, err)
+
+	// With the seed created, construct the init request to the node,
+	// including the newly generated seed.
+	initReq := &lnrpc.InitWalletRequest{
+		WalletPassword:     walletPassword,
+		CipherSeedMnemonic: genSeedResp.CipherSeedMnemonic,
+		AezeedPassphrase:   walletPassword,
+		StatelessInit:      statelessInit,
+	}
+
+	// Init the
+	resp, err := node.Init(ctxt, initReq)
+	require.NoError(t, err)
+
+	// Now wait for the full LiT node to start.
+	err = node.WaitUntilStarted(conn, defaultTimeout)
+	require.NoError(t, err)
+
+	return node, resp.AdminMacaroon
 }
 
 // newNode initializes a new HarnessNode, supporting the ability to initialize a
@@ -295,8 +350,8 @@ func (n *NetworkHarness) NewNode(t *testing.T, name string, extraArgs []string,
 // can be used immediately. Otherwise, the node will require an additional
 // initialization phase where the wallet is either created or restored.
 func (n *NetworkHarness) newNode(t *testing.T, name string, extraArgs,
-	litArgs []string, hasSeed, remoteMode bool, password []byte, wait bool,
-	opts ...node.Option) (*HarnessNode, error) {
+	litArgs []string, hasSeed, remoteMode bool, password []byte, wait,
+	noAuth bool, opts ...node.Option) (*HarnessNode, error) {
 
 	baseCfg := &node.BaseNodeConfig{
 		Name:              name,
@@ -305,6 +360,7 @@ func (n *NetworkHarness) newNode(t *testing.T, name string, extraArgs,
 		BackendCfg:        n.BackendCfg,
 		NetParams:         n.netParams,
 		ExtraArgs:         extraArgs,
+		SkipUnlock:        noAuth,
 	}
 	for _, opt := range opts {
 		opt(baseCfg)
