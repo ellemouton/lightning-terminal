@@ -240,6 +240,8 @@ func (cfg *LitNodeConfig) defaultLitdArgs() *litArgs {
 		args["network"] = "simnet"
 	case &chaincfg.RegressionNetParams:
 		args["network"] = "regtest"
+	case &chaincfg.SigNetParams:
+		args["network"] = "signet"
 	}
 
 	// In remote mode, we don't need any lnd specific arguments other than
