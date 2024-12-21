@@ -1,6 +1,7 @@
 package firewalldb
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -40,6 +41,8 @@ var (
 
 // TestActionStorage tests that the ActionsDB CRUD logic.
 func TestActionStorage(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 
 	db, err := NewDB(tmpDir, "test.db", nil)
@@ -342,6 +345,9 @@ func TestListActions(t *testing.T) {
 // TestListGroupActions tests that the ListGroupActions correctly returns all
 // actions in a particular session group.
 func TestListGroupActions(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
 	group1 := intToSessionID(0)
 
 	// Link session 1 and session 2 to group 1.
@@ -356,7 +362,7 @@ func TestListGroupActions(t *testing.T) {
 	})
 
 	// There should not be any actions in group 1 yet.
-	al, err := db.ListGroupActions(group1, nil)
+	al, err := db.ListGroupActions(ctx, group1, nil)
 	require.NoError(t, err)
 	require.Empty(t, al)
 
@@ -365,7 +371,7 @@ func TestListGroupActions(t *testing.T) {
 	require.NoError(t, err)
 
 	// There should now be one action in the group.
-	al, err = db.ListGroupActions(group1, nil)
+	al, err = db.ListGroupActions(ctx, group1, nil)
 	require.NoError(t, err)
 	require.Len(t, al, 1)
 	require.Equal(t, sessionID1, al[0].SessionID)
@@ -375,7 +381,7 @@ func TestListGroupActions(t *testing.T) {
 	require.NoError(t, err)
 
 	// There should now be actions in the group.
-	al, err = db.ListGroupActions(group1, nil)
+	al, err = db.ListGroupActions(ctx, group1, nil)
 	require.NoError(t, err)
 	require.Len(t, al, 2)
 	require.Equal(t, sessionID1, al[0].SessionID)

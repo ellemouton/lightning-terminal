@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"sync"
@@ -33,7 +34,8 @@ func newMailboxSession() *mailboxSession {
 
 func (m *mailboxSession) start(session *Session,
 	serverCreator GRPCServerCreator, authData []byte,
-	onUpdate func(local, remote *btcec.PublicKey) error,
+	onUpdate func(ctx context.Context, local,
+		remote *btcec.PublicKey) error,
 	onNewStatus func(s mailbox.ServerStatus)) error {
 
 	tlsConfig := &tls.Config{}
@@ -46,7 +48,9 @@ func (m *mailboxSession) start(session *Session,
 	keys := mailbox.NewConnData(
 		ecdh, session.RemotePublicKey, session.PairingSecret[:],
 		authData, func(key *btcec.PublicKey) error {
-			return onUpdate(session.LocalPublicKey, key)
+			return onUpdate(
+				context.TODO(), session.LocalPublicKey, key,
+			)
 		}, nil,
 	)
 
@@ -104,7 +108,8 @@ func NewServer(serverCreator GRPCServerCreator) *Server {
 }
 
 func (s *Server) StartSession(session *Session, authData []byte,
-	onUpdate func(local, remote *btcec.PublicKey) error,
+	onUpdate func(ctx context.Context, local,
+		remote *btcec.PublicKey) error,
 	onNewStatus func(s mailbox.ServerStatus)) (chan struct{}, error) {
 
 	s.activeSessionsMtx.Lock()
