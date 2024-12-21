@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -64,7 +65,7 @@ func getSessionKey(session *Session) []byte {
 // local public key already exists an error is returned.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) CreateSession(session *Session) error {
+func (db *DB) CreateSession(_ context.Context, session *Session) error {
 	var buf bytes.Buffer
 	if err := SerializeSession(&buf, session); err != nil {
 		return err
@@ -158,7 +159,7 @@ func (db *DB) CreateSession(session *Session) error {
 // to the session with the given local pub key.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) UpdateSessionRemotePubKey(localPubKey,
+func (db *DB) UpdateSessionRemotePubKey(_ context.Context, localPubKey,
 	remotePubKey *btcec.PublicKey) error {
 
 	key := localPubKey.SerializeCompressed()
@@ -196,7 +197,9 @@ func (db *DB) UpdateSessionRemotePubKey(localPubKey,
 // GetSession fetches the session with the given key.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) GetSession(key *btcec.PublicKey) (*Session, error) {
+func (db *DB) GetSession(_ context.Context, key *btcec.PublicKey) (*Session,
+	error) {
+
 	var session *Session
 	err := db.View(func(tx *bbolt.Tx) error {
 		sessionBucket, err := getBucket(tx, sessionBucketKey)
@@ -226,7 +229,9 @@ func (db *DB) GetSession(key *btcec.PublicKey) (*Session, error) {
 // ListSessions returns all sessions currently known to the store.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) ListSessions(filterFn func(s *Session) bool) ([]*Session, error) {
+func (db *DB) ListSessions(_ context.Context,
+	filterFn func(s *Session) bool) ([]*Session, error) {
+
 	var sessions []*Session
 	err := db.View(func(tx *bbolt.Tx) error {
 		sessionBucket, err := getBucket(tx, sessionBucketKey)
@@ -266,7 +271,7 @@ func (db *DB) ListSessions(filterFn func(s *Session) bool) ([]*Session, error) {
 // public key to be revoked.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) RevokeSession(key *btcec.PublicKey) error {
+func (db *DB) RevokeSession(_ context.Context, key *btcec.PublicKey) error {
 	var session *Session
 	return db.Update(func(tx *bbolt.Tx) error {
 		sessionBucket, err := getBucket(tx, sessionBucketKey)
@@ -299,7 +304,7 @@ func (db *DB) RevokeSession(key *btcec.PublicKey) error {
 // GetSessionByID fetches the session with the given ID.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) GetSessionByID(id ID) (*Session, error) {
+func (db *DB) GetSessionByID(_ context.Context, id ID) (*Session, error) {
 	var session *Session
 	err := db.View(func(tx *bbolt.Tx) error {
 		sessionBucket, err := getBucket(tx, sessionBucketKey)
@@ -337,7 +342,9 @@ func (db *DB) GetSessionByID(id ID) (*Session, error) {
 // used or discarded.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) GetUnusedIDAndKeyPair() (ID, *btcec.PrivateKey, error) {
+func (db *DB) GetUnusedIDAndKeyPair(_ context.Context) (ID, *btcec.PrivateKey,
+	error) {
+
 	var (
 		id      ID
 		privKey *btcec.PrivateKey
@@ -383,7 +390,7 @@ func (db *DB) GetUnusedIDAndKeyPair() (ID, *btcec.PrivateKey, error) {
 // GetGroupID will return the group ID for the given session ID.
 //
 // NOTE: this is part of the IDToGroupIndex interface.
-func (db *DB) GetGroupID(sessionID ID) (ID, error) {
+func (db *DB) GetGroupID(_ context.Context, sessionID ID) (ID, error) {
 	var groupID ID
 	err := db.View(func(tx *bbolt.Tx) error {
 		sessionBkt, err := getBucket(tx, sessionBucketKey)
@@ -423,7 +430,7 @@ func (db *DB) GetGroupID(sessionID ID) (ID, error) {
 // group with the given ID.
 //
 // NOTE: this is part of the IDToGroupIndex interface.
-func (db *DB) GetSessionIDs(groupID ID) ([]ID, error) {
+func (db *DB) GetSessionIDs(_ context.Context, groupID ID) ([]ID, error) {
 	var (
 		sessionIDs []ID
 		err        error
@@ -450,7 +457,7 @@ func (db *DB) GetSessionIDs(groupID ID) ([]ID, error) {
 // each session passes.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) CheckSessionGroupPredicate(groupID ID,
+func (db *DB) CheckSessionGroupPredicate(_ context.Context, groupID ID,
 	fn func(s *Session) bool) (bool, error) {
 
 	var (

@@ -238,7 +238,7 @@ func (r *RuleEnforcer) handleRequest(ctx context.Context,
 		return nil, fmt.Errorf("could not extract ID from macaroon")
 	}
 
-	rules, err := r.collectEnforcers(ri, sessionID)
+	rules, err := r.collectEnforcers(ctx, ri, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing rules: %v", err)
 	}
@@ -294,7 +294,7 @@ func (r *RuleEnforcer) handleResponse(ctx context.Context,
 		return nil, fmt.Errorf("could not extract ID from macaroon")
 	}
 
-	enforcers, err := r.collectEnforcers(ri, sessionID)
+	enforcers, err := r.collectEnforcers(ctx, ri, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing rules: %v", err)
 	}
@@ -328,7 +328,7 @@ func (r *RuleEnforcer) handleErrorResponse(ctx context.Context,
 		return nil, fmt.Errorf("could not extract ID from macaroon")
 	}
 
-	enforcers, err := r.collectEnforcers(ri, sessionID)
+	enforcers, err := r.collectEnforcers(ctx, ri, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing rules: %v", err)
 	}
@@ -353,7 +353,7 @@ func (r *RuleEnforcer) handleErrorResponse(ctx context.Context,
 
 // collectRule initialises and returns all the Rules that need to be enforced
 // for the given request.
-func (r *RuleEnforcer) collectEnforcers(ri *RequestInfo,
+func (r *RuleEnforcer) collectEnforcers(ctx context.Context, ri *RequestInfo,
 	sessionID session.ID) ([]rules.Enforcer, error) {
 
 	ruleEnforcers := make(
@@ -363,7 +363,7 @@ func (r *RuleEnforcer) collectEnforcers(ri *RequestInfo,
 
 	for rule, value := range ri.Rules.FeatureRules[ri.MetaInfo.Feature] {
 		r, err := r.initRule(
-			ri.RequestID, rule, []byte(value), ri.MetaInfo.Feature,
+			ctx, ri.RequestID, rule, []byte(value), ri.MetaInfo.Feature,
 			sessionID, false, ri.WithPrivacy,
 		)
 		if err != nil {
@@ -377,7 +377,8 @@ func (r *RuleEnforcer) collectEnforcers(ri *RequestInfo,
 }
 
 // initRule initialises a rule.Rule with any required config values.
-func (r *RuleEnforcer) initRule(reqID uint64, name string, value []byte,
+func (r *RuleEnforcer) initRule(ctx context.Context, reqID uint64,
+	name string, value []byte,
 	featureName string, sessionID session.ID,
 	sessionRule, privacy bool) (rules.Enforcer, error) {
 
@@ -386,7 +387,7 @@ func (r *RuleEnforcer) initRule(reqID uint64, name string, value []byte,
 		return nil, err
 	}
 
-	session, err := r.sessionDB.GetSessionByID(sessionID)
+	session, err := r.sessionDB.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}

@@ -133,11 +133,11 @@ func NewSession(id ID, localPrivKey *btcec.PrivateKey, label string, typ Type,
 // IDToGroupIndex defines an interface for the session ID to group ID index.
 type IDToGroupIndex interface {
 	// GetGroupID will return the group ID for the given session ID.
-	GetGroupID(sessionID ID) (ID, error)
+	GetGroupID(ctx context.Context, sessionID ID) (ID, error)
 
 	// GetSessionIDs will return the set of session IDs that are in the
 	// group with the given ID.
-	GetSessionIDs(groupID ID) ([]ID, error)
+	GetSessionIDs(ctx context.Context, groupID ID) ([]ID, error)
 }
 
 // Store is the interface a persistent storage must implement for storing and
@@ -147,36 +147,37 @@ type Store interface {
 	// same local public key already exists an error is returned. This
 	// can only be called with a Session with an ID that the Store has
 	// reserved.
-	CreateSession(*Session) error
+	CreateSession(context.Context, *Session) error
 
 	// GetSession fetches the session with the given key.
-	GetSession(key *btcec.PublicKey) (*Session, error)
+	GetSession(ctx context.Context, key *btcec.PublicKey) (*Session, error)
 
 	// ListSessions returns all sessions currently known to the store.
-	ListSessions(filterFn func(s *Session) bool) ([]*Session, error)
+	ListSessions(ctx context.Context,
+		filterFn func(s *Session) bool) ([]*Session, error)
 
 	// RevokeSession updates the state of the session with the given local
 	// public key to be revoked.
-	RevokeSession(*btcec.PublicKey) error
+	RevokeSession(context.Context, *btcec.PublicKey) error
 
 	// UpdateSessionRemotePubKey can be used to add the given remote pub key
 	// to the session with the given local pub key.
-	UpdateSessionRemotePubKey(localPubKey,
+	UpdateSessionRemotePubKey(ctx context.Context, localPubKey,
 		remotePubKey *btcec.PublicKey) error
 
 	// GetUnusedIDAndKeyPair can be used to generate a new, unused, local
 	// private key and session ID pair. Care must be taken to ensure that no
 	// other thread calls this before the returned ID and key pair from this
 	// method are either used or discarded.
-	GetUnusedIDAndKeyPair() (ID, *btcec.PrivateKey, error)
+	GetUnusedIDAndKeyPair(context.Context) (ID, *btcec.PrivateKey, error)
 
 	// GetSessionByID fetches the session with the given ID.
-	GetSessionByID(id ID) (*Session, error)
+	GetSessionByID(ctx context.Context, id ID) (*Session, error)
 
 	// CheckSessionGroupPredicate iterates over all the sessions in a group
 	// and checks if each one passes the given predicate function. True is
 	// returned if each session passes.
-	CheckSessionGroupPredicate(groupID ID,
+	CheckSessionGroupPredicate(ctx context.Context, groupID ID,
 		fn func(s *Session) bool) (bool, error)
 
 	IDToGroupIndex
