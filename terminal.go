@@ -1466,6 +1466,13 @@ func (g *LightningTerminal) shutdownSubServers() error {
 		}
 	}
 
+	if g.sessionDB != nil {
+		if err := g.sessionDB.Close(); err != nil {
+			log.Errorf("Error closing session DB: %v", err)
+			returnErr = err
+		}
+	}
+
 	// Do we have any last errors to display? We use an anonymous function,
 	// so we can use return instead of breaking to a label in the default
 	// case.
