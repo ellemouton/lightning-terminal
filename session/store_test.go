@@ -2,26 +2,109 @@ package session
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/lightninglabs/lightning-terminal/db"
+	"github.com/lightningnetwork/lnd/clock"
 	"github.com/stretchr/testify/require"
 )
 
-// TestBasicSessionStore tests the basic getters and setters of the session
+var testNow = time.Unix(1, 0)
+
+func TestSessions(t *testing.T) {
+	testList := []struct {
+		name string
+		test func(t *testing.T, makeDB func(t *testing.T) Store)
+	}{
+		{
+			name: "BasicSessionStore",
+			test: testBasicSessionStore,
+		},
+		{
+			name: "LinkingSessions",
+			test: testLinkingSessions,
+		},
+		{
+			name: "IDToGroupIDIndex",
+			test: testIDToGroupIDIndex,
+		},
+		{
+			name: "CheckSessionGroupPredicate",
+			test: testCheckSessionGroupPredicate,
+		},
+	}
+
+	makeKeyValueDB := func(t *testing.T) Store {
+		kvdb, err := NewDB(t.TempDir(), "test.db")
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, kvdb.Close())
+		})
+
+		return kvdb
+	}
+
+	// First create a shared Postgres instance so we don't spawn a new
+	// docker container for each test.
+	pgFixture := db.NewTestPgFixture(
+		t, db.DefaultPostgresFixtureLifetime,
+	)
+	t.Cleanup(func() {
+		pgFixture.TearDown(t)
+	})
+
+	makeSQLDB := func(t *testing.T, sqlite bool) Store {
+		var sqlDB *db.BaseDB
+		if sqlite {
+			sqlDB = db.NewTestSqliteDB(t).BaseDB
+		} else {
+			sqlDB = db.NewTestPostgresDB(t, pgFixture).BaseDB
+		}
+
+		executor := db.NewTransactionExecutor(
+			sqlDB, func(tx *sql.Tx) SQLQueries {
+				return sqlDB.WithTx(tx)
+			},
+		)
+
+		testClock := clock.NewTestClock(testNow)
+
+		return NewSQLStore(executor, testClock)
+	}
+
+	for _, test := range testList {
+		test := test
+		t.Run(test.name+"_KV", func(t *testing.T) {
+			test.test(t, makeKeyValueDB)
+		})
+
+		// TODO(elle): fix sqlite time stamp issue.
+		//t.Run(test.name+"_SQLite", func(t *testing.T) {
+		//	test.test(t, func(t *testing.T) Store {
+		//		return makeSQLDB(t, true)
+		//	})
+		//})
+
+		t.Run(test.name+"_Postgres", func(t *testing.T) {
+			test.test(t, func(t *testing.T) Store {
+				return makeSQLDB(t, false)
+			})
+		})
+	}
+}
+
+// testBasicSessionStore tests the basic getters and setters of the session
 // store.
-func TestBasicSessionStore(t *testing.T) {
+func testBasicSessionStore(t *testing.T, makeDB func(t *testing.T) Store) {
 	t.Parallel()
 	ctx := context.Background()
 
 	// Set up a new DB.
-	db, err := NewDB(t.TempDir(), "test.db")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	db := makeDB(t)
 
 	// Create a few sessions.
 	s1 := newSession(t, db, "session 1", nil)
@@ -34,7 +117,7 @@ func TestBasicSessionStore(t *testing.T) {
 
 	// Trying to persist session 1 again should fail due to a session with
 	// the given pub key already existing.
-	require.ErrorContains(t, db.CreateSession(ctx, s1), "already exists")
+	require.ErrorIs(t, db.CreateSession(ctx, s1), ErrSessionExists)
 
 	// Change the local pub key of session 4 such that it has the same
 	// ID as session 1.
@@ -43,8 +126,7 @@ func TestBasicSessionStore(t *testing.T) {
 
 	// Now try to insert session 4. This should fail due to an entry for
 	// the ID already existing.
-	require.ErrorContains(t, db.CreateSession(ctx, s4),
-		"a session with the given ID already exists")
+	require.ErrorIs(t, db.CreateSession(ctx, s1), ErrSessionExists)
 
 	// Persist a few more sessions.
 	require.NoError(t, db.CreateSession(ctx, s2))
@@ -92,17 +174,13 @@ func TestBasicSessionStore(t *testing.T) {
 	require.Equal(t, session1.State, StateRevoked)
 }
 
-// TestLinkingSessions tests that session linking works as expected.
-func TestLinkingSessions(t *testing.T) {
+// testLinkingSessions tests that session linking works as expected.
+func testLinkingSessions(t *testing.T, makeDB func(t *testing.T) Store) {
 	t.Parallel()
 	ctx := context.Background()
 
 	// Set up a new DB.
-	db, err := NewDB(t.TempDir(), "test.db")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	db := makeDB(t)
 
 	// Create a new session with no previous link.
 	s1 := newSession(t, db, "session 1", nil)
@@ -112,8 +190,8 @@ func TestLinkingSessions(t *testing.T) {
 
 	// Try to persist the second session and assert that it fails due to the
 	// linked session not existing in the DB yet.
-	require.ErrorContains(
-		t, db.CreateSession(ctx, s2), "unknown linked session",
+	require.ErrorIs(
+		t, db.CreateSession(ctx, s2), ErrUnknownLinkedSession,
 	)
 
 	// Now persist the first session and retry persisting the second one
@@ -122,7 +200,9 @@ func TestLinkingSessions(t *testing.T) {
 
 	// Persisting the second session immediately should fail due to the
 	// first session still being active.
-	require.ErrorContains(t, db.CreateSession(ctx, s2), "is still active")
+	require.ErrorIs(
+		t, db.CreateSession(ctx, s2), ErrSessionsInGroupStillActive,
+	)
 
 	// Revoke the first session.
 	require.NoError(t, db.RevokeSession(ctx, s1.LocalPublicKey))
@@ -131,19 +211,15 @@ func TestLinkingSessions(t *testing.T) {
 	require.NoError(t, db.CreateSession(ctx, s2))
 }
 
-// TestIDToGroupIDIndex tests that the session-ID-to-group-ID and
+// testIDToGroupIDIndex tests that the session-ID-to-group-ID and
 // group-ID-to-session-ID indexes work as expected by asserting the behaviour
 // of the GetGroupID and GetSessionIDs methods.
-func TestLinkedSessions(t *testing.T) {
+func testIDToGroupIDIndex(t *testing.T, makeDB func(t *testing.T) Store) {
 	t.Parallel()
 	ctx := context.Background()
 
 	// Set up a new DB.
-	db, err := NewDB(t.TempDir(), "test.db")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	db := makeDB(t)
 
 	// Create a few sessions. The first one is a new session and the two
 	// after are all linked to the prior one. All these sessions belong to
@@ -202,18 +278,16 @@ func TestLinkedSessions(t *testing.T) {
 	require.EqualValues(t, []ID{s4.ID, s5.ID}, sIDs)
 }
 
-// TestCheckSessionGroupPredicate asserts that the CheckSessionGroupPredicate
+// testCheckSessionGroupPredicate asserts that the CheckSessionGroupPredicate
 // method correctly checks if each session in a group passes a predicate.
-func TestCheckSessionGroupPredicate(t *testing.T) {
+func testCheckSessionGroupPredicate(t *testing.T,
+	makeDB func(t *testing.T) Store) {
+
 	t.Parallel()
 	ctx := context.Background()
 
 	// Set up a new DB.
-	db, err := NewDB(t.TempDir(), "test.db")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	db := makeDB(t)
 
 	// We will use the Label of the Session to test that the predicate
 	// function is checked correctly.

@@ -9,6 +9,8 @@ import (
 // TestPrivacyFlags tests correct serialization and deserialization of
 // privacy flags.
 func TestPrivacyFlags(t *testing.T) {
+	t.Parallel()
+
 	// Unknown flags should return an error.
 	unknownFlags, err := Deserialize(uint64(1 << 63))
 	require.ErrorIs(t, err, ErrUnknownPrivacyFlag)

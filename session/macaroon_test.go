@@ -26,6 +26,8 @@ var (
 )
 
 func TestSuperMacaroonRootKeyID(t *testing.T) {
+	t.Parallel()
+
 	someBytes := [4]byte{02, 03, 44, 88}
 	rootKeyID := NewSuperMacaroonRootKeyID(someBytes)
 	require.True(t, isSuperMacaroonRootKeyID(rootKeyID))
@@ -33,5 +35,7 @@ func TestSuperMacaroonRootKeyID(t *testing.T) {
 }
 
 func TestIsSuperMacaroon(t *testing.T) {
+	t.Parallel()
+
 	require.True(t, IsSuperMacaroon(testMacHex))
 }

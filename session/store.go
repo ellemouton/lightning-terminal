@@ -80,8 +80,9 @@ func (db *DB) CreateSession(_ context.Context, session *Session) error {
 
 		if len(sessionBucket.Get(sessionKey)) != 0 {
 			return fmt.Errorf("session with local public "+
-				"key(%x) already exists",
-				session.LocalPublicKey.SerializeCompressed())
+				"key(%x) already exists: %w",
+				session.LocalPublicKey.SerializeCompressed(),
+				ErrSessionExists)
 		}
 
 		// If this is a linked session (meaning the group ID is
@@ -93,7 +94,8 @@ func (db *DB) CreateSession(_ context.Context, session *Session) error {
 			_, err = getKeyForID(sessionBucket, session.GroupID)
 			if err != nil {
 				return fmt.Errorf("unknown linked session "+
-					"%x: %w", session.GroupID, err)
+					"%x: %w: %w", session.GroupID,
+					ErrUnknownLinkedSession, err)
 			}
 
 			// Fetch all the session IDs for this group. This will
@@ -130,8 +132,10 @@ func (db *DB) CreateSession(_ context.Context, session *Session) error {
 					sess.State == StateInUse {
 
 					return fmt.Errorf("session (id=%x) "+
-						"in group %x is still active",
-						sess.ID, sess.GroupID)
+						"in group %x is still "+
+						"active: %w", sess.ID,
+						sess.GroupID,
+						ErrSessionsInGroupStillActive)
 				}
 			}
 		}
