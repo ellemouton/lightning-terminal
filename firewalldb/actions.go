@@ -601,7 +601,7 @@ func (db *DB) GetActionsReadDB(groupID session.ID,
 
 // allActionsReadDb is an implementation of the ActionsReadDB.
 type allActionsReadDB struct {
-	db          *DB
+	db          ActionDB
 	groupID     session.ID
 	featureName string
 }
