@@ -16,15 +16,15 @@ type SessionDB interface {
 }
 
 type ActionDB interface {
-	AddAction(action *Action) (uint64, error)
+	AddAction(ctx context.Context, action *Action) (uint64, error)
 
-	SetActionState(al *ActionLocator, state ActionState,
-		errReason string) error
+	SetActionState(ctx context.Context, al *ActionLocator,
+		state ActionState, errReason string) error
 
-	ListActions(filterFn ListActionsFilterFn,
+	ListActions(ctx context.Context, filterFn ListActionsFilterFn,
 		query *ListActionsQuery) ([]*Action, uint64, uint64, error)
 
-	ListSessionActions(sessionID session.ID,
+	ListSessionActions(ctx context.Context, sessionID session.ID,
 		filterFn ListActionsFilterFn, query *ListActionsQuery) (
 		[]*Action, uint64, uint64, error)
 

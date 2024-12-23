@@ -739,7 +739,7 @@ func (s *sessionRpcServer) ListActions(ctx context.Context,
 		}
 
 		actions, lastIndex, totalCount, err = db.ListSessionActions(
-			sessionID, filterFn, query,
+			ctx, sessionID, filterFn, query,
 		)
 		if err != nil {
 			return nil, err
@@ -756,7 +756,7 @@ func (s *sessionRpcServer) ListActions(ctx context.Context,
 		}
 	} else {
 		actions, lastIndex, totalCount, err = db.ListActions(
-			filterFn, query,
+			ctx, filterFn, query,
 		)
 		if err != nil {
 			return nil, err

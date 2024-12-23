@@ -117,7 +117,7 @@ type Action struct {
 }
 
 // AddAction serialises and adds an Action to the DB under the given sessionID.
-func (db *DB) AddAction(action *Action) (uint64, error) {
+func (db *DB) AddAction(_ context.Context, action *Action) (uint64, error) {
 	var buf bytes.Buffer
 	if err := SerializeAction(&buf, action); err != nil {
 		return 0, err
@@ -231,8 +231,8 @@ func getAction(actionsBkt *bbolt.Bucket, al *ActionLocator) (*Action, error) {
 
 // SetActionState finds the action specified by the ActionLocator and sets its
 // state to the given state.
-func (db *DB) SetActionState(al *ActionLocator, state ActionState,
-	errorReason string) error {
+func (db *DB) SetActionState(_ context.Context, al *ActionLocator,
+	state ActionState, errorReason string) error {
 
 	if errorReason != "" && state != ActionStateError {
 		return fmt.Errorf("error reason should only be set for " +
@@ -293,7 +293,7 @@ type ListActionsFilterFn func(a *Action, reversed bool) (bool, bool)
 // The indexOffset and maxNum params can be used to control the number of
 // actions returned. The return values are the list of actions, the last index
 // and the total count (iff query.CountTotal is set).
-func (db *DB) ListActions(filterFn ListActionsFilterFn,
+func (db *DB) ListActions(_ context.Context, filterFn ListActionsFilterFn,
 	query *ListActionsQuery) ([]*Action, uint64, uint64, error) {
 
 	var (
@@ -345,7 +345,7 @@ func (db *DB) ListActions(filterFn ListActionsFilterFn,
 
 // ListSessionActions returns a list of the given session's Actions that pass
 // the filterFn requirements.
-func (db *DB) ListSessionActions(sessionID session.ID,
+func (db *DB) ListSessionActions(_ context.Context, sessionID session.ID,
 	filterFn ListActionsFilterFn, query *ListActionsQuery) ([]*Action,
 	uint64, uint64, error) {
 
@@ -552,9 +552,9 @@ func DeserializeAction(r io.Reader, sessionID session.ID) (*Action, error) {
 // ActionsWriteDB is an abstraction over the Actions DB that will allow a
 // caller to add new actions as well as change the values of an existing action.
 type ActionsWriteDB interface {
-	AddAction(action *Action) (uint64, error)
-	SetActionState(al *ActionLocator, state ActionState,
-		errReason string) error
+	AddAction(ctx context.Context, action *Action) (uint64, error)
+	SetActionState(ctx context.Context, al *ActionLocator,
+		state ActionState, errReason string) error
 }
 
 // RuleAction represents a method call that was performed at a certain time at
