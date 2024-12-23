@@ -117,7 +117,7 @@ type Action struct {
 }
 
 // AddAction serialises and adds an Action to the DB under the given sessionID.
-func (db *DB) AddAction(sessionID session.ID, action *Action) (uint64, error) {
+func (db *DB) AddAction(action *Action) (uint64, error) {
 	var buf bytes.Buffer
 	if err := SerializeAction(&buf, action); err != nil {
 		return 0, err
@@ -136,7 +136,7 @@ func (db *DB) AddAction(sessionID session.ID, action *Action) (uint64, error) {
 		}
 
 		sessBucket, err := actionsBucket.CreateBucketIfNotExists(
-			sessionID[:],
+			action.SessionID[:],
 		)
 		if err != nil {
 			return err
@@ -166,7 +166,7 @@ func (db *DB) AddAction(sessionID session.ID, action *Action) (uint64, error) {
 		}
 
 		locator := ActionLocator{
-			SessionID: sessionID,
+			SessionID: action.SessionID,
 			ActionID:  nextActionIndex,
 		}
 
@@ -552,7 +552,7 @@ func DeserializeAction(r io.Reader, sessionID session.ID) (*Action, error) {
 // ActionsWriteDB is an abstraction over the Actions DB that will allow a
 // caller to add new actions as well as change the values of an existing action.
 type ActionsWriteDB interface {
-	AddAction(sessionID session.ID, action *Action) (uint64, error)
+	AddAction(action *Action) (uint64, error)
 	SetActionState(al *ActionLocator, state ActionState,
 		errReason string) error
 }
