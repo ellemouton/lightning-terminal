@@ -122,7 +122,7 @@ func (db *DB) GetKVStores(rule string, groupID session.ID,
 	feature string) KVStores {
 
 	return &kvStores{
-		DB:          db,
+		db:          db,
 		ruleName:    rule,
 		groupID:     groupID,
 		featureName: feature,
@@ -131,7 +131,7 @@ func (db *DB) GetKVStores(rule string, groupID session.ID,
 
 // kvStores implements the rules.KVStores interface.
 type kvStores struct {
-	*DB
+	db          *DB
 	ruleName    string
 	groupID     session.ID
 	featureName string
@@ -140,7 +140,7 @@ type kvStores struct {
 // beginTx starts db transaction. The transaction will be a read or read-write
 // transaction depending on the value of the `writable` parameter.
 func (s *kvStores) beginTx(writable bool) (*kvStoreTx, error) {
-	boltTx, err := s.Begin(writable)
+	boltTx, err := s.db.Begin(writable)
 	if err != nil {
 		return nil, err
 	}

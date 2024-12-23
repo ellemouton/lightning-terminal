@@ -335,8 +335,9 @@ func (c *ChannelRestrict) ToProto() *litrpc.RuleValue {
 // It constructs a new ChannelRestrict instance with these real channel IDs.
 //
 // NOTE: this is part of the Values interface.
-func (c *ChannelRestrict) PseudoToReal(db firewalldb.PrivacyMapDB,
-	flags session.PrivacyFlags) (Values, error) {
+func (c *ChannelRestrict) PseudoToReal(ctx context.Context,
+	db firewalldb.PrivacyMapDB, flags session.PrivacyFlags) (Values,
+	error) {
 
 	restrictList := make([]uint64, len(c.DenyList))
 
@@ -347,7 +348,7 @@ func (c *ChannelRestrict) PseudoToReal(db firewalldb.PrivacyMapDB,
 		return &ChannelRestrict{DenyList: restrictList}, nil
 	}
 
-	err := db.View(func(tx firewalldb.PrivacyMapTx) error {
+	err := db.View(ctx, func(tx firewalldb.PrivacyMapTx) error {
 		for i, chanID := range c.DenyList {
 			real, err := firewalldb.RevealUint64(tx, chanID)
 			if err != nil {
@@ -371,7 +372,8 @@ func (c *ChannelRestrict) PseudoToReal(db firewalldb.PrivacyMapDB,
 // not find in the given PrivacyMapReader.
 //
 // NOTE: this is part of the Values interface.
-func (c *ChannelRestrict) RealToPseudo(db firewalldb.PrivacyMapReader,
+func (c *ChannelRestrict) RealToPseudo(_ context.Context,
+	db firewalldb.PrivacyMapReader,
 	flags session.PrivacyFlags) (Values, map[string]string, error) {
 
 	pseudoIDs := make([]uint64, len(c.DenyList))

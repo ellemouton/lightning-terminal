@@ -11,7 +11,10 @@ import (
 
 type Querier interface {
 	CountActions(ctx context.Context, arg CountActionsParams) (int64, error)
+	GetAllPrivacyPairs(ctx context.Context, groupID int64) ([]GetAllPrivacyPairsRow, error)
 	GetLegacyIDBySessionID(ctx context.Context, id int64) ([]byte, error)
+	GetPseudoForReal(ctx context.Context, arg GetPseudoForRealParams) (string, error)
+	GetRealForPseudo(ctx context.Context, arg GetRealForPseudoParams) (string, error)
 	GetSessionByID(ctx context.Context, id int64) (Session, error)
 	GetSessionByLegacyID(ctx context.Context, legacyID []byte) (Session, error)
 	GetSessionByLocalPublicKey(ctx context.Context, localPublicKey []byte) (Session, error)
@@ -27,6 +30,7 @@ type Querier interface {
 	InsertMacaroonCaveat(ctx context.Context, arg InsertMacaroonCaveatParams) error
 	InsertMacaroonPermission(ctx context.Context, arg InsertMacaroonPermissionParams) error
 	InsertPrivacyFlag(ctx context.Context, arg InsertPrivacyFlagParams) error
+	InsertPrivacyPair(ctx context.Context, arg InsertPrivacyPairParams) error
 	InsertSession(ctx context.Context, arg InsertSessionParams) (int64, error)
 	ListActions(ctx context.Context, arg ListActionsParams) ([]Action, error)
 	ListActionsPaginated(ctx context.Context, arg ListActionsPaginatedParams) ([]Action, error)

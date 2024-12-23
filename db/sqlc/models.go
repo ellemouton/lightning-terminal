@@ -48,6 +48,12 @@ type PrivacyFlag struct {
 	Flag      int32
 }
 
+type PrivacyPair struct {
+	GroupID int64
+	Real    string
+	Pseudo  string
+}
+
 type Session struct {
 	ID              int64
 	LegacyID        []byte

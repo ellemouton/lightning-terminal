@@ -400,7 +400,7 @@ func (r *RuleEnforcer) initRule(ctx context.Context, reqID uint64,
 		privMap := r.newPrivMap(session.GroupID)
 
 		ruleValues, err = ruleValues.PseudoToReal(
-			privMap, session.PrivacyFlags,
+			ctx, privMap, session.PrivacyFlags,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("could not prepare rule "+

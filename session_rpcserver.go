@@ -337,7 +337,7 @@ func (s *sessionRpcServer) AddSession(ctx context.Context,
 		return nil, fmt.Errorf("error starting session: %v", err)
 	}
 
-	rpcSession, err := s.marshalRPCSession(sess)
+	rpcSession, err := s.marshalRPCSession(ctx, sess)
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling session: %v", err)
 	}
@@ -552,7 +552,7 @@ func (s *sessionRpcServer) ListSessions(ctx context.Context,
 		Sessions: make([]*litrpc.Session, len(sessions)),
 	}
 	for idx, sess := range sessions {
-		response.Sessions[idx], err = s.marshalRPCSession(sess)
+		response.Sessions[idx], err = s.marshalRPCSession(ctx, sess)
 		if err != nil {
 			return nil, fmt.Errorf("error marshaling session: %v",
 				err)
@@ -618,7 +618,7 @@ func (s *sessionRpcServer) PrivacyMapConversion(ctx context.Context,
 
 	var res string
 	privMap := s.cfg.privMap(groupID)
-	err = privMap.View(func(tx firewalldb.PrivacyMapTx) error {
+	err = privMap.View(ctx, func(tx firewalldb.PrivacyMapTx) error {
 		var err error
 		if req.RealToPseudo {
 			res, err = tx.RealToPseudo(req.Input)
@@ -856,7 +856,7 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 		linkedGroupSession = groupSess
 
 		privDB := s.cfg.privMap(groupID)
-		err = privDB.View(func(tx firewalldb.PrivacyMapTx) error {
+		err = privDB.View(ctx, func(tx firewalldb.PrivacyMapTx) error {
 			knownPrivMapPairs, err = tx.FetchAllPairs()
 
 			return err
@@ -954,7 +954,7 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 				if privacy {
 					var privMapPairs map[string]string
 					v, privMapPairs, err = v.RealToPseudo(
-						knownPrivMapPairs, privacyFlags,
+						ctx, knownPrivMapPairs, privacyFlags,
 					)
 					if err != nil {
 						return nil, err
@@ -1166,7 +1166,7 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 
 	// Register all the privacy map pairs for this session ID.
 	privDB := s.cfg.privMap(sess.GroupID)
-	err = privDB.Update(func(tx firewalldb.PrivacyMapTx) error {
+	err = privDB.Update(ctx, func(tx firewalldb.PrivacyMapTx) error {
 		for r, p := range newPrivMapPairs {
 			err := tx.NewPair(r, p)
 			if err != nil {
@@ -1201,7 +1201,7 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 		return nil, fmt.Errorf("error starting session: %v", err)
 	}
 
-	rpcSession, err := s.marshalRPCSession(sess)
+	rpcSession, err := s.marshalRPCSession(ctx, sess)
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling session: %v", err)
 	}
@@ -1230,7 +1230,7 @@ func (s *sessionRpcServer) ListAutopilotSessions(ctx context.Context,
 		Sessions: make([]*litrpc.Session, len(sessions)),
 	}
 	for idx, sess := range sessions {
-		response.Sessions[idx], err = s.marshalRPCSession(sess)
+		response.Sessions[idx], err = s.marshalRPCSession(ctx, sess)
 		if err != nil {
 			return nil, fmt.Errorf("error marshaling session: %v",
 				err)
@@ -1359,8 +1359,8 @@ func marshalPerms(perms map[string][]bakery.Op) []*litrpc.Permissions {
 }
 
 // marshalRPCSession converts a session into its RPC counterpart.
-func (s *sessionRpcServer) marshalRPCSession(sess *session.Session) (
-	*litrpc.Session, error) {
+func (s *sessionRpcServer) marshalRPCSession(ctx context.Context,
+	sess *session.Session) (*litrpc.Session, error) {
 
 	rpcState, err := marshalRPCState(sess.State)
 	if err != nil {
@@ -1417,7 +1417,7 @@ func (s *sessionRpcServer) marshalRPCSession(sess *session.Session) (
 							sess.GroupID,
 						)
 						val, err = val.PseudoToReal(
-							db, sess.PrivacyFlags,
+							ctx, db, sess.PrivacyFlags,
 						)
 						if err != nil {
 							return nil, err
