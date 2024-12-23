@@ -14,4 +14,8 @@ var (
 
 	ErrSessionsInGroupStillActive = errors.New("sessions in group still " +
 		"active")
+
+	ErrSessionUnknown = errors.New("session unknown")
+
+	ErrGroupUnknown = errors.New("group unknown")
 )

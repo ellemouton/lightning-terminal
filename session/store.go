@@ -409,8 +409,8 @@ func (db *DB) GetGroupID(_ context.Context, sessionID ID) (ID, error) {
 
 		sessionIDBkt := idIndex.Bucket(sessionID[:])
 		if sessionIDBkt == nil {
-			return fmt.Errorf("no index entry for session ID: %x",
-				sessionID)
+			return fmt.Errorf("no index entry for session ID: %x: "+
+				"%w", sessionID, ErrSessionUnknown)
 		}
 
 		groupIDBytes := sessionIDBkt.Get(groupIDKey)
@@ -526,14 +526,13 @@ func getSessionIDs(sessionBkt *bbolt.Bucket, groupID ID) ([]ID, error) {
 
 	groupIDBkt := groupIndexBkt.Bucket(groupID[:])
 	if groupIDBkt == nil {
-		return nil, fmt.Errorf("no sessions for group ID %v",
-			groupID)
+		return nil, ErrGroupUnknown
 	}
 
 	sessionIDsBkt := groupIDBkt.Bucket(sessionIDKey)
 	if sessionIDsBkt == nil {
-		return nil, fmt.Errorf("no sessions for group ID %v",
-			groupID)
+		return nil, fmt.Errorf("no sessions for group ID %v: %w",
+			groupID, ErrGroupUnknown)
 	}
 
 	err := sessionIDsBkt.ForEach(func(_,

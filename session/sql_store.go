@@ -602,6 +602,9 @@ func unmarshalSession(ctx context.Context, db SQLQueries,
 		privFlags = unmarshalPrivacyFlags(privacyFlags)
 	}
 
+	var pairingSecret [14]byte
+	copy(pairingSecret[:], dbSess.PairingSecret)
+
 	return &Session{
 		ID:                legacyID,
 		Label:             dbSess.Label,
@@ -613,7 +616,7 @@ func unmarshalSession(ctx context.Context, db SQLQueries,
 		ServerAddr:        dbSess.ServerAddress,
 		DevServer:         dbSess.DevServer,
 		MacaroonRootKey:   uint64(dbSess.MacaroonRootKey),
-		PairingSecret:     [14]byte{},
+		PairingSecret:     pairingSecret,
 		LocalPrivateKey:   localPriv,
 		LocalPublicKey:    localPub,
 		RemotePublicKey:   remotePub,

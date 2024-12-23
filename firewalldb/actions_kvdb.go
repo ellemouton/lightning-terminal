@@ -53,8 +53,15 @@ var (
 )
 
 // AddAction serialises and adds an Action to the DB under the given sessionID.
-func (db *DB) AddAction(_ context.Context, action *Action) (ActionLocator,
+func (db *DB) AddAction(ctx context.Context, action *Action) (ActionLocator,
 	error) {
+
+	// First, check that the associated session actually exists in the
+	// sessions DB.
+	_, err := db.sessionIDIndex.GetGroupID(ctx, action.SessionID)
+	if err != nil {
+		return nil, err
+	}
 
 	var buf bytes.Buffer
 	if err := SerializeAction(&buf, action); err != nil {
@@ -62,7 +69,7 @@ func (db *DB) AddAction(_ context.Context, action *Action) (ActionLocator,
 	}
 
 	var locator kvdbActionLocator
-	err := db.DB.Update(func(tx *bbolt.Tx) error {
+	err = db.DB.Update(func(tx *bbolt.Tx) error {
 		mainActionsBucket, err := getBucket(tx, actionsBucketKey)
 		if err != nil {
 			return err
@@ -280,7 +287,7 @@ func (db *DB) ListActions(ctx context.Context, query *ListActionsQuery,
 
 	if opts.sessionID != session.EmptyID {
 		return db.listSessionActions(
-			opts.sessionID, filterFn, query,
+			ctx, opts.sessionID, filterFn, query,
 		)
 	}
 	if opts.groupID != session.EmptyID {
@@ -341,16 +348,22 @@ func (db *DB) ListActions(ctx context.Context, query *ListActionsQuery,
 
 // listSessionActions returns a list of the given session's Actions that pass
 // the filterFn requirements.
-func (db *DB) listSessionActions(sessionID session.ID,
+func (db *DB) listSessionActions(ctx context.Context, sessionID session.ID,
 	filterFn listActionsFilterFn, query *ListActionsQuery) ([]*Action,
 	uint64, uint64, error) {
+
+	// First, check that this session actually exists in the sessions DB.
+	_, err := db.sessionIDIndex.GetGroupID(ctx, sessionID)
+	if err != nil {
+		return nil, 0, 0, err
+	}
 
 	var (
 		actions    []*Action
 		totalCount uint64
 		lastIndex  uint64
 	)
-	err := db.View(func(tx *bbolt.Tx) error {
+	err = db.View(func(tx *bbolt.Tx) error {
 		mainActionsBucket, err := getBucket(tx, actionsBucketKey)
 		if err != nil {
 			return err

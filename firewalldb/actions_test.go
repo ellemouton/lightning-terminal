@@ -2,48 +2,31 @@ package firewalldb
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/lightninglabs/lightning-terminal/db"
+	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightningnetwork/lnd/clock"
 	"github.com/stretchr/testify/require"
 )
 
-var (
-	sessionID1 = intToSessionID(1)
-	sessionID2 = intToSessionID(2)
+var testNow = time.Unix(1, 0)
 
-	action1 = &Action{
-		SessionID:          sessionID1,
-		ActorName:          "Autopilot",
-		FeatureName:        "auto-fees",
-		Trigger:            "fee too low",
-		Intent:             "increase fee",
-		StructuredJsonData: "{\"something\":\"nothing\"}",
-		RPCMethod:          "UpdateChanPolicy",
-		RPCParamsJson:      []byte("new fee"),
-		AttemptedAt:        time.Unix(32100, 0),
-		State:              ActionStateDone,
-	}
-
-	action2 = &Action{
-		SessionID:     sessionID2,
-		ActorName:     "Autopilot",
-		FeatureName:   "rebalancer",
-		Trigger:       "channels not balanced",
-		Intent:        "balance",
-		RPCMethod:     "SendToRoute",
-		RPCParamsJson: []byte("hops, amount"),
-		AttemptedAt:   time.Unix(12300, 0),
-		State:         ActionStateInit,
-	}
-)
+type testActionDB struct {
+	ActionDB
+	session.Store
+}
 
 func TestActionsDB(t *testing.T) {
+	time.Local = time.UTC
+
 	testList := []struct {
 		name string
-		test func(t *testing.T, makeDB func(t *testing.T) ActionDB)
+		test func(t *testing.T,
+			makeDB func(t *testing.T) testActionDB)
 	}{
 		{
 			name: "BasicSessionStore",
@@ -59,14 +42,25 @@ func TestActionsDB(t *testing.T) {
 		},
 	}
 
-	makeKeyValueDB := func(t *testing.T) ActionDB {
-		kvdb, err := NewDB(t.TempDir(), "test.db", nil)
+	makeKeyValueDBs := func(t *testing.T) testActionDB {
+		tempDir := t.TempDir()
+
+		sessionsDB, err := session.NewDB(tempDir, "test_sessions.db")
 		require.NoError(t, err)
 		t.Cleanup(func() {
-			require.NoError(t, kvdb.Close())
+			require.NoError(t, sessionsDB.Close())
 		})
 
-		return kvdb
+		actionDB, err := NewDB(tempDir, "test_actions.db", sessionsDB)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, actionDB.Close())
+		})
+
+		return testActionDB{
+			ActionDB: actionDB,
+			Store:    sessionsDB,
+		}
 	}
 
 	// First create a shared Postgres instance so we don't spawn a new
@@ -78,29 +72,94 @@ func TestActionsDB(t *testing.T) {
 		pgFixture.TearDown(t)
 	})
 
+	makeSQLDB := func(t *testing.T, sqlite bool) testActionDB {
+		var sqlDB *db.BaseDB
+		if sqlite {
+			sqlDB = db.NewTestSqliteDB(t).BaseDB
+		} else {
+			sqlDB = db.NewTestPostgresDB(t, pgFixture).BaseDB
+		}
+
+		sessionsExecutor := db.NewTransactionExecutor(
+			sqlDB, func(tx *sql.Tx) session.SQLQueries {
+				return sqlDB.WithTx(tx)
+			},
+		)
+
+		actionsExecutor := db.NewTransactionExecutor(
+			sqlDB, func(tx *sql.Tx) SQLActionQueries {
+				return sqlDB.WithTx(tx)
+			},
+		)
+
+		testClock := clock.NewTestClock(testNow)
+
+		return testActionDB{
+			ActionDB: NewSQLActionsStore(actionsExecutor, testClock),
+			Store:    session.NewSQLStore(sessionsExecutor, testClock),
+		}
+	}
+
 	for _, test := range testList {
 		test := test
 		t.Run(test.name+"_KV", func(t *testing.T) {
-			test.test(t, makeKeyValueDB)
+			test.test(t, makeKeyValueDBs)
+		})
+
+		// TODO(elle): fix sqlite time stamp issue.
+		//t.Run(test.name+"_SQLite", func(t *testing.T) {
+		//	test.test(t, func(t *testing.T) Store {
+		//		return makeSQLDB(t, true)
+		//	})
+		//})
+
+		t.Run(test.name+"_Postgres", func(t *testing.T) {
+			test.test(t, func(t *testing.T) testActionDB {
+				return makeSQLDB(t, false)
+			})
 		})
 	}
 }
 
 // testActionStorage tests that the ActionsListDB CRUD logic.
-func testActionStorage(t *testing.T, makeDB func(t *testing.T) ActionDB) {
+func testActionStorage(t *testing.T, makeDB func(t *testing.T) testActionDB) {
 	t.Parallel()
 	ctx := context.Background()
 
 	db := makeDB(t)
 
+	session1 := newSession(t, db.Store, nil)
+	session2 := newSession(t, db.Store, nil)
+	action1 := makeAction(session1.ID, ActionStateDone)
+	action2 := makeAction(session2.ID, ActionStateInit)
+
+	// If the session does not yet exist, then we expect an error if we
+	// list actions by session ID.
+	_, _, _, err := db.ListActions(
+		ctx, nil, WithSessionID(session1.ID),
+		WithState(ActionStateDone),
+	)
+	require.ErrorIs(t, err, session.ErrSessionUnknown)
+
+	// Adding an action for a session that does not exist yet also results
+	// in an error.
+	_, err = db.AddAction(ctx, action1)
+	require.ErrorIs(t, err, session.ErrSessionUnknown)
+
+	// Insert a sessions 1 and 2.
+	require.NoError(t, db.CreateSession(ctx, session1))
+	require.NoError(t, db.CreateSession(ctx, session2))
+
 	actions, _, _, err := db.ListActions(
-		ctx, nil, WithSessionID(sessionID1), WithState(ActionStateDone),
+		ctx, nil, WithSessionID(session1.ID),
+		WithState(ActionStateDone),
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 0)
 
 	actions, _, _, err = db.ListActions(
-		ctx, nil, WithSessionID(sessionID2), WithState(ActionStateDone),
+		ctx, nil, WithSessionID(session2.ID),
+		WithState(ActionStateDone),
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 0)
@@ -114,14 +173,16 @@ func testActionStorage(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	require.NoError(t, err)
 
 	actions, _, _, err = db.ListActions(
-		ctx, nil, WithSessionID(sessionID1), WithState(ActionStateDone),
+		ctx, nil, WithSessionID(session1.ID),
+		WithState(ActionStateDone),
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
-	require.Equal(t, action1, actions[0])
+	assertEqualActions(t, action1, actions[0])
 
 	actions, _, _, err = db.ListActions(
-		ctx, nil, WithSessionID(sessionID2), WithState(ActionStateDone),
+		ctx, nil, WithSessionID(session2.ID),
+		WithState(ActionStateDone),
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 0)
@@ -130,12 +191,13 @@ func testActionStorage(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	require.NoError(t, err)
 
 	actions, _, _, err = db.ListActions(
-		ctx, nil, WithSessionID(sessionID2), WithState(ActionStateDone),
+		ctx, nil, WithSessionID(session2.ID),
+		WithState(ActionStateDone),
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
 	action2.State = ActionStateDone
-	require.Equal(t, action2, actions[0])
+	assertEqualActions(t, action2, actions[0])
 
 	_, err = db.AddAction(ctx, action1)
 	require.NoError(t, err)
@@ -162,26 +224,33 @@ func testActionStorage(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 
 	actions, _, _, err = db.ListActions(
 		ctx, nil,
-		WithSessionID(sessionID2),
+		WithSessionID(session2.ID),
 		WithState(ActionStateError),
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
 	action2.State = ActionStateError
 	action2.ErrorReason = "fail whale"
-	require.Equal(t, action2, actions[0])
+	assertEqualActions(t, action2, actions[0])
 }
 
 // testListActions tests some ListAction options.
 // TODO(elle): cover more test cases here.
-func testListActions(t *testing.T, makeDB func(t *testing.T) ActionDB) {
+func testListActions(t *testing.T, makeDB func(t *testing.T) testActionDB) {
 	t.Parallel()
 	ctx := context.Background()
 
 	db := makeDB(t)
 
-	sessionID1 := [4]byte{1, 1, 1, 1}
-	sessionID2 := [4]byte{2, 2, 2, 2}
+	var (
+		session1   = newSession(t, db.Store, nil)
+		session2   = newSession(t, db.Store, nil)
+		sessionID1 = session1.ID
+		sessionID2 = session2.ID
+	)
+
+	require.NoError(t, db.CreateSession(ctx, session1))
+	require.NoError(t, db.CreateSession(ctx, session2))
 
 	actionIds := 0
 	addAction := func(sessionID [4]byte) {
@@ -195,7 +264,7 @@ func testListActions(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 			StructuredJsonData: "{\"something\":\"nothing\"}",
 			RPCMethod:          "UpdateChanPolicy",
 			RPCParamsJson:      []byte("new fee"),
-			AttemptedAt:        time.Unix(32100, 0),
+			AttemptedAt:        time.Unix(32100+int64(actionIds), 0),
 			State:              ActionStateDone,
 		}
 
@@ -211,10 +280,10 @@ func testListActions(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	assertActions := func(dbActions []*Action, al []*action) {
 		require.Len(t, dbActions, len(al))
 		for i, a := range al {
+			require.Equal(t, a.actionID, dbActions[i].FeatureName)
 			require.EqualValues(
 				t, a.sessionID, dbActions[i].SessionID,
 			)
-			require.Equal(t, a.actionID, dbActions[i].FeatureName)
 		}
 	}
 
@@ -365,18 +434,24 @@ func testListActions(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 
 // testListGroupActions tests that the ListGroupActions correctly returns all
 // actions in a particular session group.
-func testListGroupActions(t *testing.T, makeDB func(t *testing.T) ActionDB) {
+func testListGroupActions(t *testing.T,
+	makeDB func(t *testing.T) testActionDB) {
+
 	t.Parallel()
 	ctx := context.Background()
 
 	db := makeDB(t)
 
-	group1 := intToSessionID(0)
+	// The given group does not yet exist, so ListActions should fail.
+	_, _, _, err := db.ListActions(ctx, nil, WithGroupID(intToSessionID(1)))
+	require.ErrorIs(t, err, session.ErrGroupUnknown)
 
-	// Link session 1 and session 2 to group 1.
-	index := NewMockSessionDB()
-	index.AddPair(sessionID1, group1)
-	index.AddPair(sessionID2, group1)
+	// Link session 1 and session 2 to group 1 and persist them.
+	session1 := newSession(t, db.Store, nil)
+	session2 := newSession(t, db.Store, &session1.ID)
+	require.NoError(t, db.CreateSession(ctx, session1))
+
+	group1 := session1.GroupID
 
 	// There should not be any actions in group 1 yet.
 	al, _, _, err := db.ListActions(ctx, nil, WithGroupID(group1))
@@ -384,6 +459,7 @@ func testListGroupActions(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	require.Empty(t, al)
 
 	// Add an action under session 1.
+	action1 := makeAction(session1.ID, ActionStateDone)
 	_, err = db.AddAction(ctx, action1)
 	require.NoError(t, err)
 
@@ -391,9 +467,14 @@ func testListGroupActions(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	al, _, _, err = db.ListActions(ctx, nil, WithGroupID(group1))
 	require.NoError(t, err)
 	require.Len(t, al, 1)
-	require.Equal(t, sessionID1, al[0].SessionID)
+	require.Equal(t, session1.ID, al[0].SessionID)
+
+	// First revoke the first session before persisting the linked session.
+	require.NoError(t, db.RevokeSession(ctx, session1.LocalPublicKey))
+	require.NoError(t, db.CreateSession(ctx, session2))
 
 	// Add an action under session 2.
+	action2 := makeAction(session2.ID, ActionStateInit)
 	_, err = db.AddAction(ctx, action2)
 	require.NoError(t, err)
 
@@ -401,6 +482,44 @@ func testListGroupActions(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	al, _, _, err = db.ListActions(ctx, nil, WithGroupID(group1))
 	require.NoError(t, err)
 	require.Len(t, al, 2)
-	require.Equal(t, sessionID1, al[0].SessionID)
-	require.Equal(t, sessionID2, al[1].SessionID)
+	require.Equal(t, session1.ID, al[0].SessionID)
+	require.Equal(t, session2.ID, al[1].SessionID)
+}
+
+func newSession(t *testing.T, db session.Store,
+	linkedGroupID *session.ID) *session.Session {
+
+	id, priv, err := db.GetUnusedIDAndKeyPair(context.Background())
+	require.NoError(t, err)
+
+	session, err := session.NewSession(
+		id, priv, "", session.TypeMacaroonAdmin,
+		time.Date(99999, 1, 1, 0, 0, 0, 0, time.UTC),
+		"foo.bar.baz:1234", true, nil, nil, nil, true, linkedGroupID,
+		[]session.PrivacyFlag{session.ClearPubkeys},
+	)
+	require.NoError(t, err)
+
+	return session
+}
+
+func makeAction(sessionID session.ID, state ActionState) *Action {
+	return &Action{
+		SessionID:          sessionID,
+		ActorName:          "Autopilot",
+		FeatureName:        "auto-fees",
+		Trigger:            "fee too low",
+		Intent:             "increase fee",
+		StructuredJsonData: "{\"something\":\"nothing\"}",
+		RPCMethod:          "UpdateChanPolicy",
+		RPCParamsJson:      []byte("new fee"),
+		AttemptedAt:        time.Now().In(time.UTC),
+		State:              state,
+	}
+}
+
+func assertEqualActions(t *testing.T, expected, got *Action) {
+	require.Equal(t, expected.AttemptedAt.Unix(), got.AttemptedAt.Unix())
+	got.AttemptedAt = expected.AttemptedAt
+	require.Equal(t, expected, got)
 }
