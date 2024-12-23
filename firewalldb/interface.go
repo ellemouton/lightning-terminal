@@ -16,9 +16,9 @@ type SessionDB interface {
 }
 
 type ActionDB interface {
-	AddAction(ctx context.Context, action *Action) (uint64, error)
+	AddAction(ctx context.Context, action *Action) (ActionLocator, error)
 
-	SetActionState(ctx context.Context, al *ActionLocator,
+	SetActionState(ctx context.Context, al ActionLocator,
 		state ActionState, errReason string) error
 
 	ListActions(_ context.Context, query *ListActionsQuery,
