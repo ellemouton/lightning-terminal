@@ -387,6 +387,27 @@ func (db *DB) ListSessionActions(_ context.Context, sessionID session.ID,
 	return actions, lastIndex, totalCount, nil
 }
 
+func (db *DB) ListCompletedGroupActions(ctx context.Context,
+	groupID session.ID) ([]*Action, error) {
+
+	return db.ListGroupActions(
+		ctx, groupID, func(a *Action, _ bool) (bool, bool) {
+			return a.State == ActionStateDone, true
+		},
+	)
+}
+
+func (db *DB) ListCompletedGroupFeatureActions(ctx context.Context,
+	groupID session.ID, featureName string) ([]*Action, error) {
+
+	return db.ListGroupActions(
+		ctx, groupID, func(action *Action, _ bool) (bool, bool) {
+			return action.State == ActionStateDone &&
+				action.FeatureName == featureName, true
+		},
+	)
+}
+
 // ListGroupActions returns a list of the given session group's Actions that
 // pass the filterFn requirements.
 //
@@ -632,11 +653,7 @@ var _ ActionsListDB = (*groupActionsReadDB)(nil)
 func (s *groupActionsReadDB) ListActions(ctx context.Context) ([]*RuleAction,
 	error) {
 
-	sessionActions, err := s.db.ListGroupActions(
-		ctx, s.groupID, func(a *Action, _ bool) (bool, bool) {
-			return a.State == ActionStateDone, true
-		},
-	)
+	sessionActions, err := s.db.ListCompletedGroupActions(ctx, s.groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -663,11 +680,8 @@ var _ ActionsListDB = (*groupFeatureActionsReadDB)(nil)
 func (a *groupFeatureActionsReadDB) ListActions(ctx context.Context) (
 	[]*RuleAction, error) {
 
-	featureActions, err := a.db.ListGroupActions(
-		ctx, a.groupID, func(action *Action, _ bool) (bool, bool) {
-			return action.State == ActionStateDone &&
-				action.FeatureName == a.featureName, true
-		},
+	featureActions, err := a.db.ListCompletedGroupFeatureActions(
+		ctx, a.groupID, a.featureName,
 	)
 	if err != nil {
 		return nil, err

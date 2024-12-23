@@ -30,4 +30,10 @@ type ActionDB interface {
 
 	ListGroupActions(ctx context.Context, groupID session.ID,
 		filterFn ListActionsFilterFn) ([]*Action, error)
+
+	ListCompletedGroupActions(ctx context.Context, groupID session.ID) (
+		[]*Action, error)
+
+	ListCompletedGroupFeatureActions(ctx context.Context,
+		groupID session.ID, featureName string) ([]*Action, error)
 }
