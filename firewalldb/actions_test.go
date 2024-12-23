@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightninglabs/lightning-terminal/db"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,34 +40,70 @@ var (
 	}
 )
 
-// TestActionStorage tests that the ActionsListDB CRUD logic.
-func TestActionStorage(t *testing.T) {
+func TestActionsDB(t *testing.T) {
+	testList := []struct {
+		name string
+		test func(t *testing.T, makeDB func(t *testing.T) ActionDB)
+	}{
+		{
+			name: "BasicSessionStore",
+			test: testActionStorage,
+		},
+		{
+			name: "ListActions",
+			test: testListActions,
+		},
+		{
+			name: "ListGroupActions",
+			test: testListGroupActions,
+		},
+	}
+
+	makeKeyValueDB := func(t *testing.T) ActionDB {
+		kvdb, err := NewDB(t.TempDir(), "test.db", nil)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, kvdb.Close())
+		})
+
+		return kvdb
+	}
+
+	// First create a shared Postgres instance so we don't spawn a new
+	// docker container for each test.
+	pgFixture := db.NewTestPgFixture(
+		t, db.DefaultPostgresFixtureLifetime,
+	)
+	t.Cleanup(func() {
+		pgFixture.TearDown(t)
+	})
+
+	for _, test := range testList {
+		test := test
+		t.Run(test.name+"_KV", func(t *testing.T) {
+			test.test(t, makeKeyValueDB)
+		})
+	}
+}
+
+// testActionStorage tests that the ActionsListDB CRUD logic.
+func testActionStorage(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	t.Parallel()
 	ctx := context.Background()
 
-	tmpDir := t.TempDir()
+	db := makeDB(t)
 
-	db, err := NewDB(tmpDir, "test.db", nil)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
-
-	actionsStateFilterFn := func(state ActionState) ListActionsFilterFn {
-		return func(a *Action, _ bool) (bool, bool) {
-			return a.State == state, true
-		}
-	}
-
-	actions, _, _, err := db.ListSessionActions(
-		ctx, sessionID1, actionsStateFilterFn(ActionStateDone), nil,
+	actions, _, _, err := db.ListActions(
+		ctx, nil, WithSessionID(sessionID1), WithState(ActionStateDone),
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 0)
 
-	actions, _, _, err = db.ListSessionActions(
-		ctx, sessionID2, actionsStateFilterFn(ActionStateDone), nil,
+	actions, _, _, err = db.ListActions(
+		ctx, nil, WithSessionID(sessionID2), WithState(ActionStateDone),
 	)
+	require.NoError(t, err)
+	require.Len(t, actions, 0)
 	require.NoError(t, err)
 	require.Len(t, actions, 0)
 
@@ -78,15 +115,15 @@ func TestActionStorage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), id)
 
-	actions, _, _, err = db.ListSessionActions(
-		ctx, sessionID1, actionsStateFilterFn(ActionStateDone), nil,
+	actions, _, _, err = db.ListActions(
+		ctx, nil, WithSessionID(sessionID1), WithState(ActionStateDone),
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
 	require.Equal(t, action1, actions[0])
 
-	actions, _, _, err = db.ListSessionActions(
-		ctx, sessionID2, actionsStateFilterFn(ActionStateDone), nil,
+	actions, _, _, err = db.ListActions(
+		ctx, nil, WithSessionID(sessionID2), WithState(ActionStateDone),
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 0)
@@ -99,8 +136,8 @@ func TestActionStorage(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	actions, _, _, err = db.ListSessionActions(
-		ctx, sessionID2, actionsStateFilterFn(ActionStateDone), nil,
+	actions, _, _, err = db.ListActions(
+		ctx, nil, WithSessionID(sessionID2), WithState(ActionStateDone),
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
@@ -114,7 +151,7 @@ func TestActionStorage(t *testing.T) {
 	// Check that providing no session id and no filter function returns
 	// all the actions.
 	actions, _, _, err = db.ListActions(
-		ctx, nil, &ListActionsQuery{
+		ctx, &ListActionsQuery{
 			IndexOffset: 0,
 			MaxNum:      100,
 			Reversed:    false,
@@ -141,8 +178,10 @@ func TestActionStorage(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	actions, _, _, err = db.ListSessionActions(
-		ctx, sessionID2, actionsStateFilterFn(ActionStateError), nil,
+	actions, _, _, err = db.ListActions(
+		ctx, nil,
+		WithSessionID(sessionID2),
+		WithState(ActionStateError),
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
@@ -151,17 +190,13 @@ func TestActionStorage(t *testing.T) {
 	require.Equal(t, action2, actions[0])
 }
 
-// TestListActions tests some ListAction options.
+// testListActions tests some ListAction options.
 // TODO(elle): cover more test cases here.
-func TestListActions(t *testing.T) {
+func testListActions(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	t.Parallel()
 	ctx := context.Background()
 
-	db, err := NewDB(t.TempDir(), "test.db", nil)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	db := makeDB(t)
 
 	sessionID1 := [4]byte{1, 1, 1, 1}
 	sessionID2 := [4]byte{2, 2, 2, 2}
@@ -207,7 +242,7 @@ func TestListActions(t *testing.T) {
 	addAction(sessionID1)
 	addAction(sessionID2)
 
-	actions, lastIndex, totalCount, err := db.ListActions(ctx, nil, nil)
+	actions, lastIndex, totalCount, err := db.ListActions(ctx, nil)
 	require.NoError(t, err)
 	require.Len(t, actions, 5)
 	require.EqualValues(t, 5, lastIndex)
@@ -224,7 +259,7 @@ func TestListActions(t *testing.T) {
 		Reversed: true,
 	}
 
-	actions, lastIndex, totalCount, err = db.ListActions(ctx, nil, query)
+	actions, lastIndex, totalCount, err = db.ListActions(ctx, query)
 	require.NoError(t, err)
 	require.Len(t, actions, 5)
 	require.EqualValues(t, 1, lastIndex)
@@ -238,7 +273,7 @@ func TestListActions(t *testing.T) {
 	})
 
 	actions, lastIndex, totalCount, err = db.ListActions(
-		ctx, nil, &ListActionsQuery{
+		ctx, &ListActionsQuery{
 			CountAll: true,
 		},
 	)
@@ -255,7 +290,7 @@ func TestListActions(t *testing.T) {
 	})
 
 	actions, lastIndex, totalCount, err = db.ListActions(
-		ctx, nil, &ListActionsQuery{
+		ctx, &ListActionsQuery{
 			CountAll: true,
 			Reversed: true,
 		},
@@ -278,7 +313,7 @@ func TestListActions(t *testing.T) {
 	addAction(sessionID1)
 	addAction(sessionID2)
 
-	actions, lastIndex, totalCount, err = db.ListActions(ctx, nil, nil)
+	actions, lastIndex, totalCount, err = db.ListActions(ctx, nil)
 	require.NoError(t, err)
 	require.Len(t, actions, 10)
 	require.EqualValues(t, 10, lastIndex)
@@ -297,7 +332,7 @@ func TestListActions(t *testing.T) {
 	})
 
 	actions, lastIndex, totalCount, err = db.ListActions(
-		ctx, nil, &ListActionsQuery{
+		ctx, &ListActionsQuery{
 			MaxNum:   3,
 			CountAll: true,
 		},
@@ -313,7 +348,7 @@ func TestListActions(t *testing.T) {
 	})
 
 	actions, lastIndex, totalCount, err = db.ListActions(
-		ctx, nil, &ListActionsQuery{
+		ctx, &ListActionsQuery{
 			MaxNum:      3,
 			IndexOffset: 3,
 		},
@@ -329,7 +364,7 @@ func TestListActions(t *testing.T) {
 	})
 
 	actions, lastIndex, totalCount, err = db.ListActions(
-		ctx, nil, &ListActionsQuery{
+		ctx, &ListActionsQuery{
 			MaxNum:      3,
 			IndexOffset: 3,
 			CountAll:    true,
@@ -346,11 +381,13 @@ func TestListActions(t *testing.T) {
 	})
 }
 
-// TestListGroupActions tests that the ListGroupActions correctly returns all
+// testListGroupActions tests that the ListGroupActions correctly returns all
 // actions in a particular session group.
-func TestListGroupActions(t *testing.T) {
+func testListGroupActions(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	t.Parallel()
 	ctx := context.Background()
+
+	db := makeDB(t)
 
 	group1 := intToSessionID(0)
 
@@ -359,14 +396,8 @@ func TestListGroupActions(t *testing.T) {
 	index.AddPair(sessionID1, group1)
 	index.AddPair(sessionID2, group1)
 
-	db, err := NewDB(t.TempDir(), "test.db", index)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
-
 	// There should not be any actions in group 1 yet.
-	al, err := db.ListGroupActions(ctx, group1, nil)
+	al, _, _, err := db.ListActions(ctx, nil, WithGroupID(group1))
 	require.NoError(t, err)
 	require.Empty(t, al)
 
@@ -375,7 +406,7 @@ func TestListGroupActions(t *testing.T) {
 	require.NoError(t, err)
 
 	// There should now be one action in the group.
-	al, err = db.ListGroupActions(ctx, group1, nil)
+	al, _, _, err = db.ListActions(ctx, nil, WithGroupID(group1))
 	require.NoError(t, err)
 	require.Len(t, al, 1)
 	require.Equal(t, sessionID1, al[0].SessionID)
@@ -385,7 +416,7 @@ func TestListGroupActions(t *testing.T) {
 	require.NoError(t, err)
 
 	// There should now be actions in the group.
-	al, err = db.ListGroupActions(ctx, group1, nil)
+	al, _, _, err = db.ListActions(ctx, nil, WithGroupID(group1))
 	require.NoError(t, err)
 	require.Len(t, al, 2)
 	require.Equal(t, sessionID1, al[0].SessionID)

@@ -21,15 +21,8 @@ type ActionDB interface {
 	SetActionState(ctx context.Context, al *ActionLocator,
 		state ActionState, errReason string) error
 
-	ListActions(ctx context.Context, filterFn ListActionsFilterFn,
-		query *ListActionsQuery) ([]*Action, uint64, uint64, error)
-
-	ListSessionActions(ctx context.Context, sessionID session.ID,
-		filterFn ListActionsFilterFn, query *ListActionsQuery) (
-		[]*Action, uint64, uint64, error)
-
-	ListGroupActions(ctx context.Context, groupID session.ID,
-		filterFn ListActionsFilterFn) ([]*Action, error)
+	ListActions(_ context.Context, query *ListActionsQuery,
+		options ...ListActionOption) ([]*Action, uint64, uint64, error)
 
 	ListCompletedGroupActions(ctx context.Context, groupID session.ID) (
 		[]*Action, error)

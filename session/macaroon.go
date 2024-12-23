@@ -19,6 +19,8 @@ var (
 	// SuperMacaroonRootKeyPrefix is the prefix we set on a super macaroon's
 	// root key to clearly mark it as such.
 	SuperMacaroonRootKeyPrefix = [4]byte{0xFF, 0xEE, 0xDD, 0xCC}
+
+	EmptyID ID
 )
 
 // ID represents the id of a session.
