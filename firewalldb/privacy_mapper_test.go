@@ -2,25 +2,137 @@ package firewalldb
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/lightninglabs/lightning-terminal/db"
+	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/stretchr/testify/require"
 )
 
-// TestPrivacyMapStorage tests the privacy mapper CRUD logic.
-func TestPrivacyMapStorage(t *testing.T) {
+type testPrivPairDB struct {
+	PrivMapDBCreator
+	session.Store
+}
+
+func TestPrivacyPairsDB(t *testing.T) {
+	time.Local = time.UTC
+
+	testList := []struct {
+		name string
+		test func(t *testing.T,
+			makeDB func(t *testing.T) testPrivPairDB)
+	}{
+		{
+			name: "PrivacyMapStorage",
+			test: testPrivacyMapStorage,
+		},
+		{
+			name: "PrivacyMapTxs",
+			test: testPrivacyMapTxs,
+		},
+	}
+
+	makeKeyValueDBs := func(t *testing.T) testPrivPairDB {
+		tempDir := t.TempDir()
+
+		sessionsDB, err := session.NewDB(tempDir, "test_sessions.db")
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, sessionsDB.Close())
+		})
+
+		privPairDB, err := NewDB(
+			tempDir, "test_priv_pairs.db", sessionsDB,
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, privPairDB.Close())
+		})
+
+		return testPrivPairDB{
+			PrivMapDBCreator: privPairDB,
+			Store:            sessionsDB,
+		}
+	}
+
+	// First create a shared Postgres instance so we don't spawn a new
+	// docker container for each test.
+	pgFixture := db.NewTestPgFixture(
+		t, db.DefaultPostgresFixtureLifetime,
+	)
+	t.Cleanup(func() {
+		pgFixture.TearDown(t)
+	})
+
+	makeSQLDB := func(t *testing.T, sqlite bool) testPrivPairDB {
+		var sqlDB *db.BaseDB
+		if sqlite {
+			sqlDB = db.NewTestSqliteDB(t).BaseDB
+		} else {
+			sqlDB = db.NewTestPostgresDB(t, pgFixture).BaseDB
+		}
+
+		sessionsExecutor := db.NewTransactionExecutor(
+			sqlDB, func(tx *sql.Tx) session.SQLQueries {
+				return sqlDB.WithTx(tx)
+			},
+		)
+
+		return testPrivPairDB{
+			PrivMapDBCreator: NewSQLPrivacyPairDB(sqlDB),
+			Store:            session.NewSQLStore(sessionsExecutor),
+		}
+	}
+
+	for _, test := range testList {
+		test := test
+		t.Run(test.name+"_KV", func(t *testing.T) {
+			test.test(t, makeKeyValueDBs)
+		})
+
+		// TODO(elle): fix sqlite time stamp issue.
+		//t.Run(test.name+"_SQLite", func(t *testing.T) {
+		//	test.test(t, func(t *testing.T) Store {
+		//		return makeSQLDB(t, true)
+		//	})
+		//})
+
+		t.Run(test.name+"_Postgres", func(t *testing.T) {
+			test.test(t, func(t *testing.T) testPrivPairDB {
+				return makeSQLDB(t, false)
+			})
+		})
+	}
+}
+
+// testPrivacyMapStorage tests the privacy mapper CRUD logic.
+func testPrivacyMapStorage(t *testing.T,
+	makeDB func(t *testing.T) testPrivPairDB) {
+
 	t.Parallel()
 	ctx := context.Background()
 
-	tmpDir := t.TempDir()
-	db, err := NewDB(tmpDir, "test.db", nil)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
+	db := makeDB(t)
+
+	session1 := newSession(t, db, nil)
+
+	var err error
+	pdb1 := db.PrivacyDB(session1.GroupID)
+
+	// We have not yet persisted the session, so we should get an "unknown
+	// group" error if we try to query a privacy map pair for this group.
+	_ = pdb1.Update(ctx, func(tx PrivacyMapTx) error {
+		_, err = tx.RealToPseudo("real")
+		require.ErrorIs(t, err, session.ErrUnknownGroup)
+
+		return nil
 	})
 
-	pdb1 := db.PrivacyDB([4]byte{1, 1, 1, 1})
+	// Persist the session.
+	require.NoError(t, db.CreateSession(ctx, session1))
 
 	_ = pdb1.Update(ctx, func(tx PrivacyMapTx) error {
 		_, err = tx.RealToPseudo("real")
@@ -50,7 +162,9 @@ func TestPrivacyMapStorage(t *testing.T) {
 		return nil
 	})
 
-	pdb2 := db.PrivacyDB([4]byte{2, 2, 2, 2})
+	session2 := newSession(t, db, nil)
+	require.NoError(t, db.CreateSession(ctx, session2))
+	pdb2 := db.PrivacyDB(session2.ID)
 
 	_ = pdb2.Update(ctx, func(tx PrivacyMapTx) error {
 		_, err = tx.RealToPseudo("real")
@@ -80,7 +194,9 @@ func TestPrivacyMapStorage(t *testing.T) {
 		return nil
 	})
 
-	pdb3 := db.PrivacyDB([4]byte{3, 3, 3, 3})
+	session3 := newSession(t, db, nil)
+	require.NoError(t, db.CreateSession(ctx, session3))
+	pdb3 := db.PrivacyDB(session3.ID)
 
 	_ = pdb3.Update(ctx, func(tx PrivacyMapTx) error {
 		// Check that calling FetchAllPairs returns an empty map if
@@ -96,14 +212,12 @@ func TestPrivacyMapStorage(t *testing.T) {
 		// Try to add a new pair that has the same real value as the
 		// first pair. This should fail.
 		err = tx.NewPair("real 1", "pseudo 2")
-		require.ErrorContains(t, err, "an entry already exists for "+
-			"real value")
+		require.ErrorIs(t, err, ErrDuplicateRealValue)
 
 		// Try to add a new pair that has the same pseudo value as the
 		// first pair. This should fail.
 		err = tx.NewPair("real 2", "pseudo 1")
-		require.ErrorContains(t, err, "an entry already exists for "+
-			"pseudo value")
+		require.ErrorIs(t, err, ErrDuplicatePseudoValue)
 
 		// Add a few more pairs.
 		err = tx.NewPair("real 2", "pseudo 2")
@@ -180,24 +294,22 @@ func TestPrivacyMapStorage(t *testing.T) {
 	})
 }
 
-// TestPrivacyMapTxs tests that the `Update` and `View` functions correctly
+// testPrivacyMapTxs tests that the `Update` and `View` functions correctly
 // provide atomic access to the db. If anything fails in the middle of an
 // `Update` function, then all the changes prior should be rolled back.
-func TestPrivacyMapTxs(t *testing.T) {
+func testPrivacyMapTxs(t *testing.T, makeDB func(t *testing.T) testPrivPairDB) {
 	t.Parallel()
 	ctx := context.Background()
 
-	db, err := NewDB(t.TempDir(), "test.db", nil)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	db := makeDB(t)
 
-	pdb1 := db.PrivacyDB([4]byte{1, 1, 1, 1})
+	session1 := newSession(t, db, nil)
+	require.NoError(t, db.CreateSession(ctx, session1))
+	pdb1 := db.PrivacyDB(session1.ID)
 
 	// Test that if an action fails midway through the transaction, then
 	// it is rolled back.
-	err = pdb1.Update(ctx, func(tx PrivacyMapTx) error {
+	err := pdb1.Update(ctx, func(tx PrivacyMapTx) error {
 		err := tx.NewPair("real", "pseudo")
 		if err != nil {
 			return err

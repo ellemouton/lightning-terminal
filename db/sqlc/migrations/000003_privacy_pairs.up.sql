@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS privacy_pairs (
     real TEXT NOT NULL,
 
     -- The value of the privacy pair.
-    pseudo TEXT NOT NULL
-);
+    pseudo TEXT NOT NULL,
 
-CREATE INDEX IF NOT EXISTS privacy_pairs_real_idx ON privacy_pairs(real);
-CREATE INDEX IF NOT EXISTS privacy_pairs_pseudo_idx ON privacy_pairs(pseudo);
+    UNIQUE(group_id, real),
+    UNIQUE(group_id, pseudo)
+);

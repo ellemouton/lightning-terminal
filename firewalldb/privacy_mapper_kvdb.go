@@ -2,7 +2,6 @@ package firewalldb
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/lightninglabs/lightning-terminal/session"
 	"go.etcd.io/bbolt"
@@ -28,108 +27,51 @@ var (
 // group ID key.
 func (db *DB) PrivacyDB(groupID session.ID) PrivacyMapDB {
 	return &privacyMapDB{
-		db:      db,
-		groupID: groupID,
+		db: &privacyMapKVDBDB{
+			DB:             db,
+			groupID:        groupID,
+			sessionIDIndex: db.sessionIDIndex,
+		},
 	}
 }
 
-// privacyMapDB is an implementation of PrivacyMapDB.
-type privacyMapDB struct {
-	db      *DB
-	groupID session.ID
+var _ PrivMapDBCreator = (*DB)(nil)
+
+type privacyMapKVDBDB struct {
+	*DB
+	groupID        session.ID
+	sessionIDIndex SessionDB
 }
+
+var _ txCreator = (*privacyMapKVDBDB)(nil)
 
 // beginTx starts db transaction. The transaction will be a read or read-write
 // transaction depending on the value of the `writable` parameter.
-func (p *privacyMapDB) beginTx(writable bool) (*privacyMapTx, error) {
-	boltTx, err := p.db.Begin(writable)
+func (p *privacyMapKVDBDB) beginTx(_ context.Context, writable bool) (
+	PrivacyMapTx, error) {
+
+	boltTx, err := p.Begin(writable)
 	if err != nil {
 		return nil, err
 	}
+
 	return &privacyMapTx{
-		privacyMapDB: p,
-		boltTx:       boltTx,
+		privacyMapKVDBDB: p,
+		Tx:               boltTx,
 	}, nil
-}
-
-// Update opens a database read/write transaction and executes the function f
-// with the transaction passed as a parameter. After f exits, if f did not
-// error, the transaction is committed. Otherwise, if f did error, the
-// transaction is rolled back. If the rollback fails, the original error
-// returned by f is still returned. If the commit fails, the commit error is
-// returned.
-//
-// NOTE: this is part of the PrivacyMapDB interface.
-func (p *privacyMapDB) Update(_ context.Context,
-	f func(tx PrivacyMapTx) error) error {
-
-	tx, err := p.beginTx(true)
-	if err != nil {
-		return err
-	}
-
-	// Make sure the transaction rolls back in the event of a panic.
-	defer func() {
-		if tx != nil {
-			_ = tx.boltTx.Rollback()
-		}
-	}()
-
-	err = f(tx)
-	if err != nil {
-		// Want to return the original error, not a rollback error if
-		// any occur.
-		_ = tx.boltTx.Rollback()
-		return err
-	}
-
-	return tx.boltTx.Commit()
-}
-
-// View opens a database read transaction and executes the function f with the
-// transaction passed as a parameter. After f exits, the transaction is rolled
-// back. If f errors, its error is returned, not a rollback error (if any
-// occur).
-//
-// NOTE: this is part of the PrivacyMapDB interface.
-func (p *privacyMapDB) View(_ context.Context,
-	f func(tx PrivacyMapTx) error) error {
-
-	tx, err := p.beginTx(false)
-	if err != nil {
-		return err
-	}
-
-	// Make sure the transaction rolls back in the event of a panic.
-	defer func() {
-		if tx != nil {
-			_ = tx.boltTx.Rollback()
-		}
-	}()
-
-	err = f(tx)
-	rollbackErr := tx.boltTx.Rollback()
-	if err != nil {
-		return err
-	}
-
-	if rollbackErr != nil {
-		return rollbackErr
-	}
-	return nil
 }
 
 // privacyMapTx is an implementation of PrivacyMapTx.
 type privacyMapTx struct {
-	*privacyMapDB
-	boltTx *bbolt.Tx
+	*privacyMapKVDBDB
+	*bbolt.Tx
 }
 
 // NewPair inserts a new real-pseudo pair into the db.
 //
 // NOTE: this is part of the PrivacyMapTx interface.
 func (p *privacyMapTx) NewPair(real, pseudo string) error {
-	privacyBucket, err := getBucket(p.boltTx, privacyBucketKey)
+	privacyBucket, err := getBucket(p.Tx, privacyBucketKey)
 	if err != nil {
 		return err
 	}
@@ -154,13 +96,11 @@ func (p *privacyMapTx) NewPair(real, pseudo string) error {
 	}
 
 	if len(realToPseudoBucket.Get([]byte(real))) != 0 {
-		return fmt.Errorf("an entry already exists for real "+
-			"value: %x", real)
+		return ErrDuplicateRealValue
 	}
 
 	if len(pseudoToRealBucket.Get([]byte(pseudo))) != 0 {
-		return fmt.Errorf("an entry already exists for pseudo "+
-			"value: %x", pseudo)
+		return ErrDuplicatePseudoValue
 	}
 
 	err = realToPseudoBucket.Put([]byte(real), []byte(pseudo))
@@ -176,7 +116,7 @@ func (p *privacyMapTx) NewPair(real, pseudo string) error {
 //
 // NOTE: this is part of the PrivacyMapTx interface.
 func (p *privacyMapTx) PseudoToReal(pseudo string) (string, error) {
-	privacyBucket, err := getBucket(p.boltTx, privacyBucketKey)
+	privacyBucket, err := getBucket(p.Tx, privacyBucketKey)
 	if err != nil {
 		return "", err
 	}
@@ -204,7 +144,15 @@ func (p *privacyMapTx) PseudoToReal(pseudo string) (string, error) {
 //
 // NOTE: this is part of the PrivacyMapTx interface.
 func (p *privacyMapTx) RealToPseudo(real string) (string, error) {
-	privacyBucket, err := getBucket(p.boltTx, privacyBucketKey)
+	ctx := context.TODO()
+
+	// First, check that this session actually exists in the sessions DB.
+	_, err := p.sessionIDIndex.GetSessionIDs(ctx, p.groupID)
+	if err != nil {
+		return "", err
+	}
+
+	privacyBucket, err := getBucket(p.Tx, privacyBucketKey)
 	if err != nil {
 		return "", err
 	}
@@ -231,7 +179,7 @@ func (p *privacyMapTx) RealToPseudo(real string) (string, error) {
 //
 // NOTE: this is part of the PrivacyMapTx interface.
 func (p *privacyMapTx) FetchAllPairs() (*PrivacyMapPairs, error) {
-	privacyBucket, err := getBucket(p.boltTx, privacyBucketKey)
+	privacyBucket, err := getBucket(p.Tx, privacyBucketKey)
 	if err != nil {
 		return nil, err
 	}
