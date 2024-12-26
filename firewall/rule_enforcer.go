@@ -34,7 +34,7 @@ type RuleEnforcer struct {
 	sessionDB         firewalldb.SessionDB
 	markActionErrored func(ctx context.Context, reqID uint64,
 		reason string) error
-	newPrivMap firewalldb.NewPrivacyMapDB
+	newPrivMap firewalldb.PrivMapDBCreator
 
 	permsMgr        *perms.Manager
 	getFeaturePerms featurePerms
@@ -66,7 +66,7 @@ func NewRuleEnforcer(ruleDB firewalldb.RulesDB,
 	ruleMgrs rules.ManagerSet,
 	markActionErrored func(ctx context.Context, reqID uint64,
 		reason string) error,
-	privMap firewalldb.NewPrivacyMapDB) *RuleEnforcer {
+	privMap firewalldb.PrivMapDBCreator) *RuleEnforcer {
 
 	return &RuleEnforcer{
 		ruleDB:            ruleDB,
@@ -397,7 +397,7 @@ func (r *RuleEnforcer) initRule(ctx context.Context, reqID uint64,
 	}
 
 	if privacy {
-		privMap := r.newPrivMap(session.GroupID)
+		privMap := r.newPrivMap.PrivacyDB(session.GroupID)
 
 		ruleValues, err = ruleValues.PseudoToReal(
 			ctx, privMap, session.PrivacyFlags,
@@ -412,11 +412,21 @@ func (r *RuleEnforcer) initRule(ctx context.Context, reqID uint64,
 		session.GroupID, featureName,
 	)
 	actionsDB := allActionsDB.GroupFeatureActionsDB()
-	rulesDB := r.ruleDB.GetKVStores(name, session.GroupID, featureName)
+	rulesDB, err := r.ruleDB.GetKVStores(
+		ctx, name, session.GroupID, featureName,
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	if sessionRule {
 		actionsDB = allActionsDB.GroupActionsDB()
-		rulesDB = r.ruleDB.GetKVStores(name, session.GroupID, "")
+		rulesDB, err = r.ruleDB.GetKVStores(
+			ctx, name, session.GroupID, "",
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	cfg := &rules.ConfigImpl{

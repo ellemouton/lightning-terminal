@@ -23,10 +23,10 @@ var (
 	pseudoStrAlphabetLen = len(pseudoStrAlphabet)
 )
 
-// PrivacyDB constructs a PrivacyMapDB that will be indexed under the given
+// PrivacyDB constructs a DBExecutor that will be indexed under the given
 // group ID key.
 func (db *DB) PrivacyDB(groupID session.ID) PrivacyMapDB {
-	return &privacyMapDB{
+	return &dbExecutor[PrivacyMapTx]{
 		db: &privacyMapKVDBDB{
 			DB:             db,
 			groupID:        groupID,
@@ -43,7 +43,7 @@ type privacyMapKVDBDB struct {
 	sessionIDIndex SessionDB
 }
 
-var _ txCreator = (*privacyMapKVDBDB)(nil)
+var _ txCreator[PrivacyMapTx] = (*privacyMapKVDBDB)(nil)
 
 // beginTx starts db transaction. The transaction will be a read or read-write
 // transaction depending on the value of the `writable` parameter.
@@ -65,6 +65,10 @@ func (p *privacyMapKVDBDB) beginTx(_ context.Context, writable bool) (
 type privacyMapTx struct {
 	*privacyMapKVDBDB
 	*bbolt.Tx
+}
+
+func (p *privacyMapTx) IsNil() bool {
+	return p.Tx == nil
 }
 
 // NewPair inserts a new real-pseudo pair into the db.

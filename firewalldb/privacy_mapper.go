@@ -1,7 +1,6 @@
 package firewalldb
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
@@ -12,41 +11,23 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/lightninglabs/lightning-terminal/db"
 	"github.com/lightninglabs/lightning-terminal/session"
 )
 
 const txidStringLen = 64
 
 // NewPrivacyMapDB is a function type that takes a group ID and uses it to
-// construct a new PrivacyMapDB.
+// construct a new DBExecutor.
 type PrivMapDBCreator interface {
-	PrivacyDB(groupID session.ID) PrivacyMapDB
+	PrivacyDB(groupID session.ID) DBExecutor[PrivacyMapTx]
 }
 
-// PrivacyMapDB provides an Update and View method that will allow the caller
-// to perform atomic read and write transactions defined by PrivacyMapTx on the
-// underlying DB.
-type PrivacyMapDB interface {
-	// Update opens a database read/write transaction and executes the
-	// function f with the transaction passed as a parameter. After f exits,
-	// if f did not error, the transaction is committed. Otherwise, if f did
-	// error, the transaction is rolled back. If the rollback fails, the
-	// original error returned by f is still returned. If the commit fails,
-	// the commit error is returned.
-	Update(ctx context.Context, f func(tx PrivacyMapTx) error) error
-
-	// View opens a database read transaction and executes the function f
-	// with the transaction passed as a parameter. After f exits, the
-	// transaction is rolled back. If f errors, its error is returned, not a
-	// rollback error (if any occur).
-	View(ctx context.Context, f func(tx PrivacyMapTx) error) error
-}
+type PrivacyMapDB = DBExecutor[PrivacyMapTx]
 
 // PrivacyMapTx represents a db that can be used to create, store and fetch
 // real-pseudo pairs.
 type PrivacyMapTx interface {
-	db.Tx
+	NullableTx
 
 	// NewPair persists a new real-pseudo pair.
 	NewPair(real, pseudo string) error
@@ -62,82 +43,6 @@ type PrivacyMapTx interface {
 	// FetchAllPairs loads and returns the real-to-pseudo pairs in the form
 	// of a PrivacyMapPairs struct.
 	FetchAllPairs() (*PrivacyMapPairs, error)
-}
-
-type txCreator interface {
-	beginTx(ctx context.Context, writable bool) (PrivacyMapTx, error)
-}
-
-// privacyMapDB is an implementation of PrivacyMapDB.
-type privacyMapDB struct {
-	db txCreator
-}
-
-// Update opens a database read/write transaction and executes the function f
-// with the transaction passed as a parameter. After f exits, if f did not
-// error, the transaction is committed. Otherwise, if f did error, the
-// transaction is rolled back. If the rollback fails, the original error
-// returned by f is still returned. If the commit fails, the commit error is
-// returned.
-//
-// NOTE: this is part of the PrivacyMapDB interface.
-func (p *privacyMapDB) Update(ctx context.Context,
-	f func(tx PrivacyMapTx) error) error {
-
-	tx, err := p.db.beginTx(ctx, true)
-	if err != nil {
-		return err
-	}
-
-	// Make sure the transaction rolls back in the event of a panic.
-	defer func() {
-		if tx != nil {
-			_ = tx.Rollback()
-		}
-	}()
-
-	err = f(tx)
-	if err != nil {
-		// Want to return the original error, not a rollback error if
-		// any occur.
-		_ = tx.Rollback()
-		return err
-	}
-
-	return tx.Commit()
-}
-
-// View opens a database read transaction and executes the function f with the
-// transaction passed as a parameter. After f exits, the transaction is rolled
-// back. If f errors, its error is returned, not a rollback error (if any
-// occur).
-//
-// NOTE: this is part of the PrivacyMapDB interface.
-func (p *privacyMapDB) View(ctx context.Context,
-	f func(tx PrivacyMapTx) error) error {
-
-	tx, err := p.db.beginTx(ctx, false)
-	if err != nil {
-		return err
-	}
-
-	// Make sure the transaction rolls back in the event of a panic.
-	defer func() {
-		if tx != nil {
-			_ = tx.Rollback()
-		}
-	}()
-
-	err = f(tx)
-	rollbackErr := tx.Rollback()
-	if err != nil {
-		return err
-	}
-
-	if rollbackErr != nil {
-		return rollbackErr
-	}
-	return nil
 }
 
 func HideString(tx PrivacyMapTx, real string) (string, error) {

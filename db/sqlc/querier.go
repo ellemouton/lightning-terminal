@@ -11,7 +11,10 @@ import (
 
 type Querier interface {
 	CountActions(ctx context.Context, arg CountActionsParams) (int64, error)
+	DeleteAllTemp(ctx context.Context) error
+	DeleteKVStoreRecord(ctx context.Context, arg DeleteKVStoreRecordParams) error
 	GetAllPrivacyPairs(ctx context.Context, groupID int64) ([]GetAllPrivacyPairsRow, error)
+	GetKVStoreRecord(ctx context.Context, arg GetKVStoreRecordParams) ([]byte, error)
 	GetLegacyIDBySessionID(ctx context.Context, id int64) ([]byte, error)
 	GetPseudoForReal(ctx context.Context, arg GetPseudoForRealParams) (string, error)
 	GetRealForPseudo(ctx context.Context, arg GetRealForPseudoParams) (string, error)
@@ -27,6 +30,7 @@ type Querier interface {
 	GetSessionsInGroup(ctx context.Context, groupID sql.NullInt64) ([]Session, error)
 	InsertAction(ctx context.Context, arg InsertActionParams) (int64, error)
 	InsertFeatureConfig(ctx context.Context, arg InsertFeatureConfigParams) error
+	InsertKVStoreRecord(ctx context.Context, arg InsertKVStoreRecordParams) error
 	InsertMacaroonCaveat(ctx context.Context, arg InsertMacaroonCaveatParams) error
 	InsertMacaroonPermission(ctx context.Context, arg InsertMacaroonPermissionParams) error
 	InsertPrivacyFlag(ctx context.Context, arg InsertPrivacyFlagParams) error
@@ -39,6 +43,7 @@ type Querier interface {
 	SetActionState(ctx context.Context, arg SetActionStateParams) error
 	SetRemotePublicKeyByLocalPublicKey(ctx context.Context, arg SetRemotePublicKeyByLocalPublicKeyParams) error
 	SetSessionGroupID(ctx context.Context, arg SetSessionGroupIDParams) error
+	UpdateKVStoreRecord(ctx context.Context, arg UpdateKVStoreRecordParams) error
 	UpdateSessionState(ctx context.Context, arg UpdateSessionStateParams) error
 }
 

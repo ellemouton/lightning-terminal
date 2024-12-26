@@ -21,8 +21,6 @@ type SQLPrivacyPairQueries interface {
 
 type SQLPrivacyPairDB struct {
 	*db.BaseDB
-
-	//SQLPrivacyPairQueries
 }
 
 var _ PrivMapDBCreator = (*SQLPrivacyPairDB)(nil)
@@ -30,12 +28,11 @@ var _ PrivMapDBCreator = (*SQLPrivacyPairDB)(nil)
 func NewSQLPrivacyPairDB(db *db.BaseDB) *SQLPrivacyPairDB {
 	return &SQLPrivacyPairDB{
 		BaseDB: db,
-		//	SQLPrivacyPairQueries: sqlc.New(db.DB),
 	}
 }
 
 func (s *SQLPrivacyPairDB) PrivacyDB(groupID session.ID) PrivacyMapDB {
-	return &privacyMapDB{
+	return &dbExecutor[PrivacyMapTx]{
 		db: &privacyMapSQLDB{
 			BaseDB:  s.BaseDB,
 			groupID: groupID,
@@ -48,7 +45,7 @@ type privacyMapSQLDB struct {
 	groupID session.ID
 }
 
-var _ txCreator = (*privacyMapKVDBDB)(nil)
+var _ txCreator[PrivacyMapTx] = (*privacyMapKVDBDB)(nil)
 
 // beginTx starts db transaction. The transaction will be a read or read-write
 // transaction depending on the value of the `writable` parameter.
@@ -75,6 +72,10 @@ func (s *privacyMapSQLDB) beginTx(ctx context.Context, writable bool) (
 type privacyMapSQLTx struct {
 	db *privacyMapSQLDB
 	*sql.Tx
+}
+
+func (p *privacyMapSQLTx) IsNil() bool {
+	return p.Tx == nil
 }
 
 func (p *privacyMapSQLTx) NewPair(real, pseudo string) error {

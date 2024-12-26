@@ -30,6 +30,15 @@ type FeatureConfig struct {
 	Config      []byte
 }
 
+type Kvstore struct {
+	Perm        bool
+	RuleName    string
+	SessionID   sql.NullInt64
+	FeatureName sql.NullString
+	Key         string
+	Value       []byte
+}
+
 type MacaroonCaveat struct {
 	SessionID      int64
 	ID             []byte
