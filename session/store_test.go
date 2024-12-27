@@ -10,18 +10,57 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestBasicSessionStore tests the basic getters and setters of the session
+// TestSessions tests various functionalities of the session store against a
+// range of database backends.
+func TestSessions(t *testing.T) {
+	testList := []struct {
+		name string
+		test func(t *testing.T, makeDB func(t *testing.T) Store)
+	}{
+		{
+			name: "BasicSessionStore",
+			test: testBasicSessionStore,
+		},
+		{
+			name: "LinkingSessions",
+			test: testLinkingSessions,
+		},
+		{
+			name: "IDToGroupIDIndex",
+			test: testIDToGroupIDIndex,
+		},
+		{
+			name: "CheckSessionGroupPredicate",
+			test: testCheckSessionGroupPredicate,
+		},
+	}
+
+	makeKeyValueDB := func(t *testing.T) Store {
+		kvdb, err := NewDB(t.TempDir(), "test.db")
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, kvdb.Close())
+		})
+
+		return kvdb
+	}
+
+	for _, test := range testList {
+		test := test
+		t.Run(test.name+"_KV", func(t *testing.T) {
+			test.test(t, makeKeyValueDB)
+		})
+	}
+}
+
+// testBasicSessionStore tests the basic getters and setters of the session
 // store.
-func TestBasicSessionStore(t *testing.T) {
+func testBasicSessionStore(t *testing.T, makeDB func(t *testing.T) Store) {
 	t.Parallel()
 	ctx := context.Background()
 
 	// Set up a new DB.
-	db, err := NewDB(t.TempDir(), "test.db")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	db := makeDB(t)
 
 	// Create a few sessions.
 	s1 := newSession(t, db, "session 1", nil)
@@ -91,17 +130,13 @@ func TestBasicSessionStore(t *testing.T) {
 	require.Equal(t, session1.State, StateRevoked)
 }
 
-// TestLinkingSessions tests that session linking works as expected.
-func TestLinkingSessions(t *testing.T) {
+// testLinkingSessions tests that session linking works as expected.
+func testLinkingSessions(t *testing.T, makeDB func(t *testing.T) Store) {
 	t.Parallel()
 	ctx := context.Background()
 
 	// Set up a new DB.
-	db, err := NewDB(t.TempDir(), "test.db")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	db := makeDB(t)
 
 	// Create a new session with no previous link.
 	s1 := newSession(t, db, "session 1", nil)
@@ -130,19 +165,15 @@ func TestLinkingSessions(t *testing.T) {
 	require.NoError(t, db.CreateSession(ctx, s2))
 }
 
-// TestIDToGroupIDIndex tests that the session-ID-to-group-ID and
+// testIDToGroupIDIndex tests that the session-ID-to-group-ID and
 // group-ID-to-session-ID indexes work as expected by asserting the behaviour
 // of the GetGroupID and GetSessionIDs methods.
-func TestLinkedSessions(t *testing.T) {
+func testIDToGroupIDIndex(t *testing.T, makeDB func(t *testing.T) Store) {
 	t.Parallel()
 	ctx := context.Background()
 
 	// Set up a new DB.
-	db, err := NewDB(t.TempDir(), "test.db")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	db := makeDB(t)
 
 	// Create a few sessions. The first one is a new session and the two
 	// after are all linked to the prior one. All these sessions belong to
@@ -201,18 +232,16 @@ func TestLinkedSessions(t *testing.T) {
 	require.EqualValues(t, []ID{s4.ID, s5.ID}, sIDs)
 }
 
-// TestCheckSessionGroupPredicate asserts that the CheckSessionGroupPredicate
+// testCheckSessionGroupPredicate asserts that the CheckSessionGroupPredicate
 // method correctly checks if each session in a group passes a predicate.
-func TestCheckSessionGroupPredicate(t *testing.T) {
+func testCheckSessionGroupPredicate(t *testing.T,
+	makeDB func(t *testing.T) Store) {
+
 	t.Parallel()
 	ctx := context.Background()
 
 	// Set up a new DB.
-	db, err := NewDB(t.TempDir(), "test.db")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	db := makeDB(t)
 
 	// We will use the Label of the Session to test that the predicate
 	// function is checked correctly.
