@@ -19,4 +19,8 @@ var (
 	ErrSessionsInGroupStillActive = errors.New(
 		"group has active sessions",
 	)
+
+	// ErrSessionUnknown is returned when an attempt is made to reference
+	// a session that is not known.
+	ErrSessionUnknown = errors.New("session unknown")
 )
