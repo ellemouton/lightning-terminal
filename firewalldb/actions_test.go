@@ -2,10 +2,12 @@ package firewalldb
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/lightninglabs/lightning-terminal/db"
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/stretchr/testify/require"
 )
@@ -57,10 +59,58 @@ func TestActionsDB(t *testing.T) {
 		}
 	}
 
+	// First create a shared Postgres instance so we don't spawn a new
+	// docker container for each test.
+	pgFixture := db.NewTestPgFixture(
+		t, db.DefaultPostgresFixtureLifetime,
+	)
+	t.Cleanup(func() {
+		pgFixture.TearDown(t)
+	})
+
+	makeSQLDB := func(t *testing.T, sqlite bool) testActionDB {
+		var sqlDB *db.BaseDB
+		if sqlite {
+			sqlDB = db.NewTestSqliteDB(t).BaseDB
+		} else {
+			sqlDB = db.NewTestPostgresDB(t, pgFixture).BaseDB
+		}
+
+		sessionsExecutor := db.NewTransactionExecutor(
+			sqlDB, func(tx *sql.Tx) session.SQLQueries {
+				return sqlDB.WithTx(tx)
+			},
+		)
+
+		actionsExecutor := db.NewTransactionExecutor(
+			sqlDB, func(tx *sql.Tx) SQLActionQueries {
+				return sqlDB.WithTx(tx)
+			},
+		)
+
+		return testActionDB{
+			ActionDB: NewSQLActionsStore(actionsExecutor),
+			Store:    session.NewSQLStore(sessionsExecutor),
+		}
+	}
+
 	for _, test := range testList {
 		test := test
 		t.Run(test.name+"_KV", func(t *testing.T) {
 			test.test(t, makeKeyValueDBs)
+		})
+
+		// TODO(elle): fix sqlite time stamp issue.
+		//t.Run(test.name+"_SQLite", func(t *testing.T) {
+		//	test.test(t, func(t *testing.T) Store {
+		//		return makeSQLDB(t, true)
+		//	})
+		//})
+
+		t.Run(test.name+"_Postgres", func(t *testing.T) {
+			test.test(t, func(t *testing.T) testActionDB {
+				return makeSQLDB(t, false)
+			})
 		})
 	}
 }
