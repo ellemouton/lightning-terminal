@@ -53,7 +53,7 @@ var (
 )
 
 // AddAction serialises and adds an Action to the DB under the given sessionID.
-func (db *DB) AddAction(sessionID session.ID, action *Action) (uint64, error) {
+func (db *DB) AddAction(action *Action) (uint64, error) {
 	var buf bytes.Buffer
 	if err := SerializeAction(&buf, action); err != nil {
 		return 0, err
@@ -72,7 +72,7 @@ func (db *DB) AddAction(sessionID session.ID, action *Action) (uint64, error) {
 		}
 
 		sessBucket, err := actionsBucket.CreateBucketIfNotExists(
-			sessionID[:],
+			action.SessionID[:],
 		)
 		if err != nil {
 			return err
@@ -102,7 +102,7 @@ func (db *DB) AddAction(sessionID session.ID, action *Action) (uint64, error) {
 		}
 
 		locator := ActionLocator{
-			SessionID: sessionID,
+			SessionID: action.SessionID,
 			ActionID:  nextActionIndex,
 		}
 
