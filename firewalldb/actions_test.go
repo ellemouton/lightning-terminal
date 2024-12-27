@@ -39,16 +39,48 @@ var (
 	}
 )
 
-// TestActionStorage tests that the ActionsListDB CRUD logic.
-func TestActionStorage(t *testing.T) {
-	ctx := context.Background()
-	tmpDir := t.TempDir()
+// TestActionsDB tests the basic functionality of the ActionsDB.
+func TestActionsDB(t *testing.T) {
+	testList := []struct {
+		name string
+		test func(t *testing.T, makeDB func(t *testing.T) ActionDB)
+	}{
+		{
+			name: "BasicSessionStore",
+			test: testActionStorage,
+		},
+		{
+			name: "ListActions",
+			test: testListActions,
+		},
+		{
+			name: "ListGroupActions",
+			test: testListGroupActions,
+		},
+	}
 
-	db, err := NewDB(tmpDir, "test.db", nil)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	makeKeyValueDB := func(t *testing.T) ActionDB {
+		kvdb, err := NewDB(t.TempDir(), "test.db", nil)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, kvdb.Close())
+		})
+
+		return kvdb
+	}
+
+	for _, test := range testList {
+		test := test
+		t.Run(test.name+"_KV", func(t *testing.T) {
+			test.test(t, makeKeyValueDB)
+		})
+	}
+}
+
+// testActionStorage tests that the ActionsListDB CRUD logic.
+func testActionStorage(t *testing.T, makeDB func(t *testing.T) ActionDB) {
+	ctx := context.Background()
+	db := makeDB(t)
 
 	actions, _, _, err := db.ListActions(
 		ctx, nil,
@@ -153,17 +185,12 @@ func TestActionStorage(t *testing.T) {
 	require.Equal(t, action2, actions[0])
 }
 
-// TestListActions tests some ListAction options.
+// testListActions tests some ListAction options.
 // TODO(elle): cover more test cases here.
-func TestListActions(t *testing.T) {
-	tmpDir := t.TempDir()
+func testListActions(t *testing.T, makeDB func(t *testing.T) ActionDB) {
+	t.Parallel()
 	ctx := context.Background()
-
-	db, err := NewDB(tmpDir, "test.db", nil)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	db := makeDB(t)
 
 	sessionID1 := [4]byte{1, 1, 1, 1}
 	sessionID2 := [4]byte{2, 2, 2, 2}
@@ -348,24 +375,14 @@ func TestListActions(t *testing.T) {
 	})
 }
 
-// TestListGroupActions tests that the ListGroupActions correctly returns all
+// testListGroupActions tests that the listGroupActions correctly returns all
 // actions in a particular session group.
-func TestListGroupActions(t *testing.T) {
+func testListGroupActions(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	t.Parallel()
 	ctx := context.Background()
+	db := makeDB(t)
 
 	group1 := intToSessionID(0)
-
-	// Link session 1 and session 2 to group 1.
-	index := NewMockSessionDB()
-	index.AddPair(sessionID1, group1)
-	index.AddPair(sessionID2, group1)
-
-	db, err := NewDB(t.TempDir(), "test.db", index)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
 
 	// There should not be any actions in group 1 yet.
 	al, _, _, err := db.ListActions(ctx, nil, WithActionGroupID(group1))
