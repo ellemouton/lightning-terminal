@@ -396,8 +396,15 @@ func (g *LightningTerminal) start(ctx context.Context) error {
 		)
 	}
 
+	accountStore, err := accounts.NewBoltStore(
+		filepath.Dir(g.cfg.MacaroonPath), accounts.DBFilename,
+	)
+	if err != nil {
+		return fmt.Errorf("error creating accounts store: %w", err)
+	}
+
 	g.accountService, err = accounts.NewService(
-		filepath.Dir(g.cfg.MacaroonPath), accountServiceErrCallback,
+		accountStore, accountServiceErrCallback,
 	)
 	if err != nil {
 		return fmt.Errorf("error creating account service: %v", err)

@@ -829,7 +829,9 @@ func TestAccountService(t *testing.T) {
 			errFunc := func(err error) {
 				lndMock.mainErrChan <- err
 			}
-			service, err := NewService(t.TempDir(), errFunc)
+			store, err := NewBoltStore(t.TempDir(), DBFilename)
+			require.NoError(tt, err)
+			service, err := NewService(store, errFunc)
 			require.NoError(t, err)
 
 			// Is a setup call required to initialize initial

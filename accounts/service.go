@@ -77,18 +77,13 @@ type InterceptorService struct {
 
 // NewService returns a service backed by the macaroon Bolt DB stored in the
 // passed-in directory.
-func NewService(dir string,
-	errCallback func(error)) (*InterceptorService, error) {
-
-	accountStore, err := NewBoltStore(dir, DBFilename)
-	if err != nil {
-		return nil, err
-	}
+func NewService(store Store, errCallback func(error)) (*InterceptorService,
+	error) {
 
 	mainCtx, contextCancel := context.WithCancel(context.Background())
 
 	return &InterceptorService{
-		store:              accountStore,
+		store:              store,
 		mainCtx:            mainCtx,
 		contextCancel:      contextCancel,
 		invoiceToAccount:   make(map[lntypes.Hash]AccountID),
