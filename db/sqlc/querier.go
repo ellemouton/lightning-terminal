@@ -10,6 +10,7 @@ import (
 )
 
 type Querier interface {
+	CountActions(ctx context.Context, arg CountActionsParams) (int64, error)
 	GetLegacyIDBySessionID(ctx context.Context, id int64) ([]byte, error)
 	GetSessionByID(ctx context.Context, id int64) (Session, error)
 	GetSessionByLegacyID(ctx context.Context, legacyID []byte) (Session, error)
@@ -21,13 +22,17 @@ type Querier interface {
 	GetSessionMacaroonPermissions(ctx context.Context, sessionID int64) ([]MacaroonPermission, error)
 	GetSessionPrivacyFlags(ctx context.Context, sessionID int64) ([]PrivacyFlag, error)
 	GetSessionsInGroup(ctx context.Context, groupID sql.NullInt64) ([]Session, error)
+	InsertAction(ctx context.Context, arg InsertActionParams) (int64, error)
 	InsertFeatureConfig(ctx context.Context, arg InsertFeatureConfigParams) error
 	InsertMacaroonCaveat(ctx context.Context, arg InsertMacaroonCaveatParams) error
 	InsertMacaroonPermission(ctx context.Context, arg InsertMacaroonPermissionParams) error
 	InsertPrivacyFlag(ctx context.Context, arg InsertPrivacyFlagParams) error
 	InsertSession(ctx context.Context, arg InsertSessionParams) (int64, error)
+	ListActions(ctx context.Context, arg ListActionsParams) ([]Action, error)
+	ListActionsPaginated(ctx context.Context, arg ListActionsPaginatedParams) ([]Action, error)
 	ListSessions(ctx context.Context) ([]Session, error)
 	ListSessionsByType(ctx context.Context, type_ int16) ([]Session, error)
+	SetActionState(ctx context.Context, arg SetActionStateParams) error
 	SetRemotePublicKeyByLocalPublicKey(ctx context.Context, arg SetRemotePublicKeyByLocalPublicKeyParams) error
 	SetSessionGroupID(ctx context.Context, arg SetSessionGroupIDParams) error
 	UpdateSessionState(ctx context.Context, arg UpdateSessionStateParams) error

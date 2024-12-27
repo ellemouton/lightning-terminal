@@ -9,6 +9,21 @@ import (
 	"time"
 )
 
+type Action struct {
+	ID                 int64
+	SessionID          sql.NullInt64
+	ActorName          sql.NullString
+	FeatureName        sql.NullString
+	Trigger            sql.NullString
+	Intent             sql.NullString
+	StructuredJsonData sql.NullString
+	RpcMethod          string
+	RpcParamsJson      []byte
+	CreatedAt          time.Time
+	State              int16
+	ErrorReason        sql.NullString
+}
+
 type FeatureConfig struct {
 	SessionID   int64
 	FeatureName string
