@@ -71,7 +71,7 @@ func newMockService() *mockService {
 	}
 }
 
-func (m *mockService) CheckBalance(_ AccountID,
+func (m *mockService) CheckBalance(_ context.Context, _ AccountID,
 	wantBalance lnwire.MilliSatoshi) error {
 
 	if wantBalance > m.acctBalanceMsat {
@@ -81,24 +81,28 @@ func (m *mockService) CheckBalance(_ AccountID,
 	return nil
 }
 
-func (m *mockService) AssociateInvoice(id AccountID, hash lntypes.Hash) error {
+func (m *mockService) AssociateInvoice(_ context.Context, id AccountID,
+	hash lntypes.Hash) error {
+
 	m.trackedInvoices[hash] = id
 
 	return nil
 }
 
-func (m *mockService) AssociatePayment(id AccountID, paymentHash lntypes.Hash,
-	amt lnwire.MilliSatoshi) error {
+func (m *mockService) AssociatePayment(_ context.Context, id AccountID,
+	paymentHash lntypes.Hash, amt lnwire.MilliSatoshi) error {
 
 	return nil
 }
 
-func (m *mockService) PaymentErrored(id AccountID, hash lntypes.Hash) error {
+func (m *mockService) PaymentErrored(_ context.Context, id AccountID,
+	hash lntypes.Hash) error {
+
 	return nil
 }
 
-func (m *mockService) TrackPayment(_ AccountID, hash lntypes.Hash,
-	amt lnwire.MilliSatoshi) error {
+func (m *mockService) TrackPayment(_ context.Context, _ AccountID,
+	hash lntypes.Hash, amt lnwire.MilliSatoshi) error {
 
 	m.trackedPayments[hash] = &PaymentEntry{
 		Status:     lnrpc.Payment_UNKNOWN,
@@ -108,7 +112,9 @@ func (m *mockService) TrackPayment(_ AccountID, hash lntypes.Hash,
 	return nil
 }
 
-func (m *mockService) RemovePayment(hash lntypes.Hash) error {
+func (m *mockService) RemovePayment(_ context.Context,
+	hash lntypes.Hash) error {
+
 	delete(m.trackedPayments, hash)
 
 	return nil
@@ -499,8 +505,8 @@ func TestSendPaymentCalls(t *testing.T) {
 
 func testSendPayment(t *testing.T, uri string) {
 	var (
-		parentCtx = context.Background()
-		zeroFee   = &lnrpc.FeeLimit{Limit: &lnrpc.FeeLimit_Fixed{
+		ctx     = context.Background()
+		zeroFee = &lnrpc.FeeLimit{Limit: &lnrpc.FeeLimit_Fixed{
 			Fixed: 0,
 		}}
 		requestID uint64
@@ -520,11 +526,11 @@ func testSendPayment(t *testing.T, uri string) {
 	service, err := NewService(t.TempDir(), errFunc)
 	require.NoError(t, err)
 
-	err = service.Start(lndMock, routerMock, chainParams)
+	err = service.Start(ctx, lndMock, routerMock, chainParams)
 	require.NoError(t, err)
 
 	assertBalance := func(id AccountID, expectedBalance int64) {
-		acct, err := service.Account(id)
+		acct, err := service.Account(ctx, id)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedBalance,
@@ -533,17 +539,17 @@ func testSendPayment(t *testing.T, uri string) {
 
 	// This should error because there is no account in the context.
 	err = service.checkers.checkIncomingRequest(
-		parentCtx, uri, &lnrpc.SendRequest{},
+		ctx, uri, &lnrpc.SendRequest{},
 	)
 	require.ErrorContains(t, err, "no account found in context")
 
 	// Create an account and add it to the context.
 	acct, err := service.NewAccount(
-		5000, time.Now().Add(time.Hour), "test",
+		ctx, 5000, time.Now().Add(time.Hour), "test",
 	)
 	require.NoError(t, err)
 
-	ctxWithAcct := AddAccountToContext(parentCtx, acct)
+	ctxWithAcct := AddAccountToContext(ctx, acct)
 
 	// This should error because there is no request ID in the context.
 	err = service.checkers.checkIncomingRequest(
@@ -552,7 +558,7 @@ func testSendPayment(t *testing.T, uri string) {
 	require.ErrorContains(t, err, "no request ID found in context")
 
 	reqID1 := nextRequestID()
-	ctx := AddRequestIDToContext(ctxWithAcct, reqID1)
+	ctx = AddRequestIDToContext(ctxWithAcct, reqID1)
 
 	// This should error because no payment hash is provided.
 	err = service.checkers.checkIncomingRequest(
@@ -698,7 +704,7 @@ func testSendPayment(t *testing.T, uri string) {
 func TestSendPaymentV2(t *testing.T) {
 	var (
 		uri       = "/routerrpc.Router/SendPaymentV2"
-		parentCtx = context.Background()
+		ctx       = context.Background()
 		requestID uint64
 	)
 
@@ -716,11 +722,11 @@ func TestSendPaymentV2(t *testing.T) {
 	service, err := NewService(t.TempDir(), errFunc)
 	require.NoError(t, err)
 
-	err = service.Start(lndMock, routerMock, chainParams)
+	err = service.Start(ctx, lndMock, routerMock, chainParams)
 	require.NoError(t, err)
 
 	assertBalance := func(id AccountID, expectedBalance int64) {
-		acct, err := service.Account(id)
+		acct, err := service.Account(ctx, id)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedBalance,
@@ -729,17 +735,17 @@ func TestSendPaymentV2(t *testing.T) {
 
 	// This should error because there is no account in the context.
 	err = service.checkers.checkIncomingRequest(
-		parentCtx, uri, &routerrpc.SendPaymentRequest{},
+		ctx, uri, &routerrpc.SendPaymentRequest{},
 	)
 	require.ErrorContains(t, err, "no account found in context")
 
 	// Create an account and add it to the context.
 	acct, err := service.NewAccount(
-		5000, time.Now().Add(time.Hour), "test",
+		ctx, 5000, time.Now().Add(time.Hour), "test",
 	)
 	require.NoError(t, err)
 
-	ctxWithAcct := AddAccountToContext(parentCtx, acct)
+	ctxWithAcct := AddAccountToContext(ctx, acct)
 
 	// This should error because there is no request ID in the context.
 	err = service.checkers.checkIncomingRequest(
@@ -748,7 +754,7 @@ func TestSendPaymentV2(t *testing.T) {
 	require.ErrorContains(t, err, "no request ID found in context")
 
 	reqID1 := nextRequestID()
-	ctx := AddRequestIDToContext(ctxWithAcct, reqID1)
+	ctx = AddRequestIDToContext(ctxWithAcct, reqID1)
 
 	// This should error because no payment hash is provided.
 	err = service.checkers.checkIncomingRequest(
@@ -885,7 +891,7 @@ func TestSendPaymentV2(t *testing.T) {
 func TestSendToRouteV2(t *testing.T) {
 	var (
 		uri       = "/routerrpc.Router/SendToRouteV2"
-		parentCtx = context.Background()
+		ctx       = context.Background()
 		requestID uint64
 	)
 
@@ -903,11 +909,11 @@ func TestSendToRouteV2(t *testing.T) {
 	service, err := NewService(t.TempDir(), errFunc)
 	require.NoError(t, err)
 
-	err = service.Start(lndMock, routerMock, chainParams)
+	err = service.Start(ctx, lndMock, routerMock, chainParams)
 	require.NoError(t, err)
 
 	assertBalance := func(id AccountID, expectedBalance int64) {
-		acct, err := service.Account(id)
+		acct, err := service.Account(ctx, id)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedBalance,
@@ -916,17 +922,17 @@ func TestSendToRouteV2(t *testing.T) {
 
 	// This should error because there is no account in the context.
 	err = service.checkers.checkIncomingRequest(
-		parentCtx, uri, &routerrpc.SendToRouteRequest{},
+		ctx, uri, &routerrpc.SendToRouteRequest{},
 	)
 	require.ErrorContains(t, err, "no account found in context")
 
 	// Create an account and add it to the context.
 	acct, err := service.NewAccount(
-		5000, time.Now().Add(time.Hour), "test",
+		ctx, 5000, time.Now().Add(time.Hour), "test",
 	)
 	require.NoError(t, err)
 
-	ctxWithAcct := AddAccountToContext(parentCtx, acct)
+	ctxWithAcct := AddAccountToContext(ctx, acct)
 
 	// This should error because there is no request ID in the context.
 	err = service.checkers.checkIncomingRequest(
@@ -935,7 +941,7 @@ func TestSendToRouteV2(t *testing.T) {
 	require.ErrorContains(t, err, "no request ID found in context")
 
 	reqID1 := nextRequestID()
-	ctx := AddRequestIDToContext(ctxWithAcct, reqID1)
+	ctx = AddRequestIDToContext(ctxWithAcct, reqID1)
 
 	// This should error because no payment hash is provided.
 	err = service.checkers.checkIncomingRequest(
