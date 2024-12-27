@@ -11,10 +11,15 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/lightninglabs/taproot-assets/fn"
 	"github.com/lightningnetwork/lnd/kvdb"
+	"github.com/lightningnetwork/lnd/lnrpc"
+	"github.com/lightningnetwork/lnd/lntypes"
 	"github.com/lightningnetwork/lnd/lnwire"
 	"go.etcd.io/bbolt"
 )
+
+var ErrPaymentAlreadySucceeded = fmt.Errorf("payment already succeeded")
 
 const (
 	// DBFilename is the filename within the data directory which contains
@@ -173,10 +178,8 @@ func (s *BoltStore) NewAccount(ctx context.Context, balance lnwire.MilliSatoshi,
 	return account, nil
 }
 
-// UpdateAccount writes an account to the database, overwriting the existing one
-// if it exists.
-func (s *BoltStore) UpdateAccount(_ context.Context,
-	account *OffChainBalanceAccount) error {
+func (s *BoltStore) AddAccountInvoice(_ context.Context, id AccountID,
+	hash lntypes.Hash) error {
 
 	return s.db.Update(func(tx kvdb.RwTx) error {
 		bucket := tx.ReadWriteBucket(accountBucketName)
@@ -184,9 +187,251 @@ func (s *BoltStore) UpdateAccount(_ context.Context,
 			return ErrAccountBucketNotFound
 		}
 
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
 		account.LastUpdate = time.Now()
+		account.Invoices[hash] = struct{}{}
+
 		return storeAccount(bucket, account)
 	}, func() {})
+}
+
+func (s *BoltStore) UpdateAccountBalanceAndExpiry(_ context.Context,
+	id AccountID, newBalance fn.Option[int64],
+	newExpiry fn.Option[time.Time]) error {
+
+	return s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		newBalance.WhenSome(func(balance int64) {
+			account.CurrentBalance = balance
+		})
+		newExpiry.WhenSome(func(expiry time.Time) {
+			account.ExpirationDate = expiry
+		})
+
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+}
+
+func (s *BoltStore) SetAccountPaymentErrored(_ context.Context, id AccountID,
+	hash lntypes.Hash) error {
+
+	return s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		// Check that this payment is actually associated with this
+		// account.
+		_, ok := account.Payments[hash]
+		if !ok {
+			return fmt.Errorf("payment with hash %s is not "+
+				"associated with this account", hash)
+		}
+
+		// Delete the payment and update the persisted account.
+		delete(account.Payments, hash)
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+}
+
+func (s *BoltStore) AddAccountPayment(_ context.Context, id AccountID,
+	hash lntypes.Hash, fullAmt lnwire.MilliSatoshi) error {
+
+	return s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		// Check if this payment is associated with the account already.
+		_, ok := account.Payments[hash]
+		if ok {
+			// We do not allow another payment to the same hash if
+			// the payment is already in-flight or succeeded. This
+			// mitigates a user being able to launch a second
+			// RPC-erring payment with the same hash that would
+			// remove the payment from being tracked. Note that
+			// this prevents launching multipart payments, but
+			// allows retrying a payment if it has failed.
+			if account.Payments[hash].Status !=
+				lnrpc.Payment_FAILED {
+
+				return fmt.Errorf("payment with hash %s is "+
+					"already in flight or succeeded "+
+					"(status %v)", hash,
+					account.Payments[hash].Status)
+			}
+
+			// Otherwise, we fall through to correctly update the
+			// payment amount, in case we have a zero-amount invoice
+			// that is retried.
+		}
+
+		// Associate the payment with the account and store it.
+		account.Payments[hash] = &PaymentEntry{
+			Status:     lnrpc.Payment_UNKNOWN,
+			FullAmount: fullAmt,
+		}
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+}
+
+func (s *BoltStore) UpsertAccountPayment(_ context.Context, id AccountID,
+	hash lntypes.Hash, fullAmt lnwire.MilliSatoshi) (bool, error) {
+
+	var existingPayment bool
+	err := s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		// If the account already stored a terminal state, we also don't
+		// need to track the payment again.
+		var entry *PaymentEntry
+		entry, existingPayment = account.Payments[hash]
+		if existingPayment && successState(entry.Status) {
+			return ErrPaymentAlreadySucceeded
+		}
+
+		// There is a case where the passed in fullAmt is zero but the
+		// pending amount is not. In that case, we should not overwrite
+		// the pending amount.
+		if fullAmt == 0 {
+			fullAmt = entry.FullAmount
+		}
+
+		account.Payments[hash] = &PaymentEntry{
+			Status:     lnrpc.Payment_UNKNOWN,
+			FullAmount: fullAmt,
+		}
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+
+	return existingPayment, err
+}
+
+func (s *BoltStore) UpdateAccountPaymentStatus(_ context.Context, id AccountID,
+	hash lntypes.Hash, status lnrpc.Payment_PaymentStatus) error {
+
+	return s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		// Have we associated the payment with the account already?
+		_, ok := account.Payments[hash]
+		if !ok {
+			return nil
+		}
+
+		// If we did, let's set the status correctly in the DB now.
+		account.Payments[hash].Status = status
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+}
+
+func (s *BoltStore) UpdateAccountPaymentSuccess(_ context.Context, id AccountID,
+	hash lntypes.Hash, fullAmount lnwire.MilliSatoshi) error {
+
+	return s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		// Update the account and store it in the database.
+		account.CurrentBalance -= int64(fullAmount)
+		account.Payments[hash] = &PaymentEntry{
+			Status:     lnrpc.Payment_SUCCEEDED,
+			FullAmount: fullAmount,
+		}
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+}
+
+func (s *BoltStore) IncreaseAccountBalance(_ context.Context, id AccountID,
+	amount lnwire.MilliSatoshi) error {
+
+	return s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		account.CurrentBalance += int64(amount)
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+}
+
+func getAccount(accountBucket kvdb.RwBucket, id AccountID) (
+	*OffChainBalanceAccount, error) {
+
+	accountBinary := accountBucket.Get(id[:])
+	if len(accountBinary) == 0 {
+		return nil, ErrAccNotFound
+	}
+
+	return deserializeAccount(accountBinary)
 }
 
 // storeAccount serializes and writes the given account to the given account

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lightninglabs/taproot-assets/fn"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/lntypes"
 	"github.com/lightningnetwork/lnd/lnwire"
@@ -206,10 +207,30 @@ type Store interface {
 		expirationDate time.Time, label string) (
 		*OffChainBalanceAccount, error)
 
-	// UpdateAccount writes an account to the database, overwriting the
-	// existing one if it exists.
-	UpdateAccount(ctx context.Context,
-		account *OffChainBalanceAccount) error
+	AddAccountInvoice(ctx context.Context, id AccountID,
+		hash lntypes.Hash) error
+
+	UpdateAccountBalanceAndExpiry(ctx context.Context, id AccountID,
+		newBalance fn.Option[int64],
+		newExpiry fn.Option[time.Time]) error
+
+	AddAccountPayment(ctx context.Context, id AccountID, hash lntypes.Hash,
+		fullAmt lnwire.MilliSatoshi) error
+
+	SetAccountPaymentErrored(ctx context.Context, id AccountID,
+		hash lntypes.Hash) error
+
+	IncreaseAccountBalance(ctx context.Context, id AccountID,
+		amount lnwire.MilliSatoshi) error
+
+	UpdateAccountPaymentStatus(_ context.Context, id AccountID,
+		hash lntypes.Hash, status lnrpc.Payment_PaymentStatus) error
+
+	UpdateAccountPaymentSuccess(_ context.Context, id AccountID,
+		hash lntypes.Hash, fullAmount lnwire.MilliSatoshi) error
+
+	UpsertAccountPayment(_ context.Context, id AccountID,
+		hash lntypes.Hash, fullAmt lnwire.MilliSatoshi) (bool, error)
 
 	// Account retrieves an account from the Store and un-marshals it. If
 	// the account cannot be found, then ErrAccNotFound is returned.
