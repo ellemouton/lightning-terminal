@@ -55,7 +55,7 @@ var (
 // AddAction serialises and adds an Action to the DB under the given sessionID.
 //
 // NOTE: This is part of the ActionDB interface.
-func (db *DB) AddAction(action *Action) (uint64, error) {
+func (db *DB) AddAction(_ context.Context, action *Action) (uint64, error) {
 	var buf bytes.Buffer
 	if err := SerializeAction(&buf, action); err != nil {
 		return 0, err
@@ -171,8 +171,8 @@ func getAction(actionsBkt *bbolt.Bucket, al *ActionLocator) (*Action, error) {
 // state to the given state.
 //
 // NOTE: This is part of the ActionDB interface.
-func (db *DB) SetActionState(al *ActionLocator, state ActionState,
-	errorReason string) error {
+func (db *DB) SetActionState(_ context.Context, al *ActionLocator,
+	state ActionState, errorReason string) error {
 
 	if errorReason != "" && state != ActionStateError {
 		return fmt.Errorf("error reason should only be set for " +

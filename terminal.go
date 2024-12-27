@@ -1085,9 +1085,11 @@ func (g *LightningTerminal) startInternalSubServers(
 			g.permsMgr, g.lndClient.NodePubkey,
 			g.lndClient.Router,
 			g.lndClient.Client, g.lndConnID, g.ruleMgrs,
-			func(reqID uint64, reason string) error {
+			func(ctx context.Context, reqID uint64,
+				reason string) error {
+
 				return requestLogger.MarkAction(
-					reqID, firewalldb.ActionStateError,
+					ctx, reqID, firewalldb.ActionStateError,
 					reason,
 				)
 			}, g.firewallDB.PrivacyDB,
