@@ -219,7 +219,7 @@ type ActionReadDBGetter interface {
 
 // allActionsReadDb is an implementation of the ActionsReadDB.
 type allActionsReadDB struct {
-	db          *DB
+	db          ActionDB
 	groupID     session.ID
 	featureName string
 }

@@ -65,7 +65,7 @@ type sessionRpcServerConfig struct {
 	superMacBaker           session.MacaroonBaker
 	firstConnectionDeadline time.Duration
 	permMgr                 *perms.Manager
-	actionsDB               *firewalldb.DB
+	actionsDB               firewalldb.ActionDB
 	autopilot               autopilotserver.Autopilot
 	ruleMgrs                rules.ManagerSet
 	privMap                 firewalldb.NewPrivacyMapDB

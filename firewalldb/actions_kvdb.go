@@ -53,6 +53,8 @@ var (
 )
 
 // AddAction serialises and adds an Action to the DB under the given sessionID.
+//
+// NOTE: This is part of the ActionDB interface.
 func (db *DB) AddAction(action *Action) (uint64, error) {
 	var buf bytes.Buffer
 	if err := SerializeAction(&buf, action); err != nil {
@@ -167,6 +169,8 @@ func getAction(actionsBkt *bbolt.Bucket, al *ActionLocator) (*Action, error) {
 
 // SetActionState finds the action specified by the ActionLocator and sets its
 // state to the given state.
+//
+// NOTE: This is part of the ActionDB interface.
 func (db *DB) SetActionState(al *ActionLocator, state ActionState,
 	errorReason string) error {
 
@@ -210,6 +214,8 @@ type listActionsFilterFn func(a *Action, reversed bool) (bool, bool)
 // ListActionOptions may be used to filter on specific Action values. The return
 // values are the list of actions, the last index and the total count (iff
 // query.CountTotal is set).
+//
+// NOTE: This is part of the ActionsDB interface.
 func (db *DB) ListActions(ctx context.Context, query *ListActionsQuery,
 	options ...ListActionOption) ([]*Action, uint64, uint64, error) {
 
@@ -452,6 +458,8 @@ func (db *DB) listGroupActions(ctx context.Context, groupID session.ID,
 }
 
 // GetActionsReadDB is a method on DB that constructs an ActionsReadDB.
+//
+// NOTE: This is part of the ActionDB interface.
 func (db *DB) GetActionsReadDB(groupID session.ID,
 	featureName string) ActionsReadDB {
 
