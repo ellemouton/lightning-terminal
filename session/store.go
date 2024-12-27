@@ -80,8 +80,9 @@ func (db *DB) CreateSession(_ context.Context, session *Session) error {
 
 		if len(sessionBucket.Get(sessionKey)) != 0 {
 			return fmt.Errorf("session with local public "+
-				"key(%x) already exists",
-				session.LocalPublicKey.SerializeCompressed())
+				"key(%x) already exists: %w",
+				session.LocalPublicKey.SerializeCompressed(),
+				ErrSessionExists)
 		}
 
 		// If this is a linked session (meaning the group ID is
@@ -92,8 +93,8 @@ func (db *DB) CreateSession(_ context.Context, session *Session) error {
 		if session.ID != session.GroupID {
 			_, err = getKeyForID(sessionBucket, session.GroupID)
 			if err != nil {
-				return fmt.Errorf("unknown linked session "+
-					"%x: %w", session.GroupID, err)
+				return fmt.Errorf("%w %x: %w", ErrUnknownGroup,
+					session.GroupID, err)
 			}
 
 			// Fetch all the session IDs for this group. This will
@@ -130,8 +131,10 @@ func (db *DB) CreateSession(_ context.Context, session *Session) error {
 					sess.State == StateInUse {
 
 					return fmt.Errorf("session (id=%x) "+
-						"in group %x is still active",
-						sess.ID, sess.GroupID)
+						"in group %x is still "+
+						"active: %w", sess.ID,
+						sess.GroupID,
+						ErrSessionsInGroupStillActive)
 				}
 			}
 		}
@@ -562,7 +565,8 @@ func addIDToKeyPair(sessionBkt *bbolt.Bucket, id ID, sessionKey []byte) error {
 	}
 
 	if len(idBkt.Get(sessionKeyKey)) != 0 {
-		return fmt.Errorf("a session with the given ID already exists")
+		return fmt.Errorf("a session with the given ID already "+
+			"exists: %w", ErrSessionExists)
 	}
 
 	return idBkt.Put(sessionKeyKey[:], sessionKey)

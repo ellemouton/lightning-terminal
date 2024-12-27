@@ -34,7 +34,7 @@ func TestBasicSessionStore(t *testing.T) {
 
 	// Trying to persist session 1 again should fail due to a session with
 	// the given pub key already existing.
-	require.ErrorContains(t, db.CreateSession(ctx, s1), "already exists")
+	require.ErrorIs(t, db.CreateSession(ctx, s1), ErrSessionExists)
 
 	// Change the local pub key of session 4 such that it has the same
 	// ID as session 1.
@@ -43,8 +43,7 @@ func TestBasicSessionStore(t *testing.T) {
 
 	// Now try to insert session 4. This should fail due to an entry for
 	// the ID already existing.
-	require.ErrorContains(t, db.CreateSession(ctx, s4),
-		"a session with the given ID already exists")
+	require.ErrorIs(t, db.CreateSession(ctx, s4), ErrSessionExists)
 
 	// Persist a few more sessions.
 	require.NoError(t, db.CreateSession(ctx, s2))
@@ -112,9 +111,7 @@ func TestLinkingSessions(t *testing.T) {
 
 	// Try to persist the second session and assert that it fails due to the
 	// linked session not existing in the DB yet.
-	require.ErrorContains(
-		t, db.CreateSession(ctx, s2), "unknown linked session",
-	)
+	require.ErrorIs(t, db.CreateSession(ctx, s2), ErrUnknownGroup)
 
 	// Now persist the first session and retry persisting the second one
 	// and assert that this now works.
@@ -122,7 +119,9 @@ func TestLinkingSessions(t *testing.T) {
 
 	// Persisting the second session immediately should fail due to the
 	// first session still being active.
-	require.ErrorContains(t, db.CreateSession(ctx, s2), "is still active")
+	require.ErrorIs(
+		t, db.CreateSession(ctx, s2), ErrSessionsInGroupStillActive,
+	)
 
 	// Revoke the first session.
 	require.NoError(t, db.RevokeSession(ctx, s1.LocalPublicKey))
