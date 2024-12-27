@@ -111,7 +111,7 @@ func testActionStorage(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
-	require.Equal(t, action1, actions[0])
+	assertEqualActions(t, action1, actions[0])
 
 	actions, _, _, err = db.ListActions(
 		ctx, nil,
@@ -132,7 +132,7 @@ func testActionStorage(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
 	action2.State = ActionStateDone
-	require.Equal(t, action2, actions[0])
+	assertEqualActions(t, action2, actions[0])
 
 	_, err = db.AddAction(ctx, action1)
 	require.NoError(t, err)
@@ -164,7 +164,7 @@ func testActionStorage(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	require.Len(t, actions, 1)
 	action2.State = ActionStateError
 	action2.ErrorReason = "fail whale"
-	require.Equal(t, action2, actions[0])
+	assertEqualActions(t, action2, actions[0])
 }
 
 // testListActions tests some ListAction options.
@@ -391,4 +391,10 @@ func testListGroupActions(t *testing.T, makeDB func(t *testing.T) ActionDB) {
 	require.Len(t, al, 2)
 	require.Equal(t, sessionID1, al[0].SessionID)
 	require.Equal(t, sessionID2, al[1].SessionID)
+}
+
+func assertEqualActions(t *testing.T, expected, got *Action) {
+	require.Equal(t, expected.AttemptedAt.Unix(), got.AttemptedAt.Unix())
+	got.AttemptedAt = expected.AttemptedAt
+	require.Equal(t, expected, got)
 }
