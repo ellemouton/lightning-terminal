@@ -2,11 +2,13 @@ package session
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/lightninglabs/lightning-terminal/db"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,10 +49,49 @@ func TestSessions(t *testing.T) {
 		return kvdb
 	}
 
+	// First create a shared Postgres instance so we don't spawn a new
+	// docker container for each test.
+	pgFixture := db.NewTestPgFixture(
+		t, db.DefaultPostgresFixtureLifetime,
+	)
+	t.Cleanup(func() {
+		pgFixture.TearDown(t)
+	})
+
+	makeSQLDB := func(t *testing.T, sqlite bool) Store {
+		var sqlDB *db.BaseDB
+		if sqlite {
+			sqlDB = db.NewTestSqliteDB(t).BaseDB
+		} else {
+			sqlDB = db.NewTestPostgresDB(t, pgFixture).BaseDB
+		}
+
+		executor := db.NewTransactionExecutor(
+			sqlDB, func(tx *sql.Tx) SQLQueries {
+				return sqlDB.WithTx(tx)
+			},
+		)
+
+		return NewSQLStore(executor)
+	}
+
 	for _, test := range testList {
 		test := test
 		t.Run(test.name+"_KV", func(t *testing.T) {
 			test.test(t, makeKeyValueDB)
+		})
+
+		// TODO(elle): fix sqlite time stamp issue.
+		//t.Run(test.name+"_SQLite", func(t *testing.T) {
+		//	test.test(t, func(t *testing.T) Store {
+		//		return makeSQLDB(t, true)
+		//	})
+		//})
+
+		t.Run(test.name+"_Postgres", func(t *testing.T) {
+			test.test(t, func(t *testing.T) Store {
+				return makeSQLDB(t, false)
+			})
 		})
 	}
 }
