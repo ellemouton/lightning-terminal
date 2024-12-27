@@ -1,6 +1,6 @@
 -- name: InsertSession :one
 INSERT INTO sessions (
-    legacy_id, label, session_state, session_type, expiry, created_at,
+    legacy_id, label, state, type, expiry, created_at,
     revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret,
     local_private_key, local_public_key, remote_public_key, privacy, group_id
 ) VALUES (
@@ -47,11 +47,11 @@ SELECT * FROM sessions;
 
 -- name: ListSessionsByType :many
 SELECT * FROM sessions
-WHERE session_type = $1;
+WHERE type = $1;
 
 -- name: UpdateSessionState :exec
 UPDATE sessions
-SET session_state = $1
+SET state = $1
 WHERE id = $2;
 
 -- name: SetRemotePublicKeyByLocalPublicKey :exec

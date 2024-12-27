@@ -27,7 +27,7 @@ type Querier interface {
 	InsertPrivacyFlag(ctx context.Context, arg InsertPrivacyFlagParams) error
 	InsertSession(ctx context.Context, arg InsertSessionParams) (int64, error)
 	ListSessions(ctx context.Context) ([]Session, error)
-	ListSessionsByType(ctx context.Context, sessionType int16) ([]Session, error)
+	ListSessionsByType(ctx context.Context, type_ int16) ([]Session, error)
 	SetRemotePublicKeyByLocalPublicKey(ctx context.Context, arg SetRemotePublicKeyByLocalPublicKeyParams) error
 	SetSessionGroupID(ctx context.Context, arg SetSessionGroupIDParams) error
 	UpdateSessionState(ctx context.Context, arg UpdateSessionStateParams) error

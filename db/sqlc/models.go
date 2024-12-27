@@ -37,8 +37,8 @@ type Session struct {
 	ID              int64
 	LegacyID        []byte
 	Label           string
-	SessionState    int16
-	SessionType     int16
+	State           int16
+	Type            int16
 	Expiry          time.Time
 	CreatedAt       time.Time
 	RevokedAt       sql.NullTime

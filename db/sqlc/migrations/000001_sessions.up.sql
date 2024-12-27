@@ -1,3 +1,4 @@
+-- The sessions table contains LNC session related information.
 CREATE TABLE IF NOT EXISTS sessions (
     -- The auto incrementing primary key.
     id BIGINT PRIMARY KEY,
@@ -12,10 +13,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     label TEXT NOT NULL,
 
     -- The session's current state.
-    session_state SMALLINT NOT NULL,
+    state SMALLINT NOT NULL,
 
     -- The session type.
-    session_type SMALLINT NOT NULL,
+    type SMALLINT NOT NULL,
 
     -- expiry is the time that the session will expire.
     expiry TIMESTAMP NOT NULL,
@@ -26,7 +27,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- The time at which the session was revoked.
     revoked_at TIMESTAMP,
 
-    -- The mail server address.
+    -- The mailbox server address.
     server_address TEXT NOT NULL,
 
     -- Whether the connection to the server should not use TLS.
@@ -61,8 +62,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- ID to use for the group ID.
     group_id BIGINT REFERENCES sessions(id) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS sessions_type_idx ON sessions(session_type);
 
+CREATE INDEX IF NOT EXISTS sessions_type_idx ON sessions(type);
+
+-- The macaroon_permissions table contains the macaroon permissions that are
+-- associated with a session.
 CREATE TABLE IF NOT EXISTS macaroon_permissions (
     -- The ID of the session in the sessions table that this permission is
     -- associated with.
@@ -75,6 +79,8 @@ CREATE TABLE IF NOT EXISTS macaroon_permissions (
     action TEXT NOT NULL
 );
 
+-- The macaroon_caveats table contains the macaroon caveats that are associated
+-- with a session.
 CREATE TABLE IF NOT EXISTS macaroon_caveats (
     -- The ID of the session in the sessions table that this caveat is
     -- associated with.
@@ -90,16 +96,22 @@ CREATE TABLE IF NOT EXISTS macaroon_caveats (
     location TEXT
 );
 
+-- The feature_configs table contains the feature configs that are associated
+-- with a session.
 CREATE TABLE IF NOT EXISTS feature_configs (
     -- The ID of the session in the sessions table that this feature config is
     -- associated with.
     session_id BIGINT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
 
+    -- The feature name.
     feature_name TEXT NOT NULL,
 
+    -- The feature config blob.
     config BLOB
 );
 
+-- The privacy_flags table contains the privacy flags that are associated with
+-- a session.
 CREATE TABLE IF NOT EXISTS privacy_flags (
     -- The ID of the session in the sessions table that this privacy bit is
     -- associated with.
