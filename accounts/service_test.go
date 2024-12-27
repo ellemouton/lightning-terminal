@@ -23,6 +23,26 @@ var (
 	testInterval   = time.Millisecond * 20
 
 	testID2 = AccountID{22, 22, 22}
+
+	dbImpls = []struct {
+		name   string
+		makeDB func(t *testing.T) Store
+	}{
+		{
+			name: "bolt",
+			makeDB: func(t *testing.T) Store {
+				kvdb, err := NewBoltStore(
+					t.TempDir(), DBFilename,
+				)
+				require.NoError(t, err)
+				t.Cleanup(func() {
+					require.NoError(t, kvdb.Close())
+				})
+
+				return kvdb
+			},
+		},
+	}
 )
 
 type mockLnd struct {
@@ -819,53 +839,60 @@ func TestAccountService(t *testing.T) {
 	}}
 
 	for _, tc := range testCases {
-		tc := tc
+		for _, dbImpl := range dbImpls {
+			t.Run(tc.name+"_"+dbImpl.name, func(t *testing.T) {
+				t.Parallel()
 
-		t.Run(tc.name, func(tt *testing.T) {
-			tt.Parallel()
+				lndMock := newMockLnd()
+				routerMock := newMockRouter()
+				errFunc := func(err error) {
+					lndMock.mainErrChan <- err
+				}
+				store := dbImpl.makeDB(t)
+				service, err := NewService(store, errFunc)
+				require.NoError(t, err)
 
-			lndMock := newMockLnd()
-			routerMock := newMockRouter()
-			errFunc := func(err error) {
-				lndMock.mainErrChan <- err
-			}
-			store, err := NewBoltStore(t.TempDir(), DBFilename)
-			require.NoError(tt, err)
-			service, err := NewService(store, errFunc)
-			require.NoError(t, err)
-
-			// Is a setup call required to initialize initial
-			// conditions?
-			if tc.setup != nil {
-				tc.setup(t, lndMock, routerMock, service)
-			}
-
-			// Any errors during startup expected?
-			err = service.Start(ctx, lndMock, routerMock, chainParams)
-			if tc.startupErr != "" {
-				require.ErrorContains(tt, err, tc.startupErr)
-
-				lndMock.assertNoMainErr(t)
-
-				if tc.validate != nil {
-					tc.validate(
-						tt, lndMock, routerMock,
-						service,
+				// Is a setup call required to initialize
+				// initial conditions?
+				if tc.setup != nil {
+					tc.setup(
+						t, lndMock, routerMock, service,
 					)
 				}
 
-				return
-			}
+				// Any errors during startup expected?
+				err = service.Start(
+					ctx, lndMock, routerMock, chainParams,
+				)
+				if tc.startupErr != "" {
+					require.ErrorContains(t, err,
+						tc.startupErr)
 
-			// Any post execution validation that we need to run?
-			if tc.validate != nil {
-				tc.validate(tt, lndMock, routerMock, service)
-			}
+					lndMock.assertNoMainErr(t)
 
-			err = service.Stop()
-			require.NoError(tt, err)
-			lndMock.assertNoMainErr(t)
-		})
+					if tc.validate != nil {
+						tc.validate(
+							t, lndMock, routerMock,
+							service,
+						)
+					}
+
+					return
+				}
+
+				// Any post execution validation that we need to
+				// run?
+				if tc.validate != nil {
+					tc.validate(
+						t, lndMock, routerMock, service,
+					)
+				}
+
+				err = service.Stop()
+				require.NoError(t, err)
+				lndMock.assertNoMainErr(t)
+			})
+		}
 	}
 }
 

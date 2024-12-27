@@ -10,13 +10,40 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAccountStore tests that accounts can be stored and retrieved correctly.
-func TestAccountStore(t *testing.T) {
+// TestAccountsStore tests the basic functionality of the accounts store using
+// different backends.
+func TestAccountsStore(t *testing.T) {
+	time.Local = time.UTC
+
+	testList := []struct {
+		name string
+		test func(t *testing.T, makeDB func(t *testing.T) Store)
+	}{
+		{
+			name: "BasicAccountStorage",
+			test: testBasicAccountStorage,
+		},
+		{
+			name: "LastInvoiceIndexes",
+			test: testLastInvoiceIndexes,
+		},
+	}
+
+	for _, test := range testList {
+		for _, db := range dbImpls {
+			t.Run(test.name+"_"+db.name, func(t *testing.T) {
+				test.test(t, db.makeDB)
+			})
+		}
+	}
+}
+
+// testBasicAccountStorage tests that accounts can be stored and retrieved correctly.
+func testBasicAccountStorage(t *testing.T, makeDB func(t *testing.T) Store) {
 	t.Parallel()
 	ctx := context.Background()
 
-	store, err := NewBoltStore(t.TempDir(), DBFilename)
-	require.NoError(t, err)
+	store := makeDB(t)
 
 	// Create an account that does not expire.
 	acct1, err := store.NewAccount(ctx, 0, time.Time{}, "foo")
@@ -106,16 +133,15 @@ func assertEqualAccounts(t *testing.T, expected,
 	actual.LastUpdate = actualUpdate
 }
 
-// TestLastInvoiceIndexes makes sure the last known invoice indexes can be
+// testLastInvoiceIndexes makes sure the last known invoice indexes can be
 // stored and retrieved correctly.
-func TestLastInvoiceIndexes(t *testing.T) {
+func testLastInvoiceIndexes(t *testing.T, makeDB func(t *testing.T) Store) {
 	t.Parallel()
 	ctx := context.Background()
 
-	store, err := NewBoltStore(t.TempDir(), DBFilename)
-	require.NoError(t, err)
+	store := makeDB(t)
 
-	_, _, err = store.LastIndexes(ctx)
+	_, _, err := store.LastIndexes(ctx)
 	require.ErrorIs(t, err, ErrNoInvoiceIndexKnown)
 
 	require.NoError(t, store.StoreLastIndexes(ctx, 7, 99))

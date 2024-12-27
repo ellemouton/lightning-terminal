@@ -494,16 +494,25 @@ func TestAccountCheckers(t *testing.T) {
 // TestSendPaymentCalls performs test coverage on the SendPayment and
 // SendPaymentSync checkers.
 func TestSendPaymentCalls(t *testing.T) {
-	t.Run("SendPayment", func(t *testing.T) {
-		testSendPayment(t, "/lnrpc.Lightning/SendPayment")
-	})
+	for _, db := range dbImpls {
+		t.Run("SendPayment_"+db.name, func(t *testing.T) {
+			testSendPayment(
+				t, "/lnrpc.Lightning/SendPayment", db.makeDB,
+			)
+		})
 
-	t.Run("SendPaymentSync", func(t *testing.T) {
-		testSendPayment(t, "/lnrpc.Lightning/SendPaymentSync")
-	})
+		t.Run("SendPaymentSync_"+db.name, func(t *testing.T) {
+			testSendPayment(
+				t, "/lnrpc.Lightning/SendPaymentSync",
+				db.makeDB,
+			)
+		})
+	}
 }
 
-func testSendPayment(t *testing.T, uri string) {
+func testSendPayment(t *testing.T, uri string,
+	makeDB func(t *testing.T) Store) {
+
 	var (
 		ctx     = context.Background()
 		zeroFee = &lnrpc.FeeLimit{Limit: &lnrpc.FeeLimit_Fixed{
@@ -523,8 +532,7 @@ func testSendPayment(t *testing.T, uri string) {
 	errFunc := func(err error) {
 		lndMock.mainErrChan <- err
 	}
-	store, err := NewBoltStore(t.TempDir(), DBFilename)
-	require.NoError(t, err)
+	store := makeDB(t)
 	service, err := NewService(store, errFunc)
 	require.NoError(t, err)
 
