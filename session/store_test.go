@@ -13,6 +13,8 @@ import (
 // TestSessions tests various functionalities of the session store against a
 // range of database backends.
 func TestSessions(t *testing.T) {
+	time.Local = time.UTC
+
 	testList := []struct {
 		name string
 		test func(t *testing.T, makeDB func(t *testing.T) Store)
@@ -93,11 +95,11 @@ func testBasicSessionStore(t *testing.T, makeDB func(t *testing.T) Store) {
 	for _, s := range []*Session{s1, s2, s3} {
 		session, err := db.GetSession(ctx, s.LocalPublicKey)
 		require.NoError(t, err)
-		require.Equal(t, s.Label, session.Label)
+		assertEqual(t, s, session)
 
 		session, err = db.GetSessionByID(ctx, s.ID)
 		require.NoError(t, err)
-		require.Equal(t, s.Label, session.Label)
+		assertEqual(t, s, session)
 	}
 
 	// Fetch session 1 and assert that it currently has no remote pub key.
@@ -339,4 +341,16 @@ func newSession(t *testing.T, db Store, label string,
 	require.NoError(t, err)
 
 	return session
+}
+
+func assertEqual(t *testing.T, expected, got *Session) {
+	require.Equal(t, expected.Expiry.Unix(), got.Expiry.Unix())
+	require.Equal(t, expected.RevokedAt.Unix(), got.RevokedAt.Unix())
+	require.Equal(t, expected.CreatedAt.Unix(), got.CreatedAt.Unix())
+
+	got.Expiry = expected.Expiry
+	got.CreatedAt = expected.CreatedAt
+	got.RevokedAt = expected.RevokedAt
+
+	require.Equal(t, expected, got)
 }
