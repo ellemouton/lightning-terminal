@@ -42,27 +42,6 @@ type SQLQueries interface {
 
 var _ Store = (*SQLStore)(nil)
 
-// SQLQueriesTxOptions defines the set of db txn options the SQLQueries
-// understands.
-type SQLQueriesTxOptions struct {
-	// readOnly governs if a read only transaction is needed or not.
-	readOnly bool
-}
-
-// ReadOnly returns true if the transaction should be read only.
-//
-// NOTE: This implements the TxOptions.
-func (a *SQLQueriesTxOptions) ReadOnly() bool {
-	return a.readOnly
-}
-
-// NewSQLQueryReadTx creates a new read transaction option set.
-func NewSQLQueryReadTx() SQLQueriesTxOptions {
-	return SQLQueriesTxOptions{
-		readOnly: true,
-	}
-}
-
 // BatchedSQLQueries is a version of the SQLQueries that's capable of batched
 // database operations.
 type BatchedSQLQueries interface {
@@ -90,7 +69,7 @@ func NewSQLStore(db BatchedSQLQueries) *SQLStore {
 //
 // NOTE: This is part of the Store interface.
 func (s *SQLStore) CreateSession(ctx context.Context, sess *Session) error {
-	var writeTxOpts SQLQueriesTxOptions
+	var writeTxOpts db.QueriesTxOptions
 
 	err := s.db.ExecTx(ctx, &writeTxOpts, func(db SQLQueries) error {
 		localKey := sess.LocalPublicKey.SerializeCompressed()
@@ -255,7 +234,7 @@ func (s *SQLStore) GetSession(ctx context.Context, key *btcec.PublicKey) (
 	*Session, error) {
 
 	var (
-		readTxOpts = NewSQLQueryReadTx()
+		readTxOpts = db.NewQueryReadTx()
 		sess       *Session
 	)
 	err := s.db.ExecTx(ctx, &readTxOpts, func(db SQLQueries) error {
@@ -289,7 +268,7 @@ func (s *SQLStore) ListSessions(ctx context.Context,
 	filterFn func(s *Session) bool) ([]*Session, error) {
 
 	var (
-		readTxOpts = NewSQLQueryReadTx()
+		readTxOpts = db.NewQueryReadTx()
 		sessions   []*Session
 	)
 	err := s.db.ExecTx(ctx, &readTxOpts, func(db SQLQueries) error {
@@ -325,7 +304,7 @@ func (s *SQLStore) ListSessions(ctx context.Context,
 func (s *SQLStore) RevokeSession(ctx context.Context,
 	key *btcec.PublicKey) error {
 
-	var writeTxOpts SQLQueriesTxOptions
+	var writeTxOpts db.QueriesTxOptions
 	return s.db.ExecTx(ctx, &writeTxOpts, func(db SQLQueries) error {
 		dbSess, err := s.db.GetSessionByLocalPublicKey(
 			ctx, key.SerializeCompressed(),
@@ -351,7 +330,7 @@ func (s *SQLStore) UpdateSessionRemotePubKey(ctx context.Context, localPubKey,
 	remotePubKey *btcec.PublicKey) error {
 
 	var (
-		writeTxOpts SQLQueriesTxOptions
+		writeTxOpts db.QueriesTxOptions
 		remoteKey   = remotePubKey.SerializeCompressed()
 		localKey    = localPubKey.SerializeCompressed()
 	)
@@ -375,7 +354,7 @@ func (s *SQLStore) GetUnusedIDAndKeyPair(ctx context.Context) (ID,
 	*btcec.PrivateKey, error) {
 
 	var (
-		readTxOpts = NewSQLQueryReadTx()
+		readTxOpts = db.NewQueryReadTx()
 		id         ID
 		privKey    *btcec.PrivateKey
 		err        error
@@ -412,7 +391,7 @@ func (s *SQLStore) GetSessionByID(ctx context.Context, legacyID ID) (*Session,
 	error) {
 
 	var (
-		readTxOpts = NewSQLQueryReadTx()
+		readTxOpts = db.NewQueryReadTx()
 		sess       *Session
 	)
 	err := s.db.ExecTx(ctx, &readTxOpts, func(db SQLQueries) error {
@@ -445,7 +424,7 @@ func (s *SQLStore) CheckSessionGroupPredicate(ctx context.Context,
 	legacyGroupID ID, fn func(s *Session) bool) (bool, error) {
 
 	var (
-		readTxOpts = NewSQLQueryReadTx()
+		readTxOpts = db.NewQueryReadTx()
 		passes     bool
 	)
 	err := s.db.ExecTx(ctx, &readTxOpts, func(db SQLQueries) error {
@@ -486,7 +465,7 @@ func (s *SQLStore) CheckSessionGroupPredicate(ctx context.Context,
 // NOTE: This is part of the IDToGroupIndex interface.
 func (s *SQLStore) GetGroupID(ctx context.Context, sessionID ID) (ID, error) {
 	var (
-		readTxOpts    = NewSQLQueryReadTx()
+		readTxOpts    = db.NewQueryReadTx()
 		legacyGroupID ID
 	)
 	err := s.db.ExecTx(ctx, &readTxOpts, func(db SQLQueries) error {
@@ -527,7 +506,7 @@ func (s *SQLStore) GetSessionIDs(ctx context.Context, legacyGroupID ID) ([]ID,
 	error) {
 
 	var (
-		readTxOpts = NewSQLQueryReadTx()
+		readTxOpts = db.NewQueryReadTx()
 		sessionIDs []ID
 	)
 	err := s.db.ExecTx(ctx, &readTxOpts, func(db SQLQueries) error {

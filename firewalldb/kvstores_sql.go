@@ -70,9 +70,9 @@ var _ txCreator[KVStoreTx] = (*kvStoreSQLDB)(nil)
 func (k *kvStoreSQLDB) beginTx(ctx context.Context, writable bool) (KVStoreTx,
 	error) {
 
-	var txOpts SQLQueriesTxOptions
+	var txOpts db.QueriesTxOptions
 	if !writable {
-		txOpts = NewSQLQueryReadTx()
+		txOpts = db.NewQueryReadTx()
 	}
 
 	sqlTX, err := k.BeginTx(ctx, &txOpts)

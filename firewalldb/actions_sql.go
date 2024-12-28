@@ -30,27 +30,6 @@ type SQLActionQueries interface {
 	CountActions(ctx context.Context, arg sqlc.CountActionsParams) (int64, error)
 }
 
-// SQLQueriesTxOptions defines the set of db txn options the SQLQueries
-// understands.
-type SQLQueriesTxOptions struct {
-	// readOnly governs if a read only transaction is needed or not.
-	readOnly bool
-}
-
-// ReadOnly returns true if the transaction should be read only.
-//
-// NOTE: This implements the TxOptions.
-func (a *SQLQueriesTxOptions) ReadOnly() bool {
-	return a.readOnly
-}
-
-// NewSQLQueryReadTx creates a new read transaction option set.
-func NewSQLQueryReadTx() SQLQueriesTxOptions {
-	return SQLQueriesTxOptions{
-		readOnly: true,
-	}
-}
-
 // BatchedSQLActionsQueries is a version of the SQLActionQueries that's capable
 // of batched database operations.
 type BatchedSQLActionsQueries interface {
@@ -102,7 +81,7 @@ func (s *SQLActionsStore) AddAction(ctx context.Context, a *Action) (
 	ActionLocator, error) {
 
 	var (
-		writeTxOpts SQLQueriesTxOptions
+		writeTxOpts db.QueriesTxOptions
 		locator     sqlActionLocator
 
 		actor          = sql.NullString{String: a.ActorName}
@@ -202,7 +181,7 @@ func (s *SQLActionsStore) SetActionState(ctx context.Context, al ActionLocator,
 		return fmt.Errorf("expected sqlActionLocator, got %T", al)
 	}
 
-	var writeTxOpts SQLQueriesTxOptions
+	var writeTxOpts db.QueriesTxOptions
 	return s.db.ExecTx(ctx, &writeTxOpts, func(db SQLActionQueries) error {
 		return db.SetActionState(ctx, sqlc.SetActionStateParams{
 			ID:    locator.id,
@@ -232,7 +211,7 @@ func (s *SQLActionsStore) ListActions(ctx context.Context,
 	}
 
 	var (
-		readTxOpts = NewSQLQueryReadTx()
+		readTxOpts = db.NewQueryReadTx()
 		actions    []*Action
 		lastIndex  uint64
 		totalCount int64

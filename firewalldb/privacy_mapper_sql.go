@@ -52,9 +52,9 @@ var _ txCreator[PrivacyMapTx] = (*privacyMapKVDBDB)(nil)
 func (s *privacyMapSQLDB) beginTx(ctx context.Context, writable bool) (
 	PrivacyMapTx, error) {
 
-	var txOpts SQLQueriesTxOptions
+	var txOpts db.QueriesTxOptions
 	if !writable {
-		txOpts = NewSQLQueryReadTx()
+		txOpts = db.NewQueryReadTx()
 	}
 
 	sqlTX, err := s.BeginTx(ctx, &txOpts)
