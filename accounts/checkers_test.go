@@ -494,6 +494,8 @@ func TestAccountCheckers(t *testing.T) {
 // TestSendPaymentCalls performs test coverage on the SendPayment and
 // SendPaymentSync checkers.
 func TestSendPaymentCalls(t *testing.T) {
+	setUpPGFixture(t)
+
 	for _, db := range dbImpls {
 		t.Run("SendPayment_"+db.name, func(t *testing.T) {
 			testSendPayment(
@@ -621,6 +623,7 @@ func testSendPayment(t *testing.T, uri string,
 		},
 	)
 	require.NoError(t, err)
+	t.Logf("NOW")
 	assertBalance(acct.ID, 4000)
 
 	// A repeated response should have no impact.

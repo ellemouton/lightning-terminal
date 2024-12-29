@@ -10,9 +10,15 @@ import (
 )
 
 type Querier interface {
+	AddAccountInvoice(ctx context.Context, arg AddAccountInvoiceParams) error
 	CountActions(ctx context.Context, arg CountActionsParams) (int64, error)
+	DeleteAccount(ctx context.Context, legacyID []byte) error
+	DeleteAccountPayment(ctx context.Context, arg DeleteAccountPaymentParams) error
 	DeleteAllTemp(ctx context.Context) error
 	DeleteKVStoreRecord(ctx context.Context, arg DeleteKVStoreRecordParams) error
+	GetAccount(ctx context.Context, legacyID []byte) (Account, error)
+	GetAccountIndex(ctx context.Context, name string) (int64, error)
+	GetAccountPayment(ctx context.Context, arg GetAccountPaymentParams) (AccountPayment, error)
 	GetAllPrivacyPairs(ctx context.Context, groupID int64) ([]GetAllPrivacyPairsRow, error)
 	GetKVStoreRecord(ctx context.Context, arg GetKVStoreRecordParams) ([]byte, error)
 	GetLegacyIDBySessionID(ctx context.Context, id int64) ([]byte, error)
@@ -28,6 +34,7 @@ type Querier interface {
 	GetSessionMacaroonPermissions(ctx context.Context, sessionID int64) ([]MacaroonPermission, error)
 	GetSessionPrivacyFlags(ctx context.Context, sessionID int64) ([]PrivacyFlag, error)
 	GetSessionsInGroup(ctx context.Context, groupID sql.NullInt64) ([]Session, error)
+	InsertAccount(ctx context.Context, arg InsertAccountParams) (int64, error)
 	InsertAction(ctx context.Context, arg InsertActionParams) (int64, error)
 	InsertFeatureConfig(ctx context.Context, arg InsertFeatureConfigParams) error
 	InsertKVStoreRecord(ctx context.Context, arg InsertKVStoreRecordParams) error
@@ -36,15 +43,23 @@ type Querier interface {
 	InsertPrivacyFlag(ctx context.Context, arg InsertPrivacyFlagParams) error
 	InsertPrivacyPair(ctx context.Context, arg InsertPrivacyPairParams) error
 	InsertSession(ctx context.Context, arg InsertSessionParams) (int64, error)
+	ListAccountInvoices(ctx context.Context, legacyID []byte) ([]AccountInvoice, error)
+	ListAccountPayments(ctx context.Context, legacyID []byte) ([]AccountPayment, error)
 	ListActions(ctx context.Context, arg ListActionsParams) ([]Action, error)
 	ListActionsPaginated(ctx context.Context, arg ListActionsPaginatedParams) ([]Action, error)
+	ListAllAccountIDs(ctx context.Context) ([][]byte, error)
 	ListSessions(ctx context.Context) ([]Session, error)
 	ListSessionsByType(ctx context.Context, type_ int16) ([]Session, error)
+	SetAccountIndex(ctx context.Context, arg SetAccountIndexParams) error
 	SetActionState(ctx context.Context, arg SetActionStateParams) error
 	SetRemotePublicKeyByLocalPublicKey(ctx context.Context, arg SetRemotePublicKeyByLocalPublicKeyParams) error
 	SetSessionGroupID(ctx context.Context, arg SetSessionGroupIDParams) error
+	UpdateAccountBalance(ctx context.Context, arg UpdateAccountBalanceParams) error
+	UpdateAccountExpiry(ctx context.Context, arg UpdateAccountExpiryParams) error
+	UpdateAccountLastUpdate(ctx context.Context, arg UpdateAccountLastUpdateParams) error
 	UpdateKVStoreRecord(ctx context.Context, arg UpdateKVStoreRecordParams) error
 	UpdateSessionState(ctx context.Context, arg UpdateSessionStateParams) error
+	UpsertAccountPayment(ctx context.Context, arg UpsertAccountPaymentParams) error
 }
 
 var _ Querier = (*Queries)(nil)

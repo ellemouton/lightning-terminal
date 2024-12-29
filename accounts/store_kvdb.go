@@ -102,7 +102,6 @@ func NewBoltStore(dir, fileName string) (*BoltStore, error) {
 	return &BoltStore{db: db}, nil
 }
 
-// Close closes the underlying bolt DB.
 func (s *BoltStore) Close() error {
 	return s.db.Close()
 }
@@ -134,7 +133,8 @@ func (s *BoltStore) NewAccount(ctx context.Context, balance lnwire.MilliSatoshi,
 		for _, account := range accounts {
 			if account.Label == label {
 				return nil, fmt.Errorf("an account with the "+
-					"label '%s' already exists", label)
+					"label '%s' already exists: %w", label,
+					ErrLabelAlreadyExists)
 			}
 		}
 	}
@@ -272,7 +272,7 @@ func (s *BoltStore) AddAccountPayment(_ context.Context, id AccountID,
 		}
 
 		// Check if this payment is associated with the account already.
-		_, ok := account.Payments[hash]
+		entry, ok := account.Payments[hash]
 		if ok {
 			// We do not allow another payment to the same hash if
 			// the payment is already in-flight or succeeded. This
@@ -281,13 +281,11 @@ func (s *BoltStore) AddAccountPayment(_ context.Context, id AccountID,
 			// remove the payment from being tracked. Note that
 			// this prevents launching multipart payments, but
 			// allows retrying a payment if it has failed.
-			if account.Payments[hash].Status !=
-				lnrpc.Payment_FAILED {
-
+			if entry.Status != lnrpc.Payment_FAILED {
 				return fmt.Errorf("payment with hash %s is "+
 					"already in flight or succeeded "+
 					"(status %v)", hash,
-					account.Payments[hash].Status)
+					entry.Status)
 			}
 
 			// Otherwise, we fall through to correctly update the

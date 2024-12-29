@@ -9,6 +9,34 @@ import (
 	"time"
 )
 
+type Account struct {
+	ID                 int64
+	LegacyID           []byte
+	Label              sql.NullString
+	Type               int16
+	IntialBalanceMsat  int64
+	CurrentBalanceMsat int64
+	LastUpdated        time.Time
+	Expiration         time.Time
+}
+
+type AccountIndicy struct {
+	Name  string
+	Value int64
+}
+
+type AccountInvoice struct {
+	AccountID int64
+	Hash      []byte
+}
+
+type AccountPayment struct {
+	AccountID      int64
+	Hash           []byte
+	Status         int16
+	FullAmountMsat int64
+}
+
 type Action struct {
 	ID                 int64
 	SessionID          sql.NullInt64

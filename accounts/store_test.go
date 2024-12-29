@@ -30,6 +30,7 @@ func TestAccountsStore(t *testing.T) {
 		},
 	}
 
+	setUpPGFixture(t)
 	for _, test := range testList {
 		for _, db := range dbImpls {
 			t.Run(test.name+"_"+db.name, func(t *testing.T) {
@@ -58,7 +59,7 @@ func testBasicAccountStorage(t *testing.T, makeDB func(t *testing.T) Store) {
 
 	// Make sure we cannot create a second account with the same label.
 	_, err = store.NewAccount(ctx, 123, time.Time{}, "foo")
-	require.ErrorContains(t, err, "account with the label 'foo' already")
+	require.ErrorIs(t, err, ErrLabelAlreadyExists)
 
 	// Make sure we cannot set a label that looks like an account ID.
 	_, err = store.NewAccount(ctx, 123, time.Time{}, "0011223344556677")

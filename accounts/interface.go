@@ -251,9 +251,6 @@ type Store interface {
 	// StoreLastIndexes stores the last invoice add and settle index.
 	StoreLastIndexes(ctx context.Context, addIndex,
 		settleIndex uint64) error
-
-	// Close closes the underlying store.
-	Close() error
 }
 
 // Service is the main account service interface.

@@ -218,7 +218,7 @@ func (s *InterceptorService) Stop() error {
 
 	s.wg.Wait()
 
-	return s.store.Close()
+	return nil
 }
 
 func (s *InterceptorService) trackPayment(ctx context.Context,
@@ -258,6 +258,9 @@ func (s *InterceptorService) trackPayment(ctx context.Context,
 		}
 
 		return fmt.Errorf("error updating account: %w", err)
+	}
+	if errors.Is(err, ErrPaymentAlreadySucceeded) {
+		return nil
 	}
 
 	// And start the long-running TrackPayment RPC.
