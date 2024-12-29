@@ -9,7 +9,9 @@ import (
 	"io"
 	"time"
 
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightninglabs/taproot-assets/fn"
 	"github.com/lightningnetwork/lnd/tlv"
 	"go.etcd.io/bbolt"
 )
@@ -55,19 +57,18 @@ var (
 // AddAction serialises and adds an Action to the DB under the given sessionID.
 //
 // NOTE: This is part of the ActionDB interface.
-func (db *DB) AddAction(ctx context.Context, action *Action) (ActionLocator,
+func (db *DB) AddAction(ctx context.Context, req *AddActionReq) (ActionLocator,
 	error) {
 
-	// If the session ID is not empty (which means that this action is not
-	// tied to a session), then first, check that the associated session
-	// actually exists in the sessions DB.
-	if action.SessionID != session.EmptyID {
-		// TODO(elle): either session table OR must be from accounts
-		// table.
-		_, err := db.sessionIDIndex.GetGroupID(ctx, action.SessionID)
-		if err != nil {
-			return nil, err
-		}
+	// TODO(elle): NOTE: initially it would error if we did not find the session or
+	// account to link it to. but now if it cant link them, it will just
+	// store the mac identifier. So coupling is not enforced. so no error
+	// here. So really no need to check here.
+
+	action := &Action{
+		AttemptedAt:  time.Now(),
+		State:        ActionStateInit,
+		AddActionReq: *req,
 	}
 
 	var buf bytes.Buffer
@@ -88,7 +89,7 @@ func (db *DB) AddAction(ctx context.Context, action *Action) (ActionLocator,
 		}
 
 		sessBucket, err := actionsBucket.CreateBucketIfNotExists(
-			action.SessionID[:],
+			action.MacaroonIdentifier[:],
 		)
 		if err != nil {
 			return err
@@ -117,7 +118,7 @@ func (db *DB) AddAction(ctx context.Context, action *Action) (ActionLocator,
 		}
 
 		locator = kvdbActionLocator{
-			SessionID: action.SessionID,
+			SessionID: action.MacaroonIdentifier,
 			ActionID:  nextActionIndex,
 		}
 
@@ -166,8 +167,8 @@ func putAction(tx *bbolt.Tx, al *kvdbActionLocator, a *Action) error {
 	return sessBucket.Put(id[:], buf.Bytes())
 }
 
-func getAction(actionsBkt *bbolt.Bucket, al *kvdbActionLocator) (*Action,
-	error) {
+func (db *DB) getAction(ctx context.Context, actionsBkt *bbolt.Bucket,
+	al *kvdbActionLocator) (*Action, error) {
 
 	sessBucket := actionsBkt.Bucket(al.SessionID[:])
 	if sessBucket == nil {
@@ -179,14 +180,46 @@ func getAction(actionsBkt *bbolt.Bucket, al *kvdbActionLocator) (*Action,
 	binary.BigEndian.PutUint64(id[:], al.ActionID)
 
 	actionBytes := sessBucket.Get(id[:])
-	return DeserializeAction(bytes.NewReader(actionBytes), al.SessionID)
+
+	return db.unmarshalAction(ctx, actionBytes, al.SessionID)
+}
+
+func (db *DB) unmarshalAction(ctx context.Context, actionBytes []byte,
+	sessionID session.ID) (*Action, error) {
+
+	action, err := DeserializeAction(bytes.NewReader(actionBytes), sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Now, we do a best effort to see if we should couple this action to
+	// a session and/or account.
+	//
+	// First, check if it is linked to a session.
+	macID := action.MacaroonIdentifier
+	_, err = db.sessionIDIndex.GetSessionByID(ctx, macID)
+	if err != nil && !errors.Is(err, session.ErrSessionNotFound) {
+		return nil, err
+	} else if err == nil {
+		action.SessionID = fn.Some(session.ID(macID))
+	}
+
+	// Now, check if it is linked to an account.
+	acct, err := db.accountsDB.GetAccountByIDPrefix(ctx, macID)
+	if err != nil && !errors.Is(err, accounts.ErrAccNotFound) {
+		return nil, err
+	} else if err == nil {
+		action.AccountID = fn.Some(acct.ID)
+	}
+
+	return action, nil
 }
 
 // SetActionState finds the action specified by the ActionLocator and sets its
 // state to the given state.
 //
 // NOTE: This is part of the ActionDB interface.
-func (db *DB) SetActionState(_ context.Context, al ActionLocator,
+func (db *DB) SetActionState(ctx context.Context, al ActionLocator,
 	state ActionState, errorReason string) error {
 
 	if errorReason != "" && state != ActionStateError {
@@ -210,7 +243,7 @@ func (db *DB) SetActionState(_ context.Context, al ActionLocator,
 			return ErrNoSuchKeyFound
 		}
 
-		action, err := getAction(actionsBucket, locator)
+		action, err := db.getAction(ctx, actionsBucket, locator)
 		if err != nil {
 			return err
 		}
@@ -344,7 +377,7 @@ func (db *DB) ListActions(ctx context.Context, query *ListActionsQuery,
 				return nil, err
 			}
 
-			return getAction(actionsBucket, locator)
+			return db.getAction(ctx, actionsBucket, locator)
 		}
 
 		actions, lastIndex, totalCount, err = paginateActions(
@@ -394,7 +427,7 @@ func (db *DB) listSessionActions(ctx context.Context, sessionID session.ID,
 		}
 
 		readAction := func(_, v []byte) (*Action, error) {
-			return DeserializeAction(bytes.NewReader(v), sessionID)
+			return db.unmarshalAction(ctx, v, sessionID)
 		}
 
 		actions, lastIndex, totalCount, err = paginateActions(
@@ -451,8 +484,8 @@ func (db *DB) listGroupActions(ctx context.Context, groupID session.ID,
 			}
 
 			err = sessionsBucket.ForEach(func(_, v []byte) error {
-				action, err := DeserializeAction(
-					bytes.NewReader(v), sessionID,
+				action, err := db.unmarshalAction(
+					ctx, v, sessionID,
 				)
 				if err != nil {
 					return err
@@ -570,7 +603,7 @@ func DeserializeAction(r io.Reader, sessionID session.ID) (*Action, error) {
 		return nil, err
 	}
 
-	action.SessionID = sessionID
+	action.MacaroonIdentifier = sessionID
 	action.ActorName = string(actor)
 	action.FeatureName = string(featureName)
 	action.Trigger = string(trigger)

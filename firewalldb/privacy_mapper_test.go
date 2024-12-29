@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/db"
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/stretchr/testify/require"
@@ -44,8 +45,17 @@ func TestPrivacyPairsDB(t *testing.T) {
 			require.NoError(t, sessionsDB.Close())
 		})
 
+		accountsDB, err := accounts.NewBoltStore(
+			tempDir, "test_accounts.db",
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, accountsDB.Close())
+		})
+
 		privPairDB, err := NewDB(
 			tempDir, "test_priv_pairs.db", sessionsDB,
+			accountsDB,
 		)
 		require.NoError(t, err)
 		t.Cleanup(func() {

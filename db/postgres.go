@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -32,6 +33,9 @@ var (
 		"BIGINT PRIMARY KEY":  "BIGSERIAL PRIMARY KEY",
 		"TIMESTAMP":           "TIMESTAMP WITHOUT TIME ZONE",
 	}
+
+	// Regular expression to match SUBSTR(column, start, length)
+	re = regexp.MustCompile(`SUBSTR$begin:math:text$([^,]+),\\s*([^,]+),\\s*([^$end:math:text$]+)\)`)
 )
 
 // replacePasswordInDSN takes a DSN string and returns it with the password
@@ -153,8 +157,26 @@ func (s *PostgresStore) ExecuteMigrations(target MigrationTarget) error {
 
 	// Populate the database with our set of schemas based on our embedded
 	// in-memory file system.
-	postgresFS := newReplacerFS(sqlSchemas, postgresSchemaReplacements)
+	postgresFS := newReplacerFS(
+		sqlSchemas, postgresSchemaReplacements, replaceSubstrWithSubstring,
+	)
+
 	return applyMigrations(
 		postgresFS, driver, "sqlc/migrations", dbName, target,
 	)
+}
+
+func replaceSubstrWithSubstring(sqlContent string) string {
+	// Replace matches with PostgreSQL's SUBSTRING syntax
+	return re.ReplaceAllStringFunc(sqlContent, func(match string) string {
+		// Extract parts using regex groups
+		matches := re.FindStringSubmatch(match)
+		if len(matches) == 4 {
+			column := matches[1]
+			start := matches[2]
+			length := matches[3]
+			return fmt.Sprintf("SUBSTRING(%s FROM %s FOR %s)", column, start, length)
+		}
+		return match // Fallback if no match
+	})
 }

@@ -119,8 +119,9 @@ func applyMigrations(fs fs.FS, driver database.Driver, path,
 // existing file system but does a search-and-replace operation on each file
 // when it is opened.
 type replacerFS struct {
-	parentFS fs.FS
-	replaces map[string]string
+	parentFS  fs.FS
+	replaces  map[string]string
+	replaceFn func(string) string
 }
 
 // A compile-time assertion to make sure replacerFS implements the fs.FS
@@ -132,10 +133,13 @@ var _ fs.FS = (*replacerFS)(nil)
 // search-and-replace operation when it is opened, using the given map where the
 // key denotes the search term and the value the term to replace each occurrence
 // with.
-func newReplacerFS(parent fs.FS, replaces map[string]string) *replacerFS {
+func newReplacerFS(parent fs.FS, replaces map[string]string,
+	replaceFn func(string) string) *replacerFS {
+
 	return &replacerFS{
-		parentFS: parent,
-		replaces: replaces,
+		parentFS:  parent,
+		replaces:  replaces,
+		replaceFn: replaceFn,
 	}
 }
 
@@ -157,7 +161,7 @@ func (t *replacerFS) Open(name string) (fs.File, error) {
 		return f, err
 	}
 
-	return newReplacerFile(f, t.replaces)
+	return newReplacerFile(f, t.replaces, t.replaceFn)
 }
 
 type replacerFile struct {
@@ -169,8 +173,8 @@ type replacerFile struct {
 // interface.
 var _ fs.File = (*replacerFile)(nil)
 
-func newReplacerFile(parent fs.File, replaces map[string]string) (*replacerFile,
-	error) {
+func newReplacerFile(parent fs.File, replaces map[string]string,
+	fullReplaceFn func(string) string) (*replacerFile, error) {
 
 	content, err := io.ReadAll(parent)
 	if err != nil {
@@ -181,6 +185,8 @@ func newReplacerFile(parent fs.File, replaces map[string]string) (*replacerFile,
 	for from, to := range replaces {
 		contentStr = strings.ReplaceAll(contentStr, from, to)
 	}
+
+	contentStr = fullReplaceFn(contentStr)
 
 	var buf bytes.Buffer
 	_, err = buf.WriteString(contentStr)

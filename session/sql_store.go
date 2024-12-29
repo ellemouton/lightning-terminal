@@ -396,7 +396,9 @@ func (s *SQLStore) GetSessionByID(ctx context.Context, legacyID ID) (*Session,
 	)
 	err := s.db.ExecTx(ctx, &readTxOpts, func(db SQLQueries) error {
 		dbSess, err := db.GetSessionByLegacyID(ctx, legacyID[:])
-		if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrSessionNotFound
+		} else if err != nil {
 			return fmt.Errorf("unable to get session: %w", err)
 		}
 

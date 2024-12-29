@@ -3,6 +3,7 @@ package firewalldb
 import (
 	"context"
 
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/session"
 )
 
@@ -15,11 +16,16 @@ type SessionDB interface {
 	GetSessionByID(context.Context, session.ID) (*session.Session, error)
 }
 
+type AccountsDB interface {
+	GetAccountByIDPrefix(ctx context.Context, prefix [4]byte) (
+		*accounts.OffChainBalanceAccount, error)
+}
+
 // ActionDB is an interface that abstracts the database operations needed for
 // the Action persistence and querying.
 type ActionDB interface {
 	// AddAction persists the given action to the database.
-	AddAction(ctx context.Context, action *Action) (ActionLocator, error)
+	AddAction(ctx context.Context, req *AddActionReq) (ActionLocator, error)
 
 	// SetActionState finds the action specified by the ActionLocator and
 	// sets its state to the given state.

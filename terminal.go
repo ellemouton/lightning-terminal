@@ -435,6 +435,7 @@ func (g *LightningTerminal) start(ctx context.Context) error {
 
 	g.firewallDB, err = firewalldb.NewDB(
 		networkDir, firewalldb.DBFilename, g.sessionDB,
+		g.accountsStore,
 	)
 	if err != nil {
 		return fmt.Errorf("error creating firewall DB: %v", err)

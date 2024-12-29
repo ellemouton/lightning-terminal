@@ -50,6 +50,16 @@ SELECT *
 FROM accounts
 WHERE legacy_id = $1;
 
+-- name: GetAccountByAliasPrefix :one
+SELECT *
+FROM accounts
+WHERE SUBSTR(legacy_id, 1, 4) = $1;
+
+-- name: GetAccountByID :one
+SELECT *
+FROM accounts
+WHERE id = $1;
+
 -- name: DeleteAccount :exec
 DELETE FROM accounts
 WHERE legacy_id = $1;

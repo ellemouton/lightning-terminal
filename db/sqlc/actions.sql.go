@@ -15,22 +15,24 @@ const countActions = `-- name: CountActions :one
 SELECT COUNT(*)
 FROM actions a
 WHERE (a.session_id = $1 OR $1 IS NULL)
-  AND (a.feature_name = $2 OR $2 IS NULL)
-  AND (a.actor_name = $3 OR $3 IS NULL)
-  AND (a.rpc_method = $4 OR $4 IS NULL)
-  AND (a.state = $5 OR $5 IS NULL)
-  AND (a.created_at <= $6 OR $6 IS NULL)
-  AND (a.created_at >= $7 OR $7 IS NULL)
+  AND (a.account_id = $2 OR $2 IS NULL)
+  AND (a.feature_name = $3 OR $3 IS NULL)
+  AND (a.actor_name = $4 OR $4 IS NULL)
+  AND (a.rpc_method = $5 OR $5 IS NULL)
+  AND (a.state = $6 OR $6 IS NULL)
+  AND (a.created_at <= $7 OR $7 IS NULL)
+  AND (a.created_at >= $8 OR $8 IS NULL)
   AND (
-    $8::BIGINT IS NULL OR EXISTS (
+    $9::BIGINT IS NULL OR EXISTS (
         SELECT 1
         FROM sessions s
-        WHERE s.id = a.session_id AND s.group_id = $8::BIGINT
+        WHERE s.id = a.session_id AND s.group_id = $9::BIGINT
 ))
 `
 
 type CountActionsParams struct {
 	SessionID   sql.NullInt64
+	AccountID   sql.NullInt64
 	FeatureName sql.NullString
 	ActorName   sql.NullString
 	RpcMethod   sql.NullString
@@ -43,6 +45,7 @@ type CountActionsParams struct {
 func (q *Queries) CountActions(ctx context.Context, arg CountActionsParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countActions,
 		arg.SessionID,
+		arg.AccountID,
 		arg.FeatureName,
 		arg.ActorName,
 		arg.RpcMethod,
@@ -58,17 +61,19 @@ func (q *Queries) CountActions(ctx context.Context, arg CountActionsParams) (int
 
 const insertAction = `-- name: InsertAction :one
 INSERT INTO actions (
-    session_id, actor_name, feature_name, trigger, intent,
+    session_id, account_id, macaroon_identifier, actor_name, feature_name, trigger, intent,
     structured_json_data, rpc_method, rpc_params_json, created_at,
     state, error_reason
 ) VALUES (
              $1, $2, $3, $4, $5, $6,
-             $7, $8, $9, $10, $11
+             $7, $8, $9, $10, $11, $12, $13
 ) RETURNING id
 `
 
 type InsertActionParams struct {
 	SessionID          sql.NullInt64
+	AccountID          sql.NullInt64
+	MacaroonIdentifier []byte
 	ActorName          sql.NullString
 	FeatureName        sql.NullString
 	Trigger            sql.NullString
@@ -84,6 +89,8 @@ type InsertActionParams struct {
 func (q *Queries) InsertAction(ctx context.Context, arg InsertActionParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, insertAction,
 		arg.SessionID,
+		arg.AccountID,
+		arg.MacaroonIdentifier,
 		arg.ActorName,
 		arg.FeatureName,
 		arg.Trigger,
@@ -101,29 +108,31 @@ func (q *Queries) InsertAction(ctx context.Context, arg InsertActionParams) (int
 }
 
 const listActions = `-- name: ListActions :many
-SELECT a.id, a.session_id, a.actor_name, a.feature_name, a.trigger, a.intent, a.structured_json_data, a.rpc_method, a.rpc_params_json, a.created_at, a.state, a.error_reason
+SELECT a.id, a.session_id, a.account_id, a.macaroon_identifier, a.actor_name, a.feature_name, a.trigger, a.intent, a.structured_json_data, a.rpc_method, a.rpc_params_json, a.created_at, a.state, a.error_reason
 FROM actions a
 WHERE (a.session_id = $1 OR $1 IS NULL)
-  AND (a.feature_name = $2 OR $2 IS NULL)
-  AND (a.actor_name = $3 OR $3 IS NULL)
-  AND (a.rpc_method = $4 OR $4 IS NULL)
-  AND (a.state = $5 OR $5 IS NULL)
-  AND (a.created_at <= $6 OR $6 IS NULL)
-  AND (a.created_at >= $7 OR $7 IS NULL)
+  AND (a.account_id = $2 OR $2 IS NULL)
+  AND (a.feature_name = $3 OR $3 IS NULL)
+  AND (a.actor_name = $4 OR $4 IS NULL)
+  AND (a.rpc_method = $5 OR $5 IS NULL)
+  AND (a.state = $6 OR $6 IS NULL)
+  AND (a.created_at <= $7 OR $7 IS NULL)
+  AND (a.created_at >= $8 OR $8 IS NULL)
   AND (
-    $8::BIGINT IS NULL OR EXISTS (
+    $9::BIGINT IS NULL OR EXISTS (
         SELECT 1
         FROM sessions s
-        WHERE s.id = a.session_id AND s.group_id = $8::BIGINT
+        WHERE s.id = a.session_id AND s.group_id = $9::BIGINT
     )
     )
 ORDER BY
-    CASE WHEN $9::BOOLEAN THEN a.created_at END DESC,
-    CASE WHEN NOT $9::BOOLEAN THEN a.created_at END ASC
+    CASE WHEN $10::BOOLEAN THEN a.created_at END DESC,
+    CASE WHEN NOT $10::BOOLEAN THEN a.created_at END ASC
 `
 
 type ListActionsParams struct {
 	SessionID   sql.NullInt64
+	AccountID   sql.NullInt64
 	FeatureName sql.NullString
 	ActorName   sql.NullString
 	RpcMethod   sql.NullString
@@ -137,6 +146,7 @@ type ListActionsParams struct {
 func (q *Queries) ListActions(ctx context.Context, arg ListActionsParams) ([]Action, error) {
 	rows, err := q.db.QueryContext(ctx, listActions,
 		arg.SessionID,
+		arg.AccountID,
 		arg.FeatureName,
 		arg.ActorName,
 		arg.RpcMethod,
@@ -156,6 +166,8 @@ func (q *Queries) ListActions(ctx context.Context, arg ListActionsParams) ([]Act
 		if err := rows.Scan(
 			&i.ID,
 			&i.SessionID,
+			&i.AccountID,
+			&i.MacaroonIdentifier,
 			&i.ActorName,
 			&i.FeatureName,
 			&i.Trigger,
@@ -181,32 +193,34 @@ func (q *Queries) ListActions(ctx context.Context, arg ListActionsParams) ([]Act
 }
 
 const listActionsPaginated = `-- name: ListActionsPaginated :many
-SELECT a.id, a.session_id, a.actor_name, a.feature_name, a.trigger, a.intent, a.structured_json_data, a.rpc_method, a.rpc_params_json, a.created_at, a.state, a.error_reason
+SELECT a.id, a.session_id, a.account_id, a.macaroon_identifier, a.actor_name, a.feature_name, a.trigger, a.intent, a.structured_json_data, a.rpc_method, a.rpc_params_json, a.created_at, a.state, a.error_reason
 FROM actions a
 WHERE (a.session_id = $2 OR $2 IS NULL)
-  AND (a.feature_name = $3 OR $3 IS NULL)
-  AND (a.actor_name = $4 OR $4 IS NULL)
-  AND (a.rpc_method = $5 OR $5 IS NULL)
-  AND (a.state = $6 OR $6 IS NULL)
-  AND (a.created_at <= $7 OR $7 IS NULL)
-  AND (a.created_at >= $8 OR $8 IS NULL)
+  AND (a.account_id = $3 OR $3 IS NULL)
+  AND (a.feature_name = $4 OR $4 IS NULL)
+  AND (a.actor_name = $5 OR $5 IS NULL)
+  AND (a.rpc_method = $6 OR $6 IS NULL)
+  AND (a.state = $7 OR $7 IS NULL)
+  AND (a.created_at <= $8 OR $8 IS NULL)
+  AND (a.created_at >= $9 OR $9 IS NULL)
   AND (
-    $9::BIGINT IS NULL OR EXISTS (
+    $10::BIGINT IS NULL OR EXISTS (
         SELECT 1
         FROM sessions s
-        WHERE s.id = a.session_id AND s.group_id = $9::BIGINT
+        WHERE s.id = a.session_id AND s.group_id = $10::BIGINT
     )
     )
 ORDER BY
-    CASE WHEN $10::BOOLEAN THEN a.created_at END DESC,
-    CASE WHEN NOT $10::BOOLEAN THEN a.created_at END ASC
-    LIMIT $11
+    CASE WHEN $11::BOOLEAN THEN a.created_at END DESC,
+    CASE WHEN NOT $11::BOOLEAN THEN a.created_at END ASC
+    LIMIT $12
 OFFSET $1
 `
 
 type ListActionsPaginatedParams struct {
 	Offset      int32
 	SessionID   sql.NullInt64
+	AccountID   sql.NullInt64
 	FeatureName sql.NullString
 	ActorName   sql.NullString
 	RpcMethod   sql.NullString
@@ -222,6 +236,7 @@ func (q *Queries) ListActionsPaginated(ctx context.Context, arg ListActionsPagin
 	rows, err := q.db.QueryContext(ctx, listActionsPaginated,
 		arg.Offset,
 		arg.SessionID,
+		arg.AccountID,
 		arg.FeatureName,
 		arg.ActorName,
 		arg.RpcMethod,
@@ -242,6 +257,8 @@ func (q *Queries) ListActionsPaginated(ctx context.Context, arg ListActionsPagin
 		if err := rows.Scan(
 			&i.ID,
 			&i.SessionID,
+			&i.AccountID,
+			&i.MacaroonIdentifier,
 			&i.ActorName,
 			&i.FeatureName,
 			&i.Trigger,

@@ -6,6 +6,14 @@ CREATE TABLE IF NOT EXISTS actions(
     -- This may be null for actions that are not coupled to a session.
     session_id BIGINT REFERENCES sessions(id) ON DELETE CASCADE,
 
+    -- The account ID of the account that this action is associated with.
+    -- This may be null for actions that are not coupled to an account.
+    account_id BIGINT REFERENCES accounts(id) ON DELETE CASCADE,
+
+    -- An ID derived from the macaroon used to perform the action. NOTE that
+    -- this is only set if both session_id and account_id are null.
+    macaroon_identifier BLOB,
+
     -- The name of the entity who performed the action.
     actor_name TEXT,
 

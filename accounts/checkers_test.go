@@ -623,7 +623,6 @@ func testSendPayment(t *testing.T, uri string,
 		},
 	)
 	require.NoError(t, err)
-	t.Logf("NOW")
 	assertBalance(acct.ID, 4000)
 
 	// A repeated response should have no impact.

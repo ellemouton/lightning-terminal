@@ -160,7 +160,12 @@ func (s *SqliteStore) ExecuteMigrations(target MigrationTarget) error {
 
 	// Populate the database with our set of schemas based on our embedded
 	// in-memory file system.
-	sqliteFS := newReplacerFS(sqlSchemas, sqliteSchemaReplacements)
+	sqliteFS := newReplacerFS(
+		sqlSchemas, sqliteSchemaReplacements, func(s string) string {
+			return s
+		},
+	)
+
 	return applyMigrations(
 		sqliteFS, driver, "sqlc/migrations", "sqlite", target,
 	)

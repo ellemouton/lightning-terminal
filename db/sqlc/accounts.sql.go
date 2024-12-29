@@ -76,6 +76,50 @@ func (q *Queries) GetAccount(ctx context.Context, legacyID []byte) (Account, err
 	return i, err
 }
 
+const getAccountByAliasPrefix = `-- name: GetAccountByAliasPrefix :one
+SELECT id, legacy_id, label, type, intial_balance_msat, current_balance_msat, last_updated, expiration
+FROM accounts
+WHERE SUBSTR(legacy_id, 1, 4) = $1
+`
+
+func (q *Queries) GetAccountByAliasPrefix(ctx context.Context, legacyID []byte) (Account, error) {
+	row := q.db.QueryRowContext(ctx, getAccountByAliasPrefix, legacyID)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.LegacyID,
+		&i.Label,
+		&i.Type,
+		&i.IntialBalanceMsat,
+		&i.CurrentBalanceMsat,
+		&i.LastUpdated,
+		&i.Expiration,
+	)
+	return i, err
+}
+
+const getAccountByID = `-- name: GetAccountByID :one
+SELECT id, legacy_id, label, type, intial_balance_msat, current_balance_msat, last_updated, expiration
+FROM accounts
+WHERE id = $1
+`
+
+func (q *Queries) GetAccountByID(ctx context.Context, id int64) (Account, error) {
+	row := q.db.QueryRowContext(ctx, getAccountByID, id)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.LegacyID,
+		&i.Label,
+		&i.Type,
+		&i.IntialBalanceMsat,
+		&i.CurrentBalanceMsat,
+		&i.LastUpdated,
+		&i.Expiration,
+	)
+	return i, err
+}
+
 const getAccountIndex = `-- name: GetAccountIndex :one
 SELECT value
 FROM account_indicies

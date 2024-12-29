@@ -17,6 +17,8 @@ type Querier interface {
 	DeleteAllTemp(ctx context.Context) error
 	DeleteKVStoreRecord(ctx context.Context, arg DeleteKVStoreRecordParams) error
 	GetAccount(ctx context.Context, legacyID []byte) (Account, error)
+	GetAccountByAliasPrefix(ctx context.Context, legacyID []byte) (Account, error)
+	GetAccountByID(ctx context.Context, id int64) (Account, error)
 	GetAccountIndex(ctx context.Context, name string) (int64, error)
 	GetAccountPayment(ctx context.Context, arg GetAccountPaymentParams) (AccountPayment, error)
 	GetAllPrivacyPairs(ctx context.Context, groupID int64) ([]GetAllPrivacyPairsRow, error)

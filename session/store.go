@@ -317,7 +317,7 @@ func (db *DB) GetSessionByID(_ context.Context, id ID) (*Session, error) {
 
 		keyBytes, err := getKeyForID(sessionBucket, id)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %w", err, ErrSessionNotFound)
 		}
 
 		v := sessionBucket.Get(keyBytes)

@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -467,6 +468,55 @@ func uniqueRandomAccountID(accountBucket kvdb.RBucket) (AccountID, error) {
 	}
 
 	return newID, fmt.Errorf("couldn't create new account ID")
+}
+
+func (s *BoltStore) GetAccountByIDPrefix(_ context.Context,
+	prefix [4]byte) (*OffChainBalanceAccount, error) {
+
+	// Try looking up and reading the account by its ID from the local
+	// bolt DB.
+	var (
+		account  *OffChainBalanceAccount
+		errFound = fmt.Errorf("found account")
+		err      error
+	)
+	err = s.db.View(func(tx kvdb.RTx) error {
+		bucket := tx.ReadBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		err := bucket.ForEach(func(k, v []byte) error {
+			if len(k) < 4 {
+				return nil
+			}
+
+			if !bytes.Equal(k[:4], prefix[:]) {
+				return nil
+			}
+
+			// Now try to deserialize the account back from the
+			// binary format it was stored in.
+			account, err = deserializeAccount(v)
+			if err != nil {
+				return err
+			}
+
+			return errFound
+		})
+		if err != nil && !errors.Is(err, errFound) {
+			return err
+		} else if err == nil {
+			return ErrAccNotFound
+		}
+
+		return nil
+	}, func() {})
+	if err != nil {
+		return nil, err
+	}
+
+	return account, nil
 }
 
 // Account retrieves an account from the bolt DB and un-marshals it. If the

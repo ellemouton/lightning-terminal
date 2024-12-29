@@ -116,6 +116,13 @@ func testBasicAccountStorage(t *testing.T, makeDB func(t *testing.T) Store) {
 	require.NoError(t, err)
 	assertEqualAccounts(t, acct1, dbAccount)
 
+	// Also make sure we can query by ID prefix.
+	var prefix [4]byte
+	copy(prefix[:], acct1.ID[:4])
+	dbAccount, err = store.GetAccountByIDPrefix(ctx, prefix)
+	require.NoError(t, err)
+	assertEqualAccounts(t, acct1, dbAccount)
+
 	// Sleep just a tiny bit to make sure we are never too quick to measure
 	// the expiry, even though the time is nanosecond scale and writing to
 	// the store and reading again should take at least a couple of
@@ -156,7 +163,7 @@ func assertEqualAccounts(t *testing.T, expected,
 	actual.LastUpdate = time.Time{}
 
 	require.Equal(t, expected, actual)
-	require.Equal(t, expectedExpiry.UnixNano(), actualExpiry.UnixNano())
+	require.Equal(t, expectedExpiry.Unix(), actualExpiry.Unix())
 	//	require.Equal(t, expectedUpdate.UnixNano(), actualUpdate.UnixNano())
 
 	// Restore the old values to not influence the tests.

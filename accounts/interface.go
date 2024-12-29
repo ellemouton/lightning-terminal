@@ -237,6 +237,9 @@ type Store interface {
 	Account(ctx context.Context, id AccountID) (*OffChainBalanceAccount,
 		error)
 
+	GetAccountByIDPrefix(ctx context.Context, prefix [4]byte) (
+		*OffChainBalanceAccount, error)
+
 	// Accounts retrieves all accounts from the store and un-marshals them.
 	Accounts(ctx context.Context) ([]*OffChainBalanceAccount, error)
 

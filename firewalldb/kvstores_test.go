@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/db"
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/stretchr/testify/require"
@@ -55,8 +56,16 @@ func TestKVStoresDB(t *testing.T) {
 			require.NoError(t, sessionsDB.Close())
 		})
 
+		accountsDB, err := accounts.NewBoltStore(
+			tmpDir, "test_accounts.db",
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, accountsDB.Close())
+		})
+
 		kvStoresDB, err := NewDB(
-			tmpDir, "test_kvstores.db", sessionsDB,
+			tmpDir, "test_kvstores.db", sessionsDB, accountsDB,
 		)
 		require.NoError(t, err)
 		t.Cleanup(func() {
@@ -71,6 +80,7 @@ func TestKVStoresDB(t *testing.T) {
 
 				kvStoresDB, err := NewDB(
 					tmpDir, "test_kvstores.db", sessionsDB,
+					accountsDB,
 				)
 				require.NoError(t, err)
 				t.Cleanup(func() {

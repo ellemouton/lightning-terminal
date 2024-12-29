@@ -40,6 +40,8 @@ type AccountPayment struct {
 type Action struct {
 	ID                 int64
 	SessionID          sql.NullInt64
+	AccountID          sql.NullInt64
+	MacaroonIdentifier []byte
 	ActorName          sql.NullString
 	FeatureName        sql.NullString
 	Trigger            sql.NullString

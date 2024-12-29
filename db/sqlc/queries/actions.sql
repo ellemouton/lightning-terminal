@@ -1,11 +1,11 @@
 -- name: InsertAction :one
 INSERT INTO actions (
-    session_id, actor_name, feature_name, trigger, intent,
+    session_id, account_id, macaroon_identifier, actor_name, feature_name, trigger, intent,
     structured_json_data, rpc_method, rpc_params_json, created_at,
     state, error_reason
 ) VALUES (
              $1, $2, $3, $4, $5, $6,
-             $7, $8, $9, $10, $11
+             $7, $8, $9, $10, $11, $12, $13
 ) RETURNING id;
 
 -- name: SetActionState :exec
@@ -18,6 +18,7 @@ WHERE id = $3;
 SELECT a.*
 FROM actions a
 WHERE (a.session_id = sqlc.narg('session_id') OR sqlc.narg('session_id') IS NULL)
+  AND (a.account_id = sqlc.narg('account_id') OR sqlc.narg('account_id') IS NULL)
   AND (a.feature_name = sqlc.narg('feature_name') OR sqlc.narg('feature_name') IS NULL)
   AND (a.actor_name = sqlc.narg('actor_name') OR sqlc.narg('actor_name') IS NULL)
   AND (a.rpc_method = sqlc.narg('rpc_method') OR sqlc.narg('rpc_method') IS NULL)
@@ -41,6 +42,7 @@ OFFSET $1;
 SELECT a.*
 FROM actions a
 WHERE (a.session_id = sqlc.narg('session_id') OR sqlc.narg('session_id') IS NULL)
+  AND (a.account_id = sqlc.narg('account_id') OR sqlc.narg('account_id') IS NULL)
   AND (a.feature_name = sqlc.narg('feature_name') OR sqlc.narg('feature_name') IS NULL)
   AND (a.actor_name = sqlc.narg('actor_name') OR sqlc.narg('actor_name') IS NULL)
   AND (a.rpc_method = sqlc.narg('rpc_method') OR sqlc.narg('rpc_method') IS NULL)
@@ -63,6 +65,7 @@ ORDER BY
 SELECT COUNT(*)
 FROM actions a
 WHERE (a.session_id = sqlc.narg('session_id') OR sqlc.narg('session_id') IS NULL)
+  AND (a.account_id = sqlc.narg('account_id') OR sqlc.narg('account_id') IS NULL)
   AND (a.feature_name = sqlc.narg('feature_name') OR sqlc.narg('feature_name') IS NULL)
   AND (a.actor_name = sqlc.narg('actor_name') OR sqlc.narg('actor_name') IS NULL)
   AND (a.rpc_method = sqlc.narg('rpc_method') OR sqlc.narg('rpc_method') IS NULL)

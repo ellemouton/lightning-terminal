@@ -5,10 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/db"
 	"github.com/lightninglabs/lightning-terminal/db/sqlc"
 	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightninglabs/taproot-assets/fn"
 )
 
 // SQLSessionQueries is a subset of the sqlc.Queries interface that can be used
@@ -18,10 +21,16 @@ type SQLSessionQueries interface {
 	GetLegacyIDBySessionID(ctx context.Context, id int64) ([]byte, error)
 }
 
+type SQLAccountQueries interface {
+	GetAccountByAliasPrefix(ctx context.Context, legacyID []byte) (sqlc.Account, error)
+	GetAccountByID(ctx context.Context, id int64) (sqlc.Account, error)
+}
+
 // SQLActionQueries is a subset of the sqlc.Queries interface that can be used
 // to interact with action related tables.
 type SQLActionQueries interface {
 	SQLSessionQueries
+	SQLAccountQueries
 
 	InsertAction(ctx context.Context, arg sqlc.InsertActionParams) (int64, error)
 	SetActionState(ctx context.Context, arg sqlc.SetActionStateParams) error
@@ -77,75 +86,86 @@ func (s *SQLActionsStore) GetActionsReadDB(groupID session.ID,
 // AddAction persists the given action to the database.
 //
 // NOTE: This is a part of the ActionDB interface.
-func (s *SQLActionsStore) AddAction(ctx context.Context, a *Action) (
-	ActionLocator, error) {
+func (s *SQLActionsStore) AddAction(ctx context.Context,
+	req *AddActionReq) (ActionLocator, error) {
 
 	var (
 		writeTxOpts db.QueriesTxOptions
 		locator     sqlActionLocator
 
-		actor          = sql.NullString{String: a.ActorName}
-		feature        = sql.NullString{String: a.FeatureName}
-		trigger        = sql.NullString{String: a.Trigger}
-		intent         = sql.NullString{String: a.Intent}
-		structuredJson = sql.NullString{String: a.StructuredJsonData}
-		errReason      = sql.NullString{String: a.ErrorReason}
+		actor          = sql.NullString{String: req.ActorName}
+		feature        = sql.NullString{String: req.FeatureName}
+		trigger        = sql.NullString{String: req.Trigger}
+		intent         = sql.NullString{String: req.Intent}
+		structuredJson = sql.NullString{String: req.StructuredJsonData}
+		//errReason      = sql.NullString{String: req.ErrorReason}
 	)
-	if a.ActorName != "" {
+	if req.ActorName != "" {
 		actor.Valid = true
 	}
-	if a.FeatureName != "" {
+	if req.FeatureName != "" {
 		feature.Valid = true
 	}
-	if a.Trigger != "" {
+	if req.Trigger != "" {
 		trigger.Valid = true
 	}
-	if a.Intent != "" {
+	if req.Intent != "" {
 		intent.Valid = true
 	}
-	if a.StructuredJsonData != "" {
+	if req.StructuredJsonData != "" {
 		structuredJson.Valid = true
 	}
-	if a.ErrorReason != "" {
-		errReason.Valid = true
-	}
+	//if req.ErrorReason != "" {
+	//	errReason.Valid = true
+	//}
 
 	err := s.db.ExecTx(ctx, &writeTxOpts, func(db SQLActionQueries) error {
-		// The Action struct carries around the legacy session ID.
-		// We first need to convert this to the DB ID used in the
-		// sessions table if it is not an empty ID.
-		// TODO(elle): OR must be from accounts table!!
-		var sessionID sql.NullInt64
-		if a.SessionID != session.EmptyID {
-			id, err := db.GetSessionIDByLegacyID(
-				ctx, a.SessionID[:],
-			)
-			if errors.Is(err, sql.ErrNoRows) {
-				return session.ErrSessionUnknown
-			} else if err != nil {
-				return fmt.Errorf("unable to get DB ID for "+
-					"legacy session ID %x: %w", a.SessionID,
-					err)
-			}
+		// Do best effort to see if this action is linked to a session,
+		// and/or an action or none.
+		var (
+			sessionID sql.NullInt64
+			accountID sql.NullInt64
+		)
 
+		// First check session DB.
+		sessID, err := db.GetSessionIDByLegacyID(
+			ctx, req.MacaroonIdentifier[:],
+		)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		} else if err == nil {
 			sessionID = sql.NullInt64{
-				Int64: id,
+				Int64: sessID,
+				Valid: true,
+			}
+		}
+
+		// Next check accounts DB.
+		acct, err := db.GetAccountByAliasPrefix(
+			ctx, req.MacaroonIdentifier[:],
+		)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		} else if err == nil {
+			accountID = sql.NullInt64{
+				Int64: acct.ID,
 				Valid: true,
 			}
 		}
 
 		id, err := db.InsertAction(ctx, sqlc.InsertActionParams{
 			SessionID:          sessionID,
+			AccountID:          accountID,
 			ActorName:          actor,
+			MacaroonIdentifier: req.MacaroonIdentifier[:],
 			FeatureName:        feature,
 			Trigger:            trigger,
 			Intent:             intent,
 			StructuredJsonData: structuredJson,
-			RpcMethod:          a.RPCMethod,
-			RpcParamsJson:      a.RPCParamsJson,
-			CreatedAt:          a.AttemptedAt,
-			State:              int16(a.State),
-			ErrorReason:        errReason,
+			RpcMethod:          req.RPCMethod,
+			RpcParamsJson:      req.RPCParamsJson,
+			CreatedAt:          time.Now(),
+			State:              int16(ActionStateInit),
 		})
 		if err != nil {
 			return err
@@ -360,10 +380,10 @@ func (s *SQLActionsStore) ListActions(ctx context.Context,
 	return actions, lastIndex, uint64(totalCount), err
 }
 
-func unmarshalAction(ctx context.Context, db SQLSessionQueries,
+func unmarshalAction(ctx context.Context, db SQLActionQueries,
 	dbAction sqlc.Action) (*Action, error) {
 
-	var legacySessID session.ID
+	var legacySessID fn.Option[session.ID]
 	if dbAction.SessionID.Valid {
 		legacySessIDB, err := db.GetLegacyIDBySessionID(
 			ctx, dbAction.SessionID.Int64,
@@ -374,23 +394,47 @@ func unmarshalAction(ctx context.Context, db SQLSessionQueries,
 				dbAction.SessionID.Int64, err)
 		}
 
-		legacySessID, err = session.IDFromBytes(legacySessIDB)
+		sessID, err := session.IDFromBytes(legacySessIDB)
 		if err != nil {
 			return nil, err
 		}
+
+		legacySessID = fn.Some(sessID)
 	}
 
+	var legacyAcctID fn.Option[accounts.AccountID]
+	if dbAction.AccountID.Valid {
+		acct, err := db.GetAccountByID(
+			ctx, dbAction.AccountID.Int64,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		var acctID accounts.AccountID
+		copy(acctID[:], acct.LegacyID)
+
+		legacyAcctID = fn.Some(acctID)
+	}
+
+	var macID [4]byte
+	copy(macID[:], dbAction.MacaroonIdentifier)
+
 	return &Action{
-		SessionID:          legacySessID,
-		ActorName:          dbAction.ActorName.String,
-		FeatureName:        dbAction.FeatureName.String,
-		Trigger:            dbAction.Trigger.String,
-		Intent:             dbAction.Intent.String,
-		StructuredJsonData: dbAction.StructuredJsonData.String,
-		RPCMethod:          dbAction.RpcMethod,
-		RPCParamsJson:      dbAction.RpcParamsJson,
-		AttemptedAt:        dbAction.CreatedAt,
-		State:              ActionState(dbAction.State),
-		ErrorReason:        dbAction.ErrorReason.String,
+		SessionID: legacySessID,
+		AccountID: legacyAcctID,
+		AddActionReq: AddActionReq{
+			MacaroonIdentifier: macID,
+			ActorName:          dbAction.ActorName.String,
+			FeatureName:        dbAction.FeatureName.String,
+			Trigger:            dbAction.Trigger.String,
+			Intent:             dbAction.Intent.String,
+			StructuredJsonData: dbAction.StructuredJsonData.String,
+			RPCMethod:          dbAction.RpcMethod,
+			RPCParamsJson:      dbAction.RpcParamsJson,
+		},
+		AttemptedAt: dbAction.CreatedAt,
+		State:       ActionState(dbAction.State),
+		ErrorReason: dbAction.ErrorReason.String,
 	}, nil
 }

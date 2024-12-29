@@ -36,6 +36,7 @@ type SQLQueries interface {
 	DeleteAccount(ctx context.Context, legacyID []byte) error
 	GetAccountIndex(ctx context.Context, name string) (int64, error)
 	SetAccountIndex(ctx context.Context, arg sqlc.SetAccountIndexParams) error
+	GetAccountByAliasPrefix(ctx context.Context, legacyID []byte) (sqlc.Account, error)
 }
 
 // BatchedSQLQueries is a version of the SQLActionQueries that's capable
@@ -134,6 +135,12 @@ func getAndMarshalAccount(ctx context.Context, db SQLQueries, id []byte) (
 		return nil, err
 	}
 
+	return marshalDBAccount(ctx, db, dbAcct)
+}
+
+func marshalDBAccount(ctx context.Context, db SQLQueries,
+	dbAcct sqlc.Account) (*OffChainBalanceAccount, error) {
+
 	var legacyID AccountID
 	copy(legacyID[:], dbAcct.LegacyID)
 
@@ -149,7 +156,7 @@ func getAndMarshalAccount(ctx context.Context, db SQLQueries, id []byte) (
 		Label:          dbAcct.Label.String,
 	}
 
-	invoices, err := db.ListAccountInvoices(ctx, id[:])
+	invoices, err := db.ListAccountInvoices(ctx, dbAcct.LegacyID)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +166,7 @@ func getAndMarshalAccount(ctx context.Context, db SQLQueries, id []byte) (
 		account.Invoices[hash] = struct{}{}
 	}
 
-	payments, err := db.ListAccountPayments(ctx, id[:])
+	payments, err := db.ListAccountPayments(ctx, dbAcct.LegacyID)
 	if err != nil {
 		return nil, err
 	}
@@ -540,6 +547,29 @@ func (s *SQLStore) Account(ctx context.Context, id AccountID) (*OffChainBalanceA
 	err := s.db.ExecTx(ctx, &readTxOpts, func(db SQLQueries) error {
 		var err error
 		account, err = getAndMarshalAccount(ctx, db, id[:])
+		return err
+	}, func() {})
+
+	return account, err
+}
+
+func (s *SQLStore) GetAccountByIDPrefix(ctx context.Context, prefix [4]byte) (
+	*OffChainBalanceAccount, error) {
+
+	var (
+		readTxOpts = db.NewQueryReadTx()
+		account    *OffChainBalanceAccount
+	)
+	err := s.db.ExecTx(ctx, &readTxOpts, func(db SQLQueries) error {
+		dbAcct, err := db.GetAccountByAliasPrefix(ctx, prefix[:])
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrAccNotFound
+		} else if err != nil {
+			return err
+		}
+
+		account, err = marshalDBAccount(ctx, db, dbAcct)
+
 		return err
 	}, func() {})
 

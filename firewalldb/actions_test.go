@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/db"
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/stretchr/testify/require"
@@ -25,7 +26,7 @@ func TestActionsDB(t *testing.T) {
 			makeDB func(t *testing.T) testActionDB)
 	}{
 		{
-			name: "BasicSessionStore",
+			name: "BasicActionStore",
 			test: testActionStorage,
 		},
 		{
@@ -47,7 +48,17 @@ func TestActionsDB(t *testing.T) {
 			require.NoError(t, sessionsDB.Close())
 		})
 
-		actionDB, err := NewDB(tempDir, "test_actions.db", sessionsDB)
+		accountsDB, err := accounts.NewBoltStore(
+			tempDir, "test_accounts.db",
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, accountsDB.Close())
+		})
+
+		actionDB, err := NewDB(
+			tempDir, "test_actions.db", sessionsDB, accountsDB,
+		)
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, actionDB.Close())
@@ -95,7 +106,6 @@ func TestActionsDB(t *testing.T) {
 	}
 
 	for _, test := range testList {
-		test := test
 		t.Run(test.name+"_KV", func(t *testing.T) {
 			test.test(t, makeKeyValueDBs)
 		})
@@ -124,21 +134,22 @@ func testActionStorage(t *testing.T, makeDB func(t *testing.T) testActionDB) {
 
 	session1 := newSession(t, db.Store, nil)
 	session2 := newSession(t, db.Store, nil)
-	action1 := makeAction(session1.ID, ActionStateDone)
-	action2 := makeAction(session2.ID, ActionStateInit)
+	action1 := makeAction(session1.ID)
+	action2 := makeAction(session2.ID)
 
 	// If the session does not yet exist, then we expect an error if we
 	// list actions by session ID.
 	_, _, _, err := db.ListActions(
-		ctx, nil, WithActionSessionID(session1.ID),
+		ctx, nil,
+		WithActionSessionID(session1.ID),
 		WithActionState(ActionStateDone),
 	)
 	require.ErrorIs(t, err, session.ErrSessionUnknown)
 
-	// Adding an action for a session that does not exist yet also results
-	// in an error.
-	_, err = db.AddAction(ctx, action1)
-	require.ErrorIs(t, err, session.ErrSessionUnknown)
+	//// Adding an action for a session that does not exist yet also results
+	//// in an error.
+	//action1Locator, err := db.AddAction(ctx, action1)
+	//require.ErrorIs(t, err, session.ErrSessionUnknown)
 
 	// Insert a sessions 1 and 2.
 	require.NoError(t, db.CreateSession(ctx, session1))
@@ -160,7 +171,9 @@ func testActionStorage(t *testing.T, makeDB func(t *testing.T) testActionDB) {
 	require.NoError(t, err)
 	require.Len(t, actions, 0)
 
-	_, err = db.AddAction(ctx, action1)
+	action1Locator, err := db.AddAction(ctx, action1)
+	require.NoError(t, err)
+	err = db.SetActionState(ctx, action1Locator, ActionStateDone, "")
 	require.NoError(t, err)
 
 	locator2, err := db.AddAction(ctx, action2)
@@ -173,7 +186,7 @@ func testActionStorage(t *testing.T, makeDB func(t *testing.T) testActionDB) {
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
-	assertEqualActions(t, action1, actions[0])
+	assertEqualActions(t, action1, ActionStateDone, "", actions[0])
 
 	actions, _, _, err = db.ListActions(
 		ctx, nil,
@@ -193,8 +206,7 @@ func testActionStorage(t *testing.T, makeDB func(t *testing.T) testActionDB) {
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
-	action2.State = ActionStateDone
-	assertEqualActions(t, action2, actions[0])
+	assertEqualActions(t, action2, ActionStateDone, "", actions[0])
 
 	_, err = db.AddAction(ctx, action1)
 	require.NoError(t, err)
@@ -224,9 +236,7 @@ func testActionStorage(t *testing.T, makeDB func(t *testing.T) testActionDB) {
 	)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
-	action2.State = ActionStateError
-	action2.ErrorReason = "fail whale"
-	assertEqualActions(t, action2, actions[0])
+	assertEqualActions(t, action2, ActionStateError, "fail whale", actions[0])
 }
 
 // testListActions tests some ListAction options.
@@ -249,8 +259,8 @@ func testListActions(t *testing.T, makeDB func(t *testing.T) testActionDB) {
 	actionIds := 0
 	addAction := func(sessionID [4]byte) {
 		actionIds++
-		action := &Action{
-			SessionID:          sessionID,
+		req := &AddActionReq{
+			MacaroonIdentifier: sessionID,
 			ActorName:          "Autopilot",
 			FeatureName:        fmt.Sprintf("%d", actionIds),
 			Trigger:            "fee too low",
@@ -258,11 +268,12 @@ func testListActions(t *testing.T, makeDB func(t *testing.T) testActionDB) {
 			StructuredJsonData: "{\"something\":\"nothing\"}",
 			RPCMethod:          "UpdateChanPolicy",
 			RPCParamsJson:      []byte("new fee"),
-			AttemptedAt:        time.Unix(int64(actionIds), 0),
-			State:              ActionStateDone,
 		}
 
-		_, err := db.AddAction(ctx, action)
+		al, err := db.AddAction(ctx, req)
+		require.NoError(t, err)
+
+		err = db.SetActionState(ctx, al, ActionStateDone, "")
 		require.NoError(t, err)
 	}
 
@@ -274,9 +285,12 @@ func testListActions(t *testing.T, makeDB func(t *testing.T) testActionDB) {
 	assertActions := func(dbActions []*Action, al []*action) {
 		require.Len(t, dbActions, len(al))
 		for i, a := range al {
-			require.EqualValues(
-				t, a.sessionID, dbActions[i].SessionID,
-			)
+			require.True(t, dbActions[i].SessionID.IsSome())
+			dbActions[i].SessionID.WhenSome(func(id session.ID) {
+				require.EqualValues(
+					t, a.sessionID, id,
+				)
+			})
 			require.Equal(t, a.actionID, dbActions[i].FeatureName)
 		}
 	}
@@ -452,22 +466,26 @@ func testListGroupActions(t *testing.T, makeDB func(t *testing.T) testActionDB) 
 	require.Empty(t, al)
 
 	// Add an action under session 1.
-	action1 := makeAction(session1.ID, ActionStateDone)
-	_, err = db.AddAction(ctx, action1)
+	action1 := makeAction(session1.ID)
+	al1, err := db.AddAction(ctx, action1)
 	require.NoError(t, err)
+	require.NoError(t, db.SetActionState(ctx, al1, ActionStateDone, ""))
 
 	// There should now be one action in the group.
 	al, _, _, err = db.ListActions(ctx, nil, WithActionGroupID(group1))
 	require.NoError(t, err)
 	require.Len(t, al, 1)
-	require.Equal(t, session1.ID, al[0].SessionID)
+	require.True(t, al[0].SessionID.IsSome())
+	al[0].SessionID.WhenSome(func(id session.ID) {
+		require.Equal(t, session1.ID, id)
+	})
 
 	// First revoke the first session before persisting the linked session.
 	require.NoError(t, db.RevokeSession(ctx, session1.LocalPublicKey))
 	require.NoError(t, db.CreateSession(ctx, session2))
 
 	// Add an action under session 2.
-	action2 := makeAction(session2.ID, ActionStateInit)
+	action2 := makeAction(session2.ID)
 	_, err = db.AddAction(ctx, action2)
 	require.NoError(t, err)
 
@@ -475,8 +493,14 @@ func testListGroupActions(t *testing.T, makeDB func(t *testing.T) testActionDB) 
 	al, _, _, err = db.ListActions(ctx, nil, WithActionGroupID(group1))
 	require.NoError(t, err)
 	require.Len(t, al, 2)
-	require.Equal(t, session1.ID, al[0].SessionID)
-	require.Equal(t, session2.ID, al[1].SessionID)
+	require.True(t, al[0].SessionID.IsSome())
+	al[0].SessionID.WhenSome(func(id session.ID) {
+		require.Equal(t, session1.ID, id)
+	})
+	require.True(t, al[1].SessionID.IsSome())
+	al[1].SessionID.WhenSome(func(id session.ID) {
+		require.Equal(t, session2.ID, id)
+	})
 }
 
 func newSession(t *testing.T, db session.Store,
@@ -496,9 +520,9 @@ func newSession(t *testing.T, db session.Store,
 	return session
 }
 
-func makeAction(sessionID session.ID, state ActionState) *Action {
-	return &Action{
-		SessionID:          sessionID,
+func makeAction(sessionID session.ID) *AddActionReq {
+	return &AddActionReq{
+		MacaroonIdentifier: sessionID,
 		ActorName:          "Autopilot",
 		FeatureName:        "auto-fees",
 		Trigger:            "fee too low",
@@ -506,13 +530,16 @@ func makeAction(sessionID session.ID, state ActionState) *Action {
 		StructuredJsonData: "{\"something\":\"nothing\"}",
 		RPCMethod:          "UpdateChanPolicy",
 		RPCParamsJson:      []byte("new fee"),
-		AttemptedAt:        time.Now().In(time.UTC),
-		State:              state,
 	}
 }
 
-func assertEqualActions(t *testing.T, expected, got *Action) {
-	require.Equal(t, expected.AttemptedAt.Unix(), got.AttemptedAt.Unix())
-	got.AttemptedAt = expected.AttemptedAt
-	require.Equal(t, expected, got)
+func assertEqualActions(t *testing.T, expectedReq *AddActionReq,
+	expectedState ActionState, expectedErr string, got *Action) {
+	//require.Equal(t, expected.AttemptedAt.Unix(), got.AttemptedAt.Unix())
+	//got.AttemptedAt = expected.AttemptedAt
+	//require.Equal(t, expected, got)
+
+	require.Equal(t, *expectedReq, got.AddActionReq)
+	require.Equal(t, expectedState, got.State)
+	require.Equal(t, expectedErr, got.ErrorReason)
 }

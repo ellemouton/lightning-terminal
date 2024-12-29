@@ -4,7 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightninglabs/taproot-assets/fn"
 )
 
 // ActionState represents the state of an action.
@@ -33,7 +35,24 @@ type Action struct {
 	// SessionID is the ID of the session that this action belongs to.
 	// Note that this is not serialized on persistence since the action is
 	// already stored under a bucket identified by the session ID.
-	SessionID session.ID
+	SessionID fn.Option[session.ID]
+	AccountID fn.Option[accounts.AccountID]
+
+	// AttemptedAt is the time at which this action was created.
+	AttemptedAt time.Time
+
+	// State represents the state of the Action.
+	State ActionState
+
+	// ErrorReason is the human-readable reason for why the action failed.
+	// It will only be set if State is ActionStateError.
+	ErrorReason string
+
+	AddActionReq
+}
+
+type AddActionReq struct {
+	MacaroonIdentifier [4]byte
 
 	// ActorName is the name of the entity who performed the Action.
 	ActorName string
@@ -59,16 +78,6 @@ type Action struct {
 
 	// RPCParams is the method parameters of the request in JSON form.
 	RPCParamsJson []byte
-
-	// AttemptedAt is the time at which this action was created.
-	AttemptedAt time.Time
-
-	// State represents the state of the Action.
-	State ActionState
-
-	// ErrorReason is the human-readable reason for why the action failed.
-	// It will only be set if State is ActionStateError.
-	ErrorReason string
 }
 
 // ListActionsQuery can be used to tweak the query to ListActions and
@@ -181,7 +190,7 @@ func WithActionState(state ActionState) ListActionOption {
 // ActionsWriteDB is an abstraction over the Actions DB that will allow a
 // caller to add new actions as well as change the values of an existing action.
 type ActionsWriteDB interface {
-	AddAction(ctx context.Context, action *Action) (ActionLocator, error)
+	AddAction(ctx context.Context, req *AddActionReq) (ActionLocator, error)
 	SetActionState(ctx context.Context, al ActionLocator,
 		state ActionState, errReason string) error
 }
