@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- Whether the privacy mapper should be used for this session.
     privacy BOOLEAN NOT NULL,
 
+    account_id BIGINT REFERENCES accounts(id) ON DELETE CASCADE,
+
     -- The session ID of the first session in this linked session group. This
     -- is nullable for the case where the first session in the group is being
     -- inserted, and so we first need to insert the session before we know the

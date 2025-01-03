@@ -24,7 +24,7 @@ func (q *Queries) GetLegacyIDBySessionID(ctx context.Context, id int64) ([]byte,
 }
 
 const getSessionByID = `-- name: GetSessionByID :one
-SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, group_id FROM sessions
+SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, account_id, group_id FROM sessions
 WHERE id = $1
 `
 
@@ -48,13 +48,14 @@ func (q *Queries) GetSessionByID(ctx context.Context, id int64) (Session, error)
 		&i.LocalPublicKey,
 		&i.RemotePublicKey,
 		&i.Privacy,
+		&i.AccountID,
 		&i.GroupID,
 	)
 	return i, err
 }
 
 const getSessionByLegacyID = `-- name: GetSessionByLegacyID :one
-SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, group_id FROM sessions
+SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, account_id, group_id FROM sessions
 WHERE legacy_id = $1
 `
 
@@ -78,13 +79,14 @@ func (q *Queries) GetSessionByLegacyID(ctx context.Context, legacyID []byte) (Se
 		&i.LocalPublicKey,
 		&i.RemotePublicKey,
 		&i.Privacy,
+		&i.AccountID,
 		&i.GroupID,
 	)
 	return i, err
 }
 
 const getSessionByLocalPublicKey = `-- name: GetSessionByLocalPublicKey :one
-SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, group_id FROM sessions
+SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, account_id, group_id FROM sessions
 WHERE local_public_key = $1
 `
 
@@ -108,6 +110,7 @@ func (q *Queries) GetSessionByLocalPublicKey(ctx context.Context, localPublicKey
 		&i.LocalPublicKey,
 		&i.RemotePublicKey,
 		&i.Privacy,
+		&i.AccountID,
 		&i.GroupID,
 	)
 	return i, err
@@ -271,7 +274,7 @@ func (q *Queries) GetSessionPrivacyFlags(ctx context.Context, sessionID int64) (
 }
 
 const getSessionsInGroup = `-- name: GetSessionsInGroup :many
-SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, group_id FROM sessions
+SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, account_id, group_id FROM sessions
 WHERE group_id = $1
 `
 
@@ -301,6 +304,7 @@ func (q *Queries) GetSessionsInGroup(ctx context.Context, groupID sql.NullInt64)
 			&i.LocalPublicKey,
 			&i.RemotePublicKey,
 			&i.Privacy,
+			&i.AccountID,
 			&i.GroupID,
 		); err != nil {
 			return nil, err
@@ -453,7 +457,7 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) (i
 }
 
 const listSessions = `-- name: ListSessions :many
-SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, group_id FROM sessions
+SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, account_id, group_id FROM sessions
 `
 
 func (q *Queries) ListSessions(ctx context.Context) ([]Session, error) {
@@ -482,6 +486,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Session, error) {
 			&i.LocalPublicKey,
 			&i.RemotePublicKey,
 			&i.Privacy,
+			&i.AccountID,
 			&i.GroupID,
 		); err != nil {
 			return nil, err
@@ -498,7 +503,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Session, error) {
 }
 
 const listSessionsByType = `-- name: ListSessionsByType :many
-SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, group_id FROM sessions
+SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, account_id, group_id FROM sessions
 WHERE type = $1
 `
 
@@ -528,6 +533,7 @@ func (q *Queries) ListSessionsByType(ctx context.Context, type_ int16) ([]Sessio
 			&i.LocalPublicKey,
 			&i.RemotePublicKey,
 			&i.Privacy,
+			&i.AccountID,
 			&i.GroupID,
 		); err != nil {
 			return nil, err

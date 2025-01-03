@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	mid "github.com/lightninglabs/lightning-terminal/rpcmiddleware"
+	"github.com/lightninglabs/taproot-assets/fn"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
 	"google.golang.org/protobuf/proto"
@@ -69,7 +70,7 @@ func (s *InterceptorService) Intercept(ctx context.Context,
 		return mid.RPCErrString(req, "error parsing macaroon: %v", err)
 	}
 
-	acctID, err := accountFromMacaroon(mac)
+	acctID, err := AccountFromMacaroon(mac)
 	if err != nil {
 		return mid.RPCErrString(
 			req, "error parsing account from macaroon: %v", err,
@@ -79,15 +80,20 @@ func (s *InterceptorService) Intercept(ctx context.Context,
 	// No account lock in the macaroon, something's weird. The interceptor
 	// wouldn't have been triggered if there was no caveat, so we do expect
 	// a macaroon here.
-	if acctID == nil {
+	if acctID.IsNone() {
 		return mid.RPCErrString(req, "expected account ID in "+
 			"macaroon caveat")
 	}
 
-	acct, err := s.Account(ctx, *acctID)
+	id, err := acctID.UnwrapOrErr(fmt.Errorf("error unwrapping account ID"))
+	if err != nil {
+		return mid.RPCErrString(req, err.Error())
+	}
+
+	acct, err := s.Account(ctx, id)
 	if err != nil {
 		return mid.RPCErrString(
-			req, "error getting account %x: %v", acctID[:], err,
+			req, "error getting account %x: %v", id[:], err,
 		)
 	}
 
@@ -196,25 +202,26 @@ func parseRPCMessage(msg *lnrpc.RPCMessage) (proto.Message, error) {
 	return parsedMsg, nil
 }
 
-// accountFromMacaroon attempts to extract an account ID from the custom account
+// AccountFromMacaroon attempts to extract an account ID from the custom account
 // caveat in the macaroon.
-func accountFromMacaroon(mac *macaroon.Macaroon) (*AccountID, error) {
+func AccountFromMacaroon(mac *macaroon.Macaroon) (fn.Option[AccountID], error) {
 	// Extract the account caveat from the macaroon.
 	macaroonAccount := macaroons.GetCustomCaveatCondition(mac, CondAccount)
 	if macaroonAccount == "" {
 		// There is no condition that locks the macaroon to an account,
 		// so there is nothing to check.
-		return nil, nil
+		return fn.None[AccountID](), nil
 	}
 
 	// The macaroon is indeed locked to an account. Fetch the account and
 	// validate its balance.
 	accountIDBytes, err := hex.DecodeString(macaroonAccount)
 	if err != nil {
-		return nil, err
+		return fn.None[AccountID](), err
 	}
 
 	var accountID AccountID
 	copy(accountID[:], accountIDBytes)
-	return &accountID, nil
+
+	return fn.Some(accountID), nil
 }

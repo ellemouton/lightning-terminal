@@ -15,57 +15,57 @@ const addAccountInvoice = `-- name: AddAccountInvoice :exec
 INSERT INTO account_invoices (account_id, hash)
 SELECT id, $1
 FROM accounts
-WHERE legacy_id = $2
+WHERE alias = $2
 `
 
 type AddAccountInvoiceParams struct {
-	Hash     []byte
-	LegacyID []byte
+	Hash  []byte
+	Alias []byte
 }
 
 func (q *Queries) AddAccountInvoice(ctx context.Context, arg AddAccountInvoiceParams) error {
-	_, err := q.db.ExecContext(ctx, addAccountInvoice, arg.Hash, arg.LegacyID)
+	_, err := q.db.ExecContext(ctx, addAccountInvoice, arg.Hash, arg.Alias)
 	return err
 }
 
 const deleteAccount = `-- name: DeleteAccount :exec
 DELETE FROM accounts
-WHERE legacy_id = $1
+WHERE alias = $1
 `
 
-func (q *Queries) DeleteAccount(ctx context.Context, legacyID []byte) error {
-	_, err := q.db.ExecContext(ctx, deleteAccount, legacyID)
+func (q *Queries) DeleteAccount(ctx context.Context, alias []byte) error {
+	_, err := q.db.ExecContext(ctx, deleteAccount, alias)
 	return err
 }
 
 const deleteAccountPayment = `-- name: DeleteAccountPayment :exec
 DELETE FROM account_payments
 WHERE hash = $1
-  AND account_id = (SELECT id FROM accounts WHERE legacy_id = $2)
+  AND account_id = (SELECT id FROM accounts WHERE alias = $2)
 `
 
 type DeleteAccountPaymentParams struct {
-	Hash     []byte
-	LegacyID []byte
+	Hash  []byte
+	Alias []byte
 }
 
 func (q *Queries) DeleteAccountPayment(ctx context.Context, arg DeleteAccountPaymentParams) error {
-	_, err := q.db.ExecContext(ctx, deleteAccountPayment, arg.Hash, arg.LegacyID)
+	_, err := q.db.ExecContext(ctx, deleteAccountPayment, arg.Hash, arg.Alias)
 	return err
 }
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, legacy_id, label, type, intial_balance_msat, current_balance_msat, last_updated, expiration
+SELECT id, alias, label, type, intial_balance_msat, current_balance_msat, last_updated, expiration
 FROM accounts
-WHERE legacy_id = $1
+WHERE alias = $1
 `
 
-func (q *Queries) GetAccount(ctx context.Context, legacyID []byte) (Account, error) {
-	row := q.db.QueryRowContext(ctx, getAccount, legacyID)
+func (q *Queries) GetAccount(ctx context.Context, alias []byte) (Account, error) {
+	row := q.db.QueryRowContext(ctx, getAccount, alias)
 	var i Account
 	err := row.Scan(
 		&i.ID,
-		&i.LegacyID,
+		&i.Alias,
 		&i.Label,
 		&i.Type,
 		&i.IntialBalanceMsat,
@@ -77,17 +77,17 @@ func (q *Queries) GetAccount(ctx context.Context, legacyID []byte) (Account, err
 }
 
 const getAccountByAliasPrefix = `-- name: GetAccountByAliasPrefix :one
-SELECT id, legacy_id, label, type, intial_balance_msat, current_balance_msat, last_updated, expiration
+SELECT id, alias, label, type, intial_balance_msat, current_balance_msat, last_updated, expiration
 FROM accounts
-WHERE SUBSTR(legacy_id, 1, 4) = $1
+WHERE SUBSTR(alias, 1, 4) = $1
 `
 
-func (q *Queries) GetAccountByAliasPrefix(ctx context.Context, legacyID []byte) (Account, error) {
-	row := q.db.QueryRowContext(ctx, getAccountByAliasPrefix, legacyID)
+func (q *Queries) GetAccountByAliasPrefix(ctx context.Context, alias []byte) (Account, error) {
+	row := q.db.QueryRowContext(ctx, getAccountByAliasPrefix, alias)
 	var i Account
 	err := row.Scan(
 		&i.ID,
-		&i.LegacyID,
+		&i.Alias,
 		&i.Label,
 		&i.Type,
 		&i.IntialBalanceMsat,
@@ -99,7 +99,7 @@ func (q *Queries) GetAccountByAliasPrefix(ctx context.Context, legacyID []byte) 
 }
 
 const getAccountByID = `-- name: GetAccountByID :one
-SELECT id, legacy_id, label, type, intial_balance_msat, current_balance_msat, last_updated, expiration
+SELECT id, alias, label, type, intial_balance_msat, current_balance_msat, last_updated, expiration
 FROM accounts
 WHERE id = $1
 `
@@ -109,7 +109,7 @@ func (q *Queries) GetAccountByID(ctx context.Context, id int64) (Account, error)
 	var i Account
 	err := row.Scan(
 		&i.ID,
-		&i.LegacyID,
+		&i.Alias,
 		&i.Label,
 		&i.Type,
 		&i.IntialBalanceMsat,
@@ -138,16 +138,16 @@ SELECT ap.account_id, ap.hash, ap.status, ap.full_amount_msat
 FROM account_payments ap
          JOIN accounts a ON ap.account_id = a.id
 WHERE ap.hash = $1
-  AND a.legacy_id = $2
+  AND a.alias = $2
 `
 
 type GetAccountPaymentParams struct {
-	Hash     []byte
-	LegacyID []byte
+	Hash  []byte
+	Alias []byte
 }
 
 func (q *Queries) GetAccountPayment(ctx context.Context, arg GetAccountPaymentParams) (AccountPayment, error) {
-	row := q.db.QueryRowContext(ctx, getAccountPayment, arg.Hash, arg.LegacyID)
+	row := q.db.QueryRowContext(ctx, getAccountPayment, arg.Hash, arg.Alias)
 	var i AccountPayment
 	err := row.Scan(
 		&i.AccountID,
@@ -159,7 +159,7 @@ func (q *Queries) GetAccountPayment(ctx context.Context, arg GetAccountPaymentPa
 }
 
 const insertAccount = `-- name: InsertAccount :one
-INSERT INTO accounts (type, intial_balance_msat, current_balance_msat, last_updated, label, legacy_id, expiration)
+INSERT INTO accounts (type, intial_balance_msat, current_balance_msat, last_updated, label, alias, expiration)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING id
 `
@@ -170,7 +170,7 @@ type InsertAccountParams struct {
 	CurrentBalanceMsat int64
 	LastUpdated        time.Time
 	Label              sql.NullString
-	LegacyID           []byte
+	Alias              []byte
 	Expiration         time.Time
 }
 
@@ -181,7 +181,7 @@ func (q *Queries) InsertAccount(ctx context.Context, arg InsertAccountParams) (i
 		arg.CurrentBalanceMsat,
 		arg.LastUpdated,
 		arg.Label,
-		arg.LegacyID,
+		arg.Alias,
 		arg.Expiration,
 	)
 	var id int64
@@ -193,11 +193,11 @@ const listAccountInvoices = `-- name: ListAccountInvoices :many
 SELECT ai.account_id, ai.hash
 FROM account_invoices ai
          JOIN accounts a ON ai.account_id = a.id
-WHERE a.legacy_id = $1
+WHERE a.alias = $1
 `
 
-func (q *Queries) ListAccountInvoices(ctx context.Context, legacyID []byte) ([]AccountInvoice, error) {
-	rows, err := q.db.QueryContext(ctx, listAccountInvoices, legacyID)
+func (q *Queries) ListAccountInvoices(ctx context.Context, alias []byte) ([]AccountInvoice, error) {
+	rows, err := q.db.QueryContext(ctx, listAccountInvoices, alias)
 	if err != nil {
 		return nil, err
 	}
@@ -223,11 +223,11 @@ const listAccountPayments = `-- name: ListAccountPayments :many
 SELECT ap.account_id, ap.hash, ap.status, ap.full_amount_msat
 FROM account_payments ap
          JOIN accounts a ON ap.account_id = a.id
-WHERE a.legacy_id = $1
+WHERE a.alias = $1
 `
 
-func (q *Queries) ListAccountPayments(ctx context.Context, legacyID []byte) ([]AccountPayment, error) {
-	rows, err := q.db.QueryContext(ctx, listAccountPayments, legacyID)
+func (q *Queries) ListAccountPayments(ctx context.Context, alias []byte) ([]AccountPayment, error) {
+	rows, err := q.db.QueryContext(ctx, listAccountPayments, alias)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +255,7 @@ func (q *Queries) ListAccountPayments(ctx context.Context, legacyID []byte) ([]A
 }
 
 const listAllAccountIDs = `-- name: ListAllAccountIDs :many
-SELECT legacy_id
+SELECT alias
 FROM accounts
 `
 
@@ -267,11 +267,11 @@ func (q *Queries) ListAllAccountIDs(ctx context.Context) ([][]byte, error) {
 	defer rows.Close()
 	var items [][]byte
 	for rows.Next() {
-		var legacy_id []byte
-		if err := rows.Scan(&legacy_id); err != nil {
+		var alias []byte
+		if err := rows.Scan(&alias); err != nil {
 			return nil, err
 		}
-		items = append(items, legacy_id)
+		items = append(items, alias)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -302,55 +302,55 @@ func (q *Queries) SetAccountIndex(ctx context.Context, arg SetAccountIndexParams
 const updateAccountBalance = `-- name: UpdateAccountBalance :exec
 UPDATE accounts
 SET current_balance_msat = $1
-WHERE legacy_id = $2
+WHERE alias = $2
 `
 
 type UpdateAccountBalanceParams struct {
 	CurrentBalanceMsat int64
-	LegacyID           []byte
+	Alias              []byte
 }
 
 func (q *Queries) UpdateAccountBalance(ctx context.Context, arg UpdateAccountBalanceParams) error {
-	_, err := q.db.ExecContext(ctx, updateAccountBalance, arg.CurrentBalanceMsat, arg.LegacyID)
+	_, err := q.db.ExecContext(ctx, updateAccountBalance, arg.CurrentBalanceMsat, arg.Alias)
 	return err
 }
 
 const updateAccountExpiry = `-- name: UpdateAccountExpiry :exec
 UPDATE accounts
 SET expiration = $1
-WHERE legacy_id = $2
+WHERE alias = $2
 `
 
 type UpdateAccountExpiryParams struct {
 	Expiration time.Time
-	LegacyID   []byte
+	Alias      []byte
 }
 
 func (q *Queries) UpdateAccountExpiry(ctx context.Context, arg UpdateAccountExpiryParams) error {
-	_, err := q.db.ExecContext(ctx, updateAccountExpiry, arg.Expiration, arg.LegacyID)
+	_, err := q.db.ExecContext(ctx, updateAccountExpiry, arg.Expiration, arg.Alias)
 	return err
 }
 
 const updateAccountLastUpdate = `-- name: UpdateAccountLastUpdate :exec
 UPDATE accounts
 SET last_updated = $1
-WHERE legacy_id = $2
+WHERE alias = $2
 `
 
 type UpdateAccountLastUpdateParams struct {
 	LastUpdated time.Time
-	LegacyID    []byte
+	Alias       []byte
 }
 
 func (q *Queries) UpdateAccountLastUpdate(ctx context.Context, arg UpdateAccountLastUpdateParams) error {
-	_, err := q.db.ExecContext(ctx, updateAccountLastUpdate, arg.LastUpdated, arg.LegacyID)
+	_, err := q.db.ExecContext(ctx, updateAccountLastUpdate, arg.LastUpdated, arg.Alias)
 	return err
 }
 
 const upsertAccountPayment = `-- name: UpsertAccountPayment :exec
 INSERT INTO account_payments (account_id, hash, status, full_amount_msat)
 VALUES (
-           (SELECT id FROM accounts WHERE legacy_id = $1),
+           (SELECT id FROM accounts WHERE alias = $1),
            $2, $3, $4
        )
 ON CONFLICT (account_id, hash)
@@ -358,7 +358,7 @@ DO UPDATE SET status = $3, full_amount_msat = $4
 `
 
 type UpsertAccountPaymentParams struct {
-	LegacyID       []byte
+	Alias          []byte
 	Hash           []byte
 	Status         int16
 	FullAmountMsat int64
@@ -366,7 +366,7 @@ type UpsertAccountPaymentParams struct {
 
 func (q *Queries) UpsertAccountPayment(ctx context.Context, arg UpsertAccountPaymentParams) error {
 	_, err := q.db.ExecContext(ctx, upsertAccountPayment,
-		arg.LegacyID,
+		arg.Alias,
 		arg.Hash,
 		arg.Status,
 		arg.FullAmountMsat,

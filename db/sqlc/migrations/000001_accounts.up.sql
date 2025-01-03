@@ -5,8 +5,7 @@ CREATE TABLE IF NOT EXISTS accounts(
     -- The ID that was used to identify the account in the legacy KVDB store.
     -- In order to avoid breaking the API, we keep this field here so that
     -- we can still look up accounts by this ID for the time being.
-    -- TODO: rename to alias.
-    legacy_id BLOB NOT NULL UNIQUE,
+    alias BLOB NOT NULL UNIQUE,
 
     -- An optional label to use for the account. If it is set, it must be
     -- unique.
@@ -27,8 +26,6 @@ CREATE TABLE IF NOT EXISTS accounts(
     -- The time that the account will expire.
     expiration TIMESTAMP NOT NULL
 );
-
-CREATE INDEX idx_accounts_alias_prefix ON accounts(SUBSTR(legacy_id, 1, 4));
 
 CREATE TABLE IF NOT EXISTS account_payments (
     -- The account that this payment is linked to.

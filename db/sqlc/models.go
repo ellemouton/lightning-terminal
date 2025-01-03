@@ -11,7 +11,7 @@ import (
 
 type Account struct {
 	ID                 int64
-	LegacyID           []byte
+	Alias              []byte
 	Label              sql.NullString
 	Type               int16
 	IntialBalanceMsat  int64
@@ -110,5 +110,6 @@ type Session struct {
 	LocalPublicKey  []byte
 	RemotePublicKey []byte
 	Privacy         bool
+	AccountID       sql.NullInt64
 	GroupID         sql.NullInt64
 }

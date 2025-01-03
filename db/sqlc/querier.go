@@ -12,12 +12,12 @@ import (
 type Querier interface {
 	AddAccountInvoice(ctx context.Context, arg AddAccountInvoiceParams) error
 	CountActions(ctx context.Context, arg CountActionsParams) (int64, error)
-	DeleteAccount(ctx context.Context, legacyID []byte) error
+	DeleteAccount(ctx context.Context, alias []byte) error
 	DeleteAccountPayment(ctx context.Context, arg DeleteAccountPaymentParams) error
 	DeleteAllTemp(ctx context.Context) error
 	DeleteKVStoreRecord(ctx context.Context, arg DeleteKVStoreRecordParams) error
-	GetAccount(ctx context.Context, legacyID []byte) (Account, error)
-	GetAccountByAliasPrefix(ctx context.Context, legacyID []byte) (Account, error)
+	GetAccount(ctx context.Context, alias []byte) (Account, error)
+	GetAccountByAliasPrefix(ctx context.Context, alias []byte) (Account, error)
 	GetAccountByID(ctx context.Context, id int64) (Account, error)
 	GetAccountIndex(ctx context.Context, name string) (int64, error)
 	GetAccountPayment(ctx context.Context, arg GetAccountPaymentParams) (AccountPayment, error)
@@ -45,8 +45,8 @@ type Querier interface {
 	InsertPrivacyFlag(ctx context.Context, arg InsertPrivacyFlagParams) error
 	InsertPrivacyPair(ctx context.Context, arg InsertPrivacyPairParams) error
 	InsertSession(ctx context.Context, arg InsertSessionParams) (int64, error)
-	ListAccountInvoices(ctx context.Context, legacyID []byte) ([]AccountInvoice, error)
-	ListAccountPayments(ctx context.Context, legacyID []byte) ([]AccountPayment, error)
+	ListAccountInvoices(ctx context.Context, alias []byte) ([]AccountInvoice, error)
+	ListAccountPayments(ctx context.Context, alias []byte) ([]AccountPayment, error)
 	ListActions(ctx context.Context, arg ListActionsParams) ([]Action, error)
 	ListActionsPaginated(ctx context.Context, arg ListActionsPaginatedParams) ([]Action, error)
 	ListAllAccountIDs(ctx context.Context) ([][]byte, error)

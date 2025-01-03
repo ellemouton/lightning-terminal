@@ -6,9 +6,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/firewalldb"
 	mid "github.com/lightninglabs/lightning-terminal/rpcmiddleware"
 	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightninglabs/taproot-assets/fn"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
 )
@@ -184,18 +186,28 @@ func (r *RequestLogger) addNewAction(ctx context.Context, ri *RequestInfo,
 	// If no macaroon is provided, then an empty 4-byte array is used as the
 	// session ID. Otherwise, the macaroon is used to derive a session ID.
 
-	var macID [4]byte
+	var (
+		macID     [4]byte
+		accountID fn.Option[accounts.AccountID]
+	)
 	if ri.Macaroon != nil {
 		var err error
 		macID, err = session.IDFromMacaroon(ri.Macaroon)
 		if err != nil {
 			return fmt.Errorf("could not extract ID from macaroon")
 		}
+
+		// Now, see if there is an account ID in the macaroon caveat.
+		accountID, err = accounts.AccountFromMacaroon(ri.Macaroon)
+		if err != nil {
+			return err
+		}
 	}
 
 	req := &firewalldb.AddActionReq{
 		MacaroonIdentifier: macID,
 		RPCMethod:          ri.URI,
+		AccountID:          accountID,
 	}
 
 	if withPayloadData {

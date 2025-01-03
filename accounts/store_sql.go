@@ -101,7 +101,7 @@ func (s *SQLStore) NewAccount(ctx context.Context, balance lnwire.MilliSatoshi,
 			Expiration:         expirationDate,
 			LastUpdated:        time.Now(),
 			Label:              labelVal,
-			LegacyID:           legacyID[:],
+			Alias:              legacyID[:],
 		})
 		if err != nil {
 			return err
@@ -142,7 +142,7 @@ func marshalDBAccount(ctx context.Context, db SQLQueries,
 	dbAcct sqlc.Account) (*OffChainBalanceAccount, error) {
 
 	var legacyID AccountID
-	copy(legacyID[:], dbAcct.LegacyID)
+	copy(legacyID[:], dbAcct.Alias)
 
 	account := &OffChainBalanceAccount{
 		ID:             legacyID,
@@ -156,7 +156,7 @@ func marshalDBAccount(ctx context.Context, db SQLQueries,
 		Label:          dbAcct.Label.String,
 	}
 
-	invoices, err := db.ListAccountInvoices(ctx, dbAcct.LegacyID)
+	invoices, err := db.ListAccountInvoices(ctx, dbAcct.Alias)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +166,7 @@ func marshalDBAccount(ctx context.Context, db SQLQueries,
 		account.Invoices[hash] = struct{}{}
 	}
 
-	payments, err := db.ListAccountPayments(ctx, dbAcct.LegacyID)
+	payments, err := db.ListAccountPayments(ctx, dbAcct.Alias)
 	if err != nil {
 		return nil, err
 	}
@@ -215,8 +215,8 @@ func (s *SQLStore) AddAccountInvoice(ctx context.Context, id AccountID, hash lnt
 	)
 	return s.db.ExecTx(ctx, &writeTxOpts, func(db SQLQueries) error {
 		err := db.AddAccountInvoice(ctx, sqlc.AddAccountInvoiceParams{
-			LegacyID: id[:],
-			Hash:     hash[:],
+			Alias: id[:],
+			Hash:  hash[:],
 		})
 		if err != nil {
 			return err
@@ -224,7 +224,7 @@ func (s *SQLStore) AddAccountInvoice(ctx context.Context, id AccountID, hash lnt
 
 		return db.UpdateAccountLastUpdate(
 			ctx, sqlc.UpdateAccountLastUpdateParams{
-				LegacyID:    id[:],
+				Alias:       id[:],
 				LastUpdated: time.Now(),
 			},
 		)
@@ -243,7 +243,7 @@ func (s *SQLStore) UpdateAccountBalanceAndExpiry(ctx context.Context,
 		newBalance.WhenSome(func(i int64) {
 			err = db.UpdateAccountBalance(
 				ctx, sqlc.UpdateAccountBalanceParams{
-					LegacyID:           id[:],
+					Alias:              id[:],
 					CurrentBalanceMsat: i,
 				},
 			)
@@ -255,7 +255,7 @@ func (s *SQLStore) UpdateAccountBalanceAndExpiry(ctx context.Context,
 		newExpiry.WhenSome(func(t time.Time) {
 			err = db.UpdateAccountExpiry(
 				ctx, sqlc.UpdateAccountExpiryParams{
-					LegacyID:   id[:],
+					Alias:      id[:],
 					Expiration: t,
 				},
 			)
@@ -266,7 +266,7 @@ func (s *SQLStore) UpdateAccountBalanceAndExpiry(ctx context.Context,
 
 		return db.UpdateAccountLastUpdate(
 			ctx, sqlc.UpdateAccountLastUpdateParams{
-				LegacyID:    id[:],
+				Alias:       id[:],
 				LastUpdated: time.Now(),
 			},
 		)
@@ -282,8 +282,8 @@ func (s *SQLStore) AddAccountPayment(ctx context.Context, id AccountID,
 	return s.db.ExecTx(ctx, &writeTxOpts, func(db SQLQueries) error {
 		payment, err := db.GetAccountPayment(
 			ctx, sqlc.GetAccountPaymentParams{
-				Hash:     hash[:],
-				LegacyID: id[:],
+				Hash:  hash[:],
+				Alias: id[:],
 			},
 		)
 		if err == nil {
@@ -312,7 +312,7 @@ func (s *SQLStore) AddAccountPayment(ctx context.Context, id AccountID,
 
 		err = db.UpsertAccountPayment(
 			ctx, sqlc.UpsertAccountPaymentParams{
-				LegacyID:       id[:],
+				Alias:          id[:],
 				Hash:           hash[:],
 				Status:         int16(lnrpc.Payment_UNKNOWN),
 				FullAmountMsat: int64(fullAmt),
@@ -324,7 +324,7 @@ func (s *SQLStore) AddAccountPayment(ctx context.Context, id AccountID,
 
 		return db.UpdateAccountLastUpdate(
 			ctx, sqlc.UpdateAccountLastUpdateParams{
-				LegacyID:    id[:],
+				Alias:       id[:],
 				LastUpdated: time.Now(),
 			},
 		)
@@ -338,8 +338,8 @@ func (s *SQLStore) SetAccountPaymentErrored(ctx context.Context, id AccountID, h
 	return s.db.ExecTx(ctx, &writeTxOpts, func(db SQLQueries) error {
 
 		_, err := db.GetAccountPayment(ctx, sqlc.GetAccountPaymentParams{
-			LegacyID: id[:],
-			Hash:     hash[:],
+			Alias: id[:],
+			Hash:  hash[:],
 		})
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("payment with hash %s is not "+
@@ -350,8 +350,8 @@ func (s *SQLStore) SetAccountPaymentErrored(ctx context.Context, id AccountID, h
 
 		err = db.DeleteAccountPayment(
 			ctx, sqlc.DeleteAccountPaymentParams{
-				LegacyID: id[:],
-				Hash:     hash[:],
+				Alias: id[:],
+				Hash:  hash[:],
 			},
 		)
 		if err != nil {
@@ -360,7 +360,7 @@ func (s *SQLStore) SetAccountPaymentErrored(ctx context.Context, id AccountID, h
 
 		return db.UpdateAccountLastUpdate(
 			ctx, sqlc.UpdateAccountLastUpdateParams{
-				LegacyID:    id[:],
+				Alias:       id[:],
 				LastUpdated: time.Now(),
 			},
 		)
@@ -383,7 +383,7 @@ func (s *SQLStore) IncreaseAccountBalance(ctx context.Context, id AccountID,
 
 		err = db.UpdateAccountBalance(
 			ctx, sqlc.UpdateAccountBalanceParams{
-				LegacyID:           id[:],
+				Alias:              id[:],
 				CurrentBalanceMsat: newBalance,
 			},
 		)
@@ -393,7 +393,7 @@ func (s *SQLStore) IncreaseAccountBalance(ctx context.Context, id AccountID,
 
 		return db.UpdateAccountLastUpdate(
 			ctx, sqlc.UpdateAccountLastUpdateParams{
-				LegacyID:    id[:],
+				Alias:       id[:],
 				LastUpdated: time.Now(),
 			},
 		)
@@ -411,8 +411,8 @@ func (s *SQLStore) UpdateAccountPaymentStatus(ctx context.Context, id AccountID,
 		// Have we associated the payment with the account already?
 		payment, err := db.GetAccountPayment(
 			ctx, sqlc.GetAccountPaymentParams{
-				LegacyID: id[:],
-				Hash:     hash[:],
+				Alias: id[:],
+				Hash:  hash[:],
 			},
 		)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -424,7 +424,7 @@ func (s *SQLStore) UpdateAccountPaymentStatus(ctx context.Context, id AccountID,
 		// If we did, let's set the status correctly in the DB now.
 		err = db.UpsertAccountPayment(
 			ctx, sqlc.UpsertAccountPaymentParams{
-				LegacyID:       id[:],
+				Alias:          id[:],
 				Hash:           hash[:],
 				Status:         int16(status),
 				FullAmountMsat: payment.FullAmountMsat,
@@ -436,7 +436,7 @@ func (s *SQLStore) UpdateAccountPaymentStatus(ctx context.Context, id AccountID,
 
 		return db.UpdateAccountLastUpdate(
 			ctx, sqlc.UpdateAccountLastUpdateParams{
-				LegacyID:    id[:],
+				Alias:       id[:],
 				LastUpdated: time.Now(),
 			},
 		)
@@ -457,7 +457,7 @@ func (s *SQLStore) UpdateAccountPaymentSuccess(ctx context.Context,
 		}
 
 		err = db.UpdateAccountBalance(ctx, sqlc.UpdateAccountBalanceParams{
-			LegacyID:           id[:],
+			Alias:              id[:],
 			CurrentBalanceMsat: acct.CurrentBalanceMsat - int64(fullAmount),
 		})
 		if err != nil {
@@ -466,7 +466,7 @@ func (s *SQLStore) UpdateAccountPaymentSuccess(ctx context.Context,
 
 		err = db.UpsertAccountPayment(
 			ctx, sqlc.UpsertAccountPaymentParams{
-				LegacyID:       id[:],
+				Alias:          id[:],
 				Hash:           hash[:],
 				Status:         int16(lnrpc.Payment_SUCCEEDED),
 				FullAmountMsat: int64(fullAmount),
@@ -478,7 +478,7 @@ func (s *SQLStore) UpdateAccountPaymentSuccess(ctx context.Context,
 
 		return db.UpdateAccountLastUpdate(
 			ctx, sqlc.UpdateAccountLastUpdateParams{
-				LegacyID:    id[:],
+				Alias:       id[:],
 				LastUpdated: time.Now(),
 			},
 		)
@@ -496,8 +496,8 @@ func (s *SQLStore) UpsertAccountPayment(ctx context.Context, id AccountID,
 	err := s.db.ExecTx(ctx, &writeTxOpts, func(db SQLQueries) error {
 		payment, err := db.GetAccountPayment(
 			ctx, sqlc.GetAccountPaymentParams{
-				LegacyID: id[:],
-				Hash:     hash[:],
+				Alias: id[:],
+				Hash:  hash[:],
 			},
 		)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -518,7 +518,7 @@ func (s *SQLStore) UpsertAccountPayment(ctx context.Context, id AccountID,
 
 		err = db.UpsertAccountPayment(
 			ctx, sqlc.UpsertAccountPaymentParams{
-				LegacyID:       id[:],
+				Alias:          id[:],
 				Hash:           hash[:],
 				Status:         int16(lnrpc.Payment_UNKNOWN),
 				FullAmountMsat: int64(fullAmt),
@@ -530,7 +530,7 @@ func (s *SQLStore) UpsertAccountPayment(ctx context.Context, id AccountID,
 
 		return db.UpdateAccountLastUpdate(
 			ctx, sqlc.UpdateAccountLastUpdateParams{
-				LegacyID:    id[:],
+				Alias:       id[:],
 				LastUpdated: time.Now(),
 			},
 		)

@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS kvstores (
     -- If only the rule name is set, then this kv_store is a global
     -- kv_store.
     -- TODO: insert these names in a table and make this a FK instead?
+    --  or actually, just make it an enum... convert from/to string
+    --  in CRUD code
     rule_name TEXT NOT NULL,
 
     -- The session ID that this kv_store belongs to.

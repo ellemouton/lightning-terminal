@@ -36,7 +36,6 @@ type Action struct {
 	// Note that this is not serialized on persistence since the action is
 	// already stored under a bucket identified by the session ID.
 	SessionID fn.Option[session.ID]
-	AccountID fn.Option[accounts.AccountID]
 
 	// AttemptedAt is the time at which this action was created.
 	AttemptedAt time.Time
@@ -52,6 +51,8 @@ type Action struct {
 }
 
 type AddActionReq struct {
+	AccountID fn.Option[accounts.AccountID]
+
 	MacaroonIdentifier [4]byte
 
 	// ActorName is the name of the entity who performed the Action.

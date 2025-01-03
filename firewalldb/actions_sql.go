@@ -22,7 +22,7 @@ type SQLSessionQueries interface {
 }
 
 type SQLAccountQueries interface {
-	GetAccountByAliasPrefix(ctx context.Context, legacyID []byte) (sqlc.Account, error)
+	GetAccount(ctx context.Context, alias []byte) (sqlc.Account, error)
 	GetAccountByID(ctx context.Context, id int64) (sqlc.Account, error)
 }
 
@@ -140,17 +140,25 @@ func (s *SQLActionsStore) AddAction(ctx context.Context,
 			}
 		}
 
-		// Next check accounts DB.
-		acct, err := db.GetAccountByAliasPrefix(
-			ctx, req.MacaroonIdentifier[:],
-		)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		} else if err == nil {
+		// If an account ID was provided, then it must exist in our DB.
+		var getAcctErr error
+		req.AccountID.WhenSome(func(acctID accounts.AccountID) {
+			acct, err := db.GetAccount(ctx, acctID[:])
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				getAcctErr = err
+				return
+			} else if errors.Is(err, sql.ErrNoRows) {
+				return
+
+			}
+
 			accountID = sql.NullInt64{
 				Int64: acct.ID,
 				Valid: true,
 			}
+		})
+		if getAcctErr != nil {
+			return getAcctErr
 		}
 
 		id, err := db.InsertAction(ctx, sqlc.InsertActionParams{
@@ -412,7 +420,7 @@ func unmarshalAction(ctx context.Context, db SQLActionQueries,
 		}
 
 		var acctID accounts.AccountID
-		copy(acctID[:], acct.LegacyID)
+		copy(acctID[:], acct.Alias)
 
 		legacyAcctID = fn.Some(acctID)
 	}
@@ -422,7 +430,6 @@ func unmarshalAction(ctx context.Context, db SQLActionQueries,
 
 	return &Action{
 		SessionID: legacySessID,
-		AccountID: legacyAcctID,
 		AddActionReq: AddActionReq{
 			MacaroonIdentifier: macID,
 			ActorName:          dbAction.ActorName.String,
@@ -432,6 +439,7 @@ func unmarshalAction(ctx context.Context, db SQLActionQueries,
 			StructuredJsonData: dbAction.StructuredJsonData.String,
 			RPCMethod:          dbAction.RpcMethod,
 			RPCParamsJson:      dbAction.RpcParamsJson,
+			AccountID:          legacyAcctID,
 		},
 		AttemptedAt: dbAction.CreatedAt,
 		State:       ActionState(dbAction.State),
