@@ -438,15 +438,9 @@ func (s *InterceptorService) AssociateInvoice(ctx context.Context, id AccountID,
 	s.Lock()
 	defer s.Unlock()
 
-	account, err := s.store.Account(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	account.Invoices[hash] = struct{}{}
 	s.invoiceToAccount[hash] = id
 
-	return s.store.UpdateAccount(ctx, account)
+	return s.store.AddAccountInvoice(ctx, id, hash)
 }
 
 // PaymentErrored removes a pending payment from the account's registered
