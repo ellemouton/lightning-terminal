@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightningnetwork/lnd/fn"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/lntypes"
 	"github.com/stretchr/testify/require"
@@ -103,6 +104,60 @@ func assertEqualAccounts(t *testing.T, expected,
 	expected.LastUpdate = expectedUpdate
 	actual.ExpirationDate = actualExpiry
 	actual.LastUpdate = actualUpdate
+}
+
+// TestAccountUpdateMethods tests that all the Store methods that update an
+// account work correctly.
+func TestAccountUpdateMethods(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("UpdateAccountBalanceAndExpiry", func(t *testing.T) {
+		store := NewTestDB(t)
+
+		acct, err := store.NewAccount(ctx, 0, time.Time{}, "foo")
+		require.NoError(t, err)
+
+		assertBalanceAndExpiry := func(balance int64,
+			expiry time.Time) {
+
+			dbAcct, err := store.Account(ctx, acct.ID)
+			require.NoError(t, err)
+			require.EqualValues(t, balance, dbAcct.CurrentBalance)
+			require.Equal(
+				t, expiry.Unix(), dbAcct.ExpirationDate.Unix(),
+			)
+		}
+
+		// Get the account from the store and check to see what its
+		// initial balance and expiry fields are set to.
+		assertBalanceAndExpiry(0, time.Time{})
+
+		// Now, update just the balance of the account.
+		newBalance := int64(123)
+		err = store.UpdateAccountBalanceAndExpiry(
+			ctx, acct.ID, fn.Some(newBalance), fn.None[time.Time](),
+		)
+		require.NoError(t, err)
+		assertBalanceAndExpiry(newBalance, time.Time{})
+
+		// Now update just the expiry of the account.
+		newExpiry := time.Now().Add(time.Hour)
+		err = store.UpdateAccountBalanceAndExpiry(
+			ctx, acct.ID, fn.None[int64](), fn.Some(newExpiry),
+		)
+		require.NoError(t, err)
+		assertBalanceAndExpiry(newBalance, newExpiry)
+
+		// Finally, update both the balance and expiry of the account.
+		newBalance = 456
+		newExpiry = time.Now().Add(2 * time.Hour)
+		err = store.UpdateAccountBalanceAndExpiry(
+			ctx, acct.ID, fn.Some(newBalance), fn.Some(newExpiry),
+		)
+		require.NoError(t, err)
+		assertBalanceAndExpiry(newBalance, newExpiry)
+	})
 }
 
 // TestLastInvoiceIndexes makes sure the last known invoice indexes can be
