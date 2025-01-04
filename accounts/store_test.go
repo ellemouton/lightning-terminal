@@ -229,7 +229,7 @@ func TestAccountUpdateMethods(t *testing.T) {
 		assertBalance(223)
 	})
 
-	t.Run("UpsertAccountPayment", func(t *testing.T) {
+	t.Run("Upsert and Delete AccountPayment", func(t *testing.T) {
 		store := NewTestDB(t)
 
 		acct, err := store.NewAccount(ctx, 1000, time.Time{}, "foo")
@@ -376,6 +376,23 @@ func TestAccountUpdateMethods(t *testing.T) {
 				FullAmount: 100,
 			},
 		})
+
+		// Delete the first payment and make sure it is removed from the
+		// account.
+		err = store.DeleteAccountPayment(ctx, acct.ID, hash1)
+		require.NoError(t, err)
+
+		assertBalanceAndPayments(400, AccountPayments{
+			hash2: &PaymentEntry{
+				Status:     lnrpc.Payment_SUCCEEDED,
+				FullAmount: 100,
+			},
+		})
+
+		// Test that deleting a payment that does not exist returns an
+		// error.
+		err = store.DeleteAccountPayment(ctx, acct.ID, hash1)
+		require.ErrorContains(t, err, "is not associated")
 	})
 }
 
