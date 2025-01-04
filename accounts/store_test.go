@@ -430,6 +430,15 @@ func TestAccountUpdateMethods(t *testing.T) {
 		// error.
 		err = store.DeleteAccountPayment(ctx, acct.ID, hash1)
 		require.ErrorIs(t, err, ErrPaymentNotAssociated)
+
+		// Try once more to insert a payment that is currently unknown
+		// but this time add the WithErrIfUnknown option. This should
+		// return the ErrPaymentUnknown error.
+		_, err = store.UpsertAccountPayment(
+			ctx, acct.ID, hash1, 600, lnrpc.Payment_SUCCEEDED,
+			WithErrIfUnknown(),
+		)
+		require.ErrorIs(t, err, ErrPaymentUnknown)
 	})
 }
 

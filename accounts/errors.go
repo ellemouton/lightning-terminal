@@ -19,4 +19,8 @@ var (
 	ErrPaymentNotAssociated = errors.New(
 		"payment not associated with account",
 	)
+
+	// ErrPaymentUnknown is returned by the UpsertAccountPayment method if
+	// the WithErrIfUnknown option is used and the payment is not yet known.
+	ErrPaymentUnknown = errors.New("payment unknown")
 )
