@@ -233,6 +233,22 @@ func (s *BoltStore) AddAccountInvoice(_ context.Context, id AccountID,
 	return s.updateAccount(id, update)
 }
 
+// IncreaseAccountBalance increases the balance of the account with the given ID
+// by the given amount.
+//
+// NOTE: This is part of the Store interface.
+func (s *BoltStore) IncreaseAccountBalance(_ context.Context, id AccountID,
+	amount lnwire.MilliSatoshi) error {
+
+	update := func(account *OffChainBalanceAccount) error {
+		account.CurrentBalance += int64(amount)
+
+		return nil
+	}
+
+	return s.updateAccount(id, update)
+}
+
 func (s *BoltStore) updateAccount(id AccountID,
 	updateFn func(*OffChainBalanceAccount) error) error {
 

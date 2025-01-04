@@ -205,6 +205,29 @@ func TestAccountUpdateMethods(t *testing.T) {
 
 		assertInvoices(hash1, hash2)
 	})
+
+	t.Run("IncreaseAccountBalance", func(t *testing.T) {
+		store := NewTestDB(t)
+
+		acct, err := store.NewAccount(ctx, 123, time.Time{}, "foo")
+		require.NoError(t, err)
+
+		assertBalance := func(balance int64) {
+			dbAcct, err := store.Account(ctx, acct.ID)
+			require.NoError(t, err)
+			require.EqualValues(t, balance, dbAcct.CurrentBalance)
+		}
+
+		// The account initially has a balance of 123.
+		assertBalance(123)
+
+		// Increase the balance by 100 and assert that the new balance
+		// is 223.
+		err = store.IncreaseAccountBalance(ctx, acct.ID, 100)
+		require.NoError(t, err)
+
+		assertBalance(223)
+	})
 }
 
 // TestLastInvoiceIndexes makes sure the last known invoice indexes can be
