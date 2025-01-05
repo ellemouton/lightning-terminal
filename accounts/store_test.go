@@ -36,7 +36,7 @@ func TestAccountStore(t *testing.T) {
 	_, err = store.NewAccount(ctx, 123, time.Time{}, "0011223344556677")
 	require.ErrorContains(t, err, "is not allowed as it can be mistaken")
 
-	now := time.Now()
+	now := time.Now().UTC()
 
 	// Update all values of the account that we can modify.
 	//
@@ -128,7 +128,7 @@ func assertEqualAccounts(t *testing.T, expected,
 	actual.LastUpdate = time.Time{}
 
 	require.Equal(t, expected, actual)
-	require.True(t, expectedExpiry.Equal(actualExpiry))
+	require.Equal(t, expectedExpiry.Unix(), actualExpiry.Unix())
 	require.Equal(t, expectedUpdate.Unix(), actualUpdate.Unix())
 
 	// Restore the old values to not influence the tests.
@@ -174,7 +174,7 @@ func TestAccountUpdateMethods(t *testing.T) {
 		assertBalanceAndExpiry(newBalance, time.Time{})
 
 		// Now update just the expiry of the account.
-		newExpiry := time.Now().Add(time.Hour)
+		newExpiry := time.Now().Add(time.Hour).UTC()
 		err = store.UpdateAccountBalanceAndExpiry(
 			ctx, acct.ID, fn.None[int64](), fn.Some(newExpiry),
 		)
@@ -183,7 +183,7 @@ func TestAccountUpdateMethods(t *testing.T) {
 
 		// Finally, update both the balance and expiry of the account.
 		newBalance = 456
-		newExpiry = time.Now().Add(2 * time.Hour)
+		newExpiry = time.Now().Add(2 * time.Hour).UTC()
 		err = store.UpdateAccountBalanceAndExpiry(
 			ctx, acct.ID, fn.Some(newBalance), fn.Some(newExpiry),
 		)
