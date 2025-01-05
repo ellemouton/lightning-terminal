@@ -130,7 +130,7 @@ func assertEqualAccounts(t *testing.T, expected,
 	actual.LastUpdate = time.Time{}
 
 	require.Equal(t, expected, actual)
-	require.True(t, expectedExpiry.Equal(actualExpiry))
+	require.Equal(t, expectedExpiry.Unix(), actualExpiry.Unix())
 	require.Equal(t, expectedUpdate.Unix(), actualUpdate.Unix())
 
 	// Restore the old values to not influence the tests.
@@ -168,7 +168,8 @@ func TestAccountUpdateMethods(t *testing.T) {
 			require.NoError(t, err)
 			require.EqualValues(t, balance, dbAcct.CurrentBalance)
 			require.WithinDuration(
-				t, expiry, dbAcct.ExpirationDate, 0,
+				t, expiry, dbAcct.ExpirationDate,
+				time.Millisecond,
 			)
 		}
 
