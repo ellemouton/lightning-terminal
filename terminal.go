@@ -214,6 +214,7 @@ type LightningTerminal struct {
 	middleware        *mid.Manager
 	middlewareStarted bool
 
+	accountsStore         accounts.Store
 	accountService        *accounts.InterceptorService
 	accountServiceStarted bool
 
@@ -236,6 +237,8 @@ func New() *LightningTerminal {
 // Run starts everything and then blocks until either the application is shut
 // down or a critical error happens.
 func (g *LightningTerminal) Run() error {
+	ctx := context.TODO()
+
 	// Hook interceptor for os signals.
 	shutdownInterceptor, err := signal.Intercept()
 	if err != nil {
@@ -345,7 +348,7 @@ func (g *LightningTerminal) Run() error {
 	// We'll also create a REST proxy that'll convert any REST calls to gRPC
 	// calls and forward them to the internal listener.
 	if g.cfg.EnableREST {
-		if err := g.createRESTProxy(); err != nil {
+		if err := g.createRESTProxy(ctx); err != nil {
 			return fmt.Errorf("error creating REST proxy: %v", err)
 		}
 	}
@@ -353,7 +356,7 @@ func (g *LightningTerminal) Run() error {
 	// Attempt to start Lit and all of its sub-servers. If an error is
 	// returned, it means that either one of Lit's internal sub-servers
 	// could not start or LND could not start or be connected to.
-	startErr := g.start()
+	startErr := g.start(ctx)
 	if startErr != nil {
 		g.statusMgr.SetErrored(
 			subservers.LIT, "could not start Lit: %v", startErr,
@@ -380,7 +383,7 @@ func (g *LightningTerminal) Run() error {
 // If any of the sub-servers managed by the subServerMgr error while starting
 // up, these are considered non-fatal and will not result in an error being
 // returned.
-func (g *LightningTerminal) start() error {
+func (g *LightningTerminal) start(ctx context.Context) error {
 	var err error
 
 	accountServiceErrCallback := func(err error) {
@@ -394,8 +397,19 @@ func (g *LightningTerminal) start() error {
 		)
 	}
 
+	networkDir := filepath.Join(g.cfg.LitDir, g.cfg.Network)
+	err = makeDirectories(networkDir)
+	if err != nil {
+		return fmt.Errorf("could not create network directory: %v", err)
+	}
+
+	g.accountsStore, err = NewAccountStore(g.cfg)
+	if err != nil {
+		return fmt.Errorf("error creating accounts store: %w", err)
+	}
+
 	g.accountService, err = accounts.NewService(
-		filepath.Dir(g.cfg.MacaroonPath), accountServiceErrCallback,
+		g.accountsStore, accountServiceErrCallback,
 	)
 	if err != nil {
 		return fmt.Errorf("error creating account service: %v", err)
@@ -417,7 +431,6 @@ func (g *LightningTerminal) start() error {
 	g.ruleMgrs = rules.NewRuleManagerSet()
 
 	// Create an instance of the local Terminal Connect session store DB.
-	networkDir := filepath.Join(g.cfg.LitDir, g.cfg.Network)
 	g.sessionDB, err = session.NewDB(networkDir, session.DBFilename)
 	if err != nil {
 		return fmt.Errorf("error creating session DB: %v", err)
@@ -658,7 +671,7 @@ func (g *LightningTerminal) start() error {
 
 	// Now that we have started the main UI web server, show some useful
 	// information to the user so they can access the web UI easily.
-	if err := g.showStartupInfo(); err != nil {
+	if err := g.showStartupInfo(ctx); err != nil {
 		return fmt.Errorf("error displaying startup info: %v", err)
 	}
 
@@ -713,7 +726,7 @@ func (g *LightningTerminal) start() error {
 	}
 
 	// Set up all the LND clients required by LiT.
-	err = g.setUpLNDClients(lndQuit)
+	err = g.setUpLNDClients(ctx, lndQuit)
 	if err != nil {
 		g.statusMgr.SetErrored(
 			subservers.LND, "could not set up LND clients: %v", err,
@@ -733,7 +746,7 @@ func (g *LightningTerminal) start() error {
 		g.basicClient, g.lndClient, createDefaultMacaroons,
 	)
 
-	err = g.startInternalSubServers(!g.cfg.statelessInitMode)
+	err = g.startInternalSubServers(ctx, !g.cfg.statelessInitMode)
 	if err != nil {
 		return fmt.Errorf("could not start litd sub-servers: %v", err)
 	}
@@ -773,7 +786,9 @@ func (g *LightningTerminal) basicLNDClient() (lnrpc.LightningClient, error) {
 }
 
 // setUpLNDClients sets up the various LND clients required by LiT.
-func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
+func (g *LightningTerminal) setUpLNDClients(ctx context.Context,
+	lndQuit chan struct{}) error {
+
 	var (
 		err           error
 		insecure      bool
@@ -873,7 +888,7 @@ func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
 	// subservers. This will just block until lnd signals readiness. But we
 	// still want to react to shutdown requests, so we need to listen for
 	// those.
-	ctxc, cancel := context.WithCancel(context.Background())
+	ctxc, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Make sure the context is canceled if the user requests shutdown.
@@ -940,7 +955,6 @@ func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
 		// Create a super macaroon that can be used to control lnd,
 		// faraday, loop, and pool, all at the same time.
 		log.Infof("Baking internal super macaroon")
-		ctx := context.Background()
 		superMacaroon, err := BakeSuperMacaroon(
 			ctx, g.basicClient, session.NewSuperMacaroonRootKeyID(
 				[4]byte{},
@@ -958,7 +972,7 @@ func (g *LightningTerminal) setUpLNDClients(lndQuit chan struct{}) error {
 }
 
 // startInternalSubServers starts all Litd specific sub-servers.
-func (g *LightningTerminal) startInternalSubServers(
+func (g *LightningTerminal) startInternalSubServers(ctx context.Context,
 	createDefaultMacaroons bool) error {
 
 	log.Infof("Starting LiT macaroon service")
@@ -1041,7 +1055,7 @@ func (g *LightningTerminal) startInternalSubServers(
 	log.Infof("Starting LiT account service")
 	if !g.cfg.Accounts.Disable {
 		err = g.accountService.Start(
-			g.lndClient.Client, g.lndClient.Router,
+			ctx, g.lndClient.Client, g.lndClient.Router,
 			g.lndClient.ChainParams,
 		)
 		if err != nil {
@@ -1419,6 +1433,14 @@ func (g *LightningTerminal) shutdownSubServers() error {
 		}
 	}
 
+	if g.accountsStore != nil {
+		err = g.accountsStore.Close()
+		if err != nil {
+			log.Errorf("Error closing accounts store: %v", err)
+			returnErr = err
+		}
+	}
+
 	if g.middlewareStarted {
 		g.middleware.Stop()
 	}
@@ -1657,7 +1679,7 @@ func (g *LightningTerminal) startMainWebServer() error {
 // createRESTProxy creates a grpc-gateway based REST proxy that takes any call
 // identified as a REST call, converts it to a gRPC request and forwards it to
 // our local main server for further triage/forwarding.
-func (g *LightningTerminal) createRESTProxy() error {
+func (g *LightningTerminal) createRESTProxy(ctx context.Context) error {
 	// The default JSON marshaler of the REST proxy only sets OrigName to
 	// true, which instructs it to use the same field names as specified in
 	// the proto file and not switch to camel case. What we also want is
@@ -1700,7 +1722,7 @@ func (g *LightningTerminal) createRESTProxy() error {
 	// wildcard to prevent certificate issues when accessing the proxy
 	// externally.
 	restMux := restProxy.NewServeMux(customMarshalerOption)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	g.restCancel = cancel
 
 	// Enable WebSocket and CORS support as well. A request will pass
@@ -1926,7 +1948,7 @@ func allowCORS(handler http.Handler, origins []string) http.Handler {
 
 // showStartupInfo shows useful information to the user to easily access the
 // web UI that was just started.
-func (g *LightningTerminal) showStartupInfo() error {
+func (g *LightningTerminal) showStartupInfo(ctx context.Context) error {
 	info := struct {
 		mode    string
 		status  string
@@ -1958,7 +1980,6 @@ func (g *LightningTerminal) showStartupInfo() error {
 			return fmt.Errorf("error querying remote node: %v", err)
 		}
 
-		ctx := context.Background()
 		res, err := basicClient.GetInfo(ctx, &lnrpc.GetInfoRequest{})
 		if err != nil {
 			if !lndclient.IsUnlockError(err) {

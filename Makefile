@@ -57,9 +57,6 @@ XARGS := xargs -L 1
 
 LINT = $(LINT_BIN) run -v
 
-UNIT := $(GOLIST) | $(XARGS) env $(GOTEST)
-UNIT_RACE := $(UNIT) -race
-
 include make/release_flags.mk
 include make/testing_flags.mk
 
@@ -199,7 +196,7 @@ check: unit
 unit:
 	@$(call print, "Running unit tests.")
 	mkdir -p app/build && touch app/build/index.html
-	$(UNIT) -tags="$(LND_RELEASE_TAGS)"
+	$(UNIT)
 
 unit-cover: $(GOACC_BIN)
 	@$(call print, "Running unit coverage tests.")
@@ -208,7 +205,7 @@ unit-cover: $(GOACC_BIN)
 unit-race:
 	@$(call print, "Running unit race tests.")
 	mkdir -p app/build && touch app/build/index.html
-	env CGO_ENABLED=1 GORACE="history_size=7 halt_on_errors=1" $(UNIT_RACE) -tags="$(LND_RELEASE_TAGS)"
+	env CGO_ENABLED=1 GORACE="history_size=7 halt_on_errors=1" $(UNIT_RACE)
 
 clean-itest:
 	@$(call print, "Cleaning itest binaries.")
@@ -302,6 +299,14 @@ clean: clean-itest
 	$(RM) ./litcli-debug
 	$(RM) ./litd-debug
 	$(RM) coverage.txt
+
+sqlc:
+	@$(call print, "Generating sql models and queries in Go")
+	./scripts/gen_sqlc_docker.sh
+
+sqlc-check: sqlc
+	@$(call print, "Verifying sql code generation.")
+	if test -n "$$(git status --porcelain '*.go')"; then echo "SQL models not properly generated!"; git status --porcelain '*.go'; exit 1; fi
 
 # Prevent make from interpreting any of the defined goals as folders or files to
 # include in the build process.
