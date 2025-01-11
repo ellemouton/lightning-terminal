@@ -2,18 +2,25 @@ package accounts
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/lightninglabs/taproot-assets/fn"
 	"github.com/lightningnetwork/lnd/kvdb"
+	"github.com/lightningnetwork/lnd/lnrpc"
+	"github.com/lightningnetwork/lnd/lntypes"
 	"github.com/lightningnetwork/lnd/lnwire"
 	"go.etcd.io/bbolt"
 )
+
+var ErrPaymentAlreadySucceeded = fmt.Errorf("payment already succeeded")
 
 const (
 	// DBFilename is the filename within the data directory which contains
@@ -96,14 +103,13 @@ func NewBoltStore(dir, fileName string) (*BoltStore, error) {
 	return &BoltStore{db: db}, nil
 }
 
-// Close closes the underlying bolt DB.
 func (s *BoltStore) Close() error {
 	return s.db.Close()
 }
 
 // NewAccount creates a new OffChainBalanceAccount with the given balance and a
 // randomly chosen ID.
-func (s *BoltStore) NewAccount(balance lnwire.MilliSatoshi,
+func (s *BoltStore) NewAccount(ctx context.Context, balance lnwire.MilliSatoshi,
 	expirationDate time.Time, label string) (*OffChainBalanceAccount,
 	error) {
 
@@ -120,7 +126,7 @@ func (s *BoltStore) NewAccount(balance lnwire.MilliSatoshi,
 				label)
 		}
 
-		accounts, err := s.Accounts()
+		accounts, err := s.Accounts(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("error checking label "+
 				"uniqueness: %w", err)
@@ -128,7 +134,8 @@ func (s *BoltStore) NewAccount(balance lnwire.MilliSatoshi,
 		for _, account := range accounts {
 			if account.Label == label {
 				return nil, fmt.Errorf("an account with the "+
-					"label '%s' already exists", label)
+					"label '%s' already exists: %w", label,
+					ErrLabelAlreadyExists)
 			}
 		}
 	}
@@ -172,18 +179,258 @@ func (s *BoltStore) NewAccount(balance lnwire.MilliSatoshi,
 	return account, nil
 }
 
-// UpdateAccount writes an account to the database, overwriting the existing one
-// if it exists.
-func (s *BoltStore) UpdateAccount(account *OffChainBalanceAccount) error {
+func (s *BoltStore) AddAccountInvoice(_ context.Context, id AccountID,
+	hash lntypes.Hash) error {
+
 	return s.db.Update(func(tx kvdb.RwTx) error {
 		bucket := tx.ReadWriteBucket(accountBucketName)
 		if bucket == nil {
 			return ErrAccountBucketNotFound
 		}
 
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
 		account.LastUpdate = time.Now()
+		account.Invoices[hash] = struct{}{}
+
 		return storeAccount(bucket, account)
 	}, func() {})
+}
+
+func (s *BoltStore) UpdateAccountBalanceAndExpiry(_ context.Context,
+	id AccountID, newBalance fn.Option[int64],
+	newExpiry fn.Option[time.Time]) error {
+
+	return s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		newBalance.WhenSome(func(balance int64) {
+			account.CurrentBalance = balance
+		})
+		newExpiry.WhenSome(func(expiry time.Time) {
+			account.ExpirationDate = expiry
+		})
+
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+}
+
+func (s *BoltStore) SetAccountPaymentErrored(_ context.Context, id AccountID,
+	hash lntypes.Hash) error {
+
+	return s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		// Check that this payment is actually associated with this
+		// account.
+		_, ok := account.Payments[hash]
+		if !ok {
+			return fmt.Errorf("payment with hash %s is not "+
+				"associated with this account", hash)
+		}
+
+		// Delete the payment and update the persisted account.
+		delete(account.Payments, hash)
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+}
+
+func (s *BoltStore) AddAccountPayment(_ context.Context, id AccountID,
+	hash lntypes.Hash, fullAmt lnwire.MilliSatoshi) error {
+
+	return s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		// Check if this payment is associated with the account already.
+		entry, ok := account.Payments[hash]
+		if ok {
+			// We do not allow another payment to the same hash if
+			// the payment is already in-flight or succeeded. This
+			// mitigates a user being able to launch a second
+			// RPC-erring payment with the same hash that would
+			// remove the payment from being tracked. Note that
+			// this prevents launching multipart payments, but
+			// allows retrying a payment if it has failed.
+			if entry.Status != lnrpc.Payment_FAILED {
+				return fmt.Errorf("payment with hash %s is "+
+					"already in flight or succeeded "+
+					"(status %v)", hash,
+					entry.Status)
+			}
+
+			// Otherwise, we fall through to correctly update the
+			// payment amount, in case we have a zero-amount invoice
+			// that is retried.
+		}
+
+		// Associate the payment with the account and store it.
+		account.Payments[hash] = &PaymentEntry{
+			Status:     lnrpc.Payment_UNKNOWN,
+			FullAmount: fullAmt,
+		}
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+}
+
+func (s *BoltStore) UpsertAccountPayment(_ context.Context, id AccountID,
+	hash lntypes.Hash, fullAmt lnwire.MilliSatoshi) (bool, error) {
+
+	var existingPayment bool
+	err := s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		// If the account already stored a terminal state, we also don't
+		// need to track the payment again.
+		var entry *PaymentEntry
+		entry, existingPayment = account.Payments[hash]
+		if existingPayment && successState(entry.Status) {
+			return ErrPaymentAlreadySucceeded
+		}
+
+		// There is a case where the passed in fullAmt is zero but the
+		// pending amount is not. In that case, we should not overwrite
+		// the pending amount.
+		if fullAmt == 0 {
+			fullAmt = entry.FullAmount
+		}
+
+		account.Payments[hash] = &PaymentEntry{
+			Status:     lnrpc.Payment_UNKNOWN,
+			FullAmount: fullAmt,
+		}
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+
+	return existingPayment, err
+}
+
+func (s *BoltStore) UpdateAccountPaymentStatus(_ context.Context, id AccountID,
+	hash lntypes.Hash, status lnrpc.Payment_PaymentStatus) error {
+
+	return s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		// Have we associated the payment with the account already?
+		_, ok := account.Payments[hash]
+		if !ok {
+			return nil
+		}
+
+		// If we did, let's set the status correctly in the DB now.
+		account.Payments[hash].Status = status
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+}
+
+func (s *BoltStore) UpdateAccountPaymentSuccess(_ context.Context, id AccountID,
+	hash lntypes.Hash, fullAmount lnwire.MilliSatoshi) error {
+
+	return s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		// Update the account and store it in the database.
+		account.CurrentBalance -= int64(fullAmount)
+		account.Payments[hash] = &PaymentEntry{
+			Status:     lnrpc.Payment_SUCCEEDED,
+			FullAmount: fullAmount,
+		}
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+}
+
+func (s *BoltStore) IncreaseAccountBalance(_ context.Context, id AccountID,
+	amount lnwire.MilliSatoshi) error {
+
+	return s.db.Update(func(tx kvdb.RwTx) error {
+		bucket := tx.ReadWriteBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		account, err := getAccount(bucket, id)
+		if err != nil {
+			return err
+		}
+
+		account.CurrentBalance += int64(amount)
+		account.LastUpdate = time.Now()
+
+		return storeAccount(bucket, account)
+	}, func() {})
+}
+
+func getAccount(accountBucket kvdb.RwBucket, id AccountID) (
+	*OffChainBalanceAccount, error) {
+
+	accountBinary := accountBucket.Get(id[:])
+	if len(accountBinary) == 0 {
+		return nil, ErrAccNotFound
+	}
+
+	return deserializeAccount(accountBinary)
 }
 
 // storeAccount serializes and writes the given account to the given account
@@ -223,9 +470,60 @@ func uniqueRandomAccountID(accountBucket kvdb.RBucket) (AccountID, error) {
 	return newID, fmt.Errorf("couldn't create new account ID")
 }
 
+func (s *BoltStore) GetAccountByIDPrefix(_ context.Context,
+	prefix [4]byte) (*OffChainBalanceAccount, error) {
+
+	// Try looking up and reading the account by its ID from the local
+	// bolt DB.
+	var (
+		account  *OffChainBalanceAccount
+		errFound = fmt.Errorf("found account")
+		err      error
+	)
+	err = s.db.View(func(tx kvdb.RTx) error {
+		bucket := tx.ReadBucket(accountBucketName)
+		if bucket == nil {
+			return ErrAccountBucketNotFound
+		}
+
+		err := bucket.ForEach(func(k, v []byte) error {
+			if len(k) < 4 {
+				return nil
+			}
+
+			if !bytes.Equal(k[:4], prefix[:]) {
+				return nil
+			}
+
+			// Now try to deserialize the account back from the
+			// binary format it was stored in.
+			account, err = deserializeAccount(v)
+			if err != nil {
+				return err
+			}
+
+			return errFound
+		})
+		if err != nil && !errors.Is(err, errFound) {
+			return err
+		} else if err == nil {
+			return ErrAccNotFound
+		}
+
+		return nil
+	}, func() {})
+	if err != nil {
+		return nil, err
+	}
+
+	return account, nil
+}
+
 // Account retrieves an account from the bolt DB and un-marshals it. If the
 // account cannot be found, then ErrAccNotFound is returned.
-func (s *BoltStore) Account(id AccountID) (*OffChainBalanceAccount, error) {
+func (s *BoltStore) Account(_ context.Context, id AccountID) (
+	*OffChainBalanceAccount, error) {
+
 	// Try looking up and reading the account by its ID from the local
 	// bolt DB.
 	var accountBinary []byte
@@ -259,7 +557,9 @@ func (s *BoltStore) Account(id AccountID) (*OffChainBalanceAccount, error) {
 }
 
 // Accounts retrieves all accounts from the bolt DB and un-marshals them.
-func (s *BoltStore) Accounts() ([]*OffChainBalanceAccount, error) {
+func (s *BoltStore) Accounts(_ context.Context) ([]*OffChainBalanceAccount,
+	error) {
+
 	var accounts []*OffChainBalanceAccount
 	err := s.db.View(func(tx kvdb.RTx) error {
 		// This function will be called in the ForEach and receive
@@ -302,7 +602,7 @@ func (s *BoltStore) Accounts() ([]*OffChainBalanceAccount, error) {
 }
 
 // RemoveAccount finds an account by its ID and removes it from the DB.
-func (s *BoltStore) RemoveAccount(id AccountID) error {
+func (s *BoltStore) RemoveAccount(_ context.Context, id AccountID) error {
 	return s.db.Update(func(tx kvdb.RwTx) error {
 		bucket := tx.ReadWriteBucket(accountBucketName)
 		if bucket == nil {
@@ -320,7 +620,7 @@ func (s *BoltStore) RemoveAccount(id AccountID) error {
 
 // LastIndexes returns the last invoice add and settle index or
 // ErrNoInvoiceIndexKnown if no indexes are known yet.
-func (s *BoltStore) LastIndexes() (uint64, uint64, error) {
+func (s *BoltStore) LastIndexes(_ context.Context) (uint64, uint64, error) {
 	var (
 		addValue, settleValue []byte
 	)
@@ -352,7 +652,9 @@ func (s *BoltStore) LastIndexes() (uint64, uint64, error) {
 }
 
 // StoreLastIndexes stores the last invoice add and settle index.
-func (s *BoltStore) StoreLastIndexes(addIndex, settleIndex uint64) error {
+func (s *BoltStore) StoreLastIndexes(_ context.Context, addIndex,
+	settleIndex uint64) error {
+
 	addValue := make([]byte, 8)
 	settleValue := make([]byte, 8)
 	byteOrder.PutUint64(addValue, addIndex)

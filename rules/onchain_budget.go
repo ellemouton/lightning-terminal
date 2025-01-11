@@ -363,8 +363,8 @@ func (o *OnChainBudget) ToProto() *litrpc.RuleValue {
 // find the real values. This is a no-op for the OnChainBudget rule.
 //
 // NOTE: this is part of the Values interface.
-func (o *OnChainBudget) PseudoToReal(_ firewalldb.PrivacyMapDB,
-	_ session.PrivacyFlags) (Values, error) {
+func (o *OnChainBudget) PseudoToReal(ctx context.Context,
+	_ firewalldb.PrivacyMapDB, _ session.PrivacyFlags) (Values, error) {
 
 	return o, nil
 }
@@ -374,8 +374,9 @@ func (o *OnChainBudget) PseudoToReal(_ firewalldb.PrivacyMapDB,
 // that should be persisted. This is a no-op for the OnChainBudget rule.
 //
 // NOTE: this is part of the Values interface.
-func (o *OnChainBudget) RealToPseudo(db firewalldb.PrivacyMapReader,
-	flags session.PrivacyFlags) (Values, map[string]string, error) {
+func (o *OnChainBudget) RealToPseudo(_ context.Context,
+	db firewalldb.PrivacyMapReader, flags session.PrivacyFlags) (Values,
+	map[string]string, error) {
 
 	return o, nil, nil
 }
@@ -531,7 +532,7 @@ func (o *OnChainBudgetEnforcer) handleBatchOpenChannelRequest(
 func (o *OnChainBudgetEnforcer) handlePendingPayment(ctx context.Context,
 	request *onChainAction, reqID string) error {
 
-	return o.GetStores().Update(func(tx firewalldb.KVStoreTx) error {
+	return o.GetStores().Update(ctx, func(tx firewalldb.KVStoreTx) error {
 		// First, we fetch the current state of the budget.
 		spent, pending, err := o.getBudgetState(ctx, tx)
 		if err != nil {
@@ -586,7 +587,7 @@ type onChainAction struct {
 func (o *OnChainBudgetEnforcer) cancelPendingPayment(
 	ctx context.Context) error {
 
-	return o.GetStores().Update(func(tx firewalldb.KVStoreTx) error {
+	return o.GetStores().Update(ctx, func(tx firewalldb.KVStoreTx) error {
 		// First, we get our current budget state.
 		_, pending, err := o.getBudgetState(ctx, tx)
 		if err != nil {
@@ -643,7 +644,7 @@ func (o *OnChainBudgetEnforcer) cancelPendingPayment(
 func (o *OnChainBudgetEnforcer) handlePaymentConfirmed(
 	ctx context.Context) error {
 
-	return o.GetStores().Update(func(tx firewalldb.KVStoreTx) error {
+	return o.GetStores().Update(ctx, func(tx firewalldb.KVStoreTx) error {
 		// First, we get our current budget state.
 		complete, pending, err := o.getBudgetState(ctx, tx)
 		if err != nil {

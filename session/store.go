@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -64,7 +65,7 @@ func getSessionKey(session *Session) []byte {
 // local public key already exists an error is returned.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) CreateSession(session *Session) error {
+func (db *DB) CreateSession(_ context.Context, session *Session) error {
 	var buf bytes.Buffer
 	if err := SerializeSession(&buf, session); err != nil {
 		return err
@@ -79,8 +80,9 @@ func (db *DB) CreateSession(session *Session) error {
 
 		if len(sessionBucket.Get(sessionKey)) != 0 {
 			return fmt.Errorf("session with local public "+
-				"key(%x) already exists",
-				session.LocalPublicKey.SerializeCompressed())
+				"key(%x) already exists: %w",
+				session.LocalPublicKey.SerializeCompressed(),
+				ErrSessionExists)
 		}
 
 		// If this is a linked session (meaning the group ID is
@@ -91,8 +93,8 @@ func (db *DB) CreateSession(session *Session) error {
 		if session.ID != session.GroupID {
 			_, err = getKeyForID(sessionBucket, session.GroupID)
 			if err != nil {
-				return fmt.Errorf("unknown linked session "+
-					"%x: %w", session.GroupID, err)
+				return fmt.Errorf("%w %x: %w", ErrUnknownGroup,
+					session.GroupID, err)
 			}
 
 			// Fetch all the session IDs for this group. This will
@@ -129,8 +131,10 @@ func (db *DB) CreateSession(session *Session) error {
 					sess.State == StateInUse {
 
 					return fmt.Errorf("session (id=%x) "+
-						"in group %x is still active",
-						sess.ID, sess.GroupID)
+						"in group %x is still "+
+						"active: %w", sess.ID,
+						sess.GroupID,
+						ErrSessionsInGroupStillActive)
 				}
 			}
 		}
@@ -158,7 +162,7 @@ func (db *DB) CreateSession(session *Session) error {
 // to the session with the given local pub key.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) UpdateSessionRemotePubKey(localPubKey,
+func (db *DB) UpdateSessionRemotePubKey(_ context.Context, localPubKey,
 	remotePubKey *btcec.PublicKey) error {
 
 	key := localPubKey.SerializeCompressed()
@@ -196,7 +200,9 @@ func (db *DB) UpdateSessionRemotePubKey(localPubKey,
 // GetSession fetches the session with the given key.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) GetSession(key *btcec.PublicKey) (*Session, error) {
+func (db *DB) GetSession(_ context.Context, key *btcec.PublicKey) (*Session,
+	error) {
+
 	var session *Session
 	err := db.View(func(tx *bbolt.Tx) error {
 		sessionBucket, err := getBucket(tx, sessionBucketKey)
@@ -226,7 +232,9 @@ func (db *DB) GetSession(key *btcec.PublicKey) (*Session, error) {
 // ListSessions returns all sessions currently known to the store.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) ListSessions(filterFn func(s *Session) bool) ([]*Session, error) {
+func (db *DB) ListSessions(_ context.Context,
+	filterFn func(s *Session) bool) ([]*Session, error) {
+
 	var sessions []*Session
 	err := db.View(func(tx *bbolt.Tx) error {
 		sessionBucket, err := getBucket(tx, sessionBucketKey)
@@ -266,7 +274,7 @@ func (db *DB) ListSessions(filterFn func(s *Session) bool) ([]*Session, error) {
 // public key to be revoked.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) RevokeSession(key *btcec.PublicKey) error {
+func (db *DB) RevokeSession(_ context.Context, key *btcec.PublicKey) error {
 	var session *Session
 	return db.Update(func(tx *bbolt.Tx) error {
 		sessionBucket, err := getBucket(tx, sessionBucketKey)
@@ -299,7 +307,7 @@ func (db *DB) RevokeSession(key *btcec.PublicKey) error {
 // GetSessionByID fetches the session with the given ID.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) GetSessionByID(id ID) (*Session, error) {
+func (db *DB) GetSessionByID(_ context.Context, id ID) (*Session, error) {
 	var session *Session
 	err := db.View(func(tx *bbolt.Tx) error {
 		sessionBucket, err := getBucket(tx, sessionBucketKey)
@@ -309,7 +317,7 @@ func (db *DB) GetSessionByID(id ID) (*Session, error) {
 
 		keyBytes, err := getKeyForID(sessionBucket, id)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %w", err, ErrSessionNotFound)
 		}
 
 		v := sessionBucket.Get(keyBytes)
@@ -337,7 +345,9 @@ func (db *DB) GetSessionByID(id ID) (*Session, error) {
 // used or discarded.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) GetUnusedIDAndKeyPair() (ID, *btcec.PrivateKey, error) {
+func (db *DB) GetUnusedIDAndKeyPair(_ context.Context) (ID, *btcec.PrivateKey,
+	error) {
+
 	var (
 		id      ID
 		privKey *btcec.PrivateKey
@@ -383,7 +393,7 @@ func (db *DB) GetUnusedIDAndKeyPair() (ID, *btcec.PrivateKey, error) {
 // GetGroupID will return the group ID for the given session ID.
 //
 // NOTE: this is part of the IDToGroupIndex interface.
-func (db *DB) GetGroupID(sessionID ID) (ID, error) {
+func (db *DB) GetGroupID(_ context.Context, sessionID ID) (ID, error) {
 	var groupID ID
 	err := db.View(func(tx *bbolt.Tx) error {
 		sessionBkt, err := getBucket(tx, sessionBucketKey)
@@ -398,8 +408,8 @@ func (db *DB) GetGroupID(sessionID ID) (ID, error) {
 
 		sessionIDBkt := idIndex.Bucket(sessionID[:])
 		if sessionIDBkt == nil {
-			return fmt.Errorf("no index entry for session ID: %x",
-				sessionID)
+			return fmt.Errorf("no index entry for session ID: %x: "+
+				"%w", sessionID, ErrSessionUnknown)
 		}
 
 		groupIDBytes := sessionIDBkt.Get(groupIDKey)
@@ -423,7 +433,7 @@ func (db *DB) GetGroupID(sessionID ID) (ID, error) {
 // group with the given ID.
 //
 // NOTE: this is part of the IDToGroupIndex interface.
-func (db *DB) GetSessionIDs(groupID ID) ([]ID, error) {
+func (db *DB) GetSessionIDs(_ context.Context, groupID ID) ([]ID, error) {
 	var (
 		sessionIDs []ID
 		err        error
@@ -450,7 +460,7 @@ func (db *DB) GetSessionIDs(groupID ID) ([]ID, error) {
 // each session passes.
 //
 // NOTE: this is part of the Store interface.
-func (db *DB) CheckSessionGroupPredicate(groupID ID,
+func (db *DB) CheckSessionGroupPredicate(_ context.Context, groupID ID,
 	fn func(s *Session) bool) (bool, error) {
 
 	var (
@@ -515,14 +525,13 @@ func getSessionIDs(sessionBkt *bbolt.Bucket, groupID ID) ([]ID, error) {
 
 	groupIDBkt := groupIndexBkt.Bucket(groupID[:])
 	if groupIDBkt == nil {
-		return nil, fmt.Errorf("no sessions for group ID %v",
-			groupID)
+		return nil, ErrUnknownGroup
 	}
 
 	sessionIDsBkt := groupIDBkt.Bucket(sessionIDKey)
 	if sessionIDsBkt == nil {
-		return nil, fmt.Errorf("no sessions for group ID %v",
-			groupID)
+		return nil, fmt.Errorf("no sessions for group ID %v: %w",
+			groupID, ErrUnknownGroup)
 	}
 
 	err := sessionIDsBkt.ForEach(func(_,
@@ -555,7 +564,8 @@ func addIDToKeyPair(sessionBkt *bbolt.Bucket, id ID, sessionKey []byte) error {
 	}
 
 	if len(idBkt.Get(sessionKeyKey)) != 0 {
-		return fmt.Errorf("a session with the given ID already exists")
+		return fmt.Errorf("a session with the given ID already "+
+			"exists: %w", ErrSessionExists)
 	}
 
 	return idBkt.Put(sessionKeyKey[:], sessionKey)

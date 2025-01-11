@@ -42,10 +42,13 @@ type DB struct {
 	*bbolt.DB
 
 	sessionIDIndex SessionDB
+	accountsDB     AccountsDB
 }
 
 // NewDB creates a new bolt database that can be found at the given directory.
-func NewDB(dir, fileName string, sessionIDIndex SessionDB) (*DB, error) {
+func NewDB(dir, fileName string, sessionIDIndex SessionDB,
+	accountsDB AccountsDB) (*DB, error) {
+
 	firstInit := false
 	path := filepath.Join(dir, fileName)
 
@@ -71,6 +74,7 @@ func NewDB(dir, fileName string, sessionIDIndex SessionDB) (*DB, error) {
 	return &DB{
 		DB:             db,
 		sessionIDIndex: sessionIDIndex,
+		accountsDB:     accountsDB,
 	}, nil
 }
 

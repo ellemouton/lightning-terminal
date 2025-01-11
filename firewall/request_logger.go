@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/firewalldb"
 	mid "github.com/lightninglabs/lightning-terminal/rpcmiddleware"
 	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightninglabs/taproot-assets/fn"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
 )
@@ -53,7 +54,7 @@ type RequestLogger struct {
 	// be used to find the corresponding action. This is used so that
 	// requests and responses can be easily linked. The mu mutex must be
 	// used when accessing this map.
-	reqIDToAction map[uint64]*firewalldb.ActionLocator
+	reqIDToAction map[uint64]firewalldb.ActionLocator
 	mu            sync.Mutex
 }
 
@@ -105,7 +106,7 @@ func NewRequestLogger(cfg *RequestLoggerConfig,
 	return &RequestLogger{
 		shouldLogAction: shouldLogAction,
 		actionsDB:       actionsDB,
-		reqIDToAction:   make(map[uint64]*firewalldb.ActionLocator),
+		reqIDToAction:   make(map[uint64]firewalldb.ActionLocator),
 	}, nil
 }
 
@@ -128,7 +129,7 @@ func (r *RequestLogger) CustomCaveatName() string {
 
 // Intercept processes an RPC middleware interception request and returns the
 // interception result which either accepts or rejects the intercepted message.
-func (r *RequestLogger) Intercept(_ context.Context,
+func (r *RequestLogger) Intercept(ctx context.Context,
 	req *lnrpc.RPCMiddlewareRequest) (*lnrpc.RPCMiddlewareResponse, error) {
 
 	ri, err := NewInfoFromRequest(req)
@@ -156,7 +157,7 @@ func (r *RequestLogger) Intercept(_ context.Context,
 
 	// Parse incoming requests and act on them.
 	case MWRequestTypeRequest:
-		return mid.RPCErr(req, r.addNewAction(ri, withPayloadData))
+		return mid.RPCErr(req, r.addNewAction(ctx, ri, withPayloadData))
 
 	// Parse and possibly manipulate outgoing responses.
 	case MWRequestTypeResponse:
@@ -170,7 +171,7 @@ func (r *RequestLogger) Intercept(_ context.Context,
 		}
 
 		return mid.RPCErr(
-			req, r.MarkAction(ri.RequestID, state, errReason),
+			req, r.MarkAction(ctx, ri.RequestID, state, errReason),
 		)
 
 	default:
@@ -179,24 +180,34 @@ func (r *RequestLogger) Intercept(_ context.Context,
 }
 
 // addNewAction persists the new action to the db.
-func (r *RequestLogger) addNewAction(ri *RequestInfo,
+func (r *RequestLogger) addNewAction(ctx context.Context, ri *RequestInfo,
 	withPayloadData bool) error {
 
 	// If no macaroon is provided, then an empty 4-byte array is used as the
 	// session ID. Otherwise, the macaroon is used to derive a session ID.
-	var sessionID [4]byte
+
+	var (
+		macID     [4]byte
+		accountID fn.Option[accounts.AccountID]
+	)
 	if ri.Macaroon != nil {
 		var err error
-		sessionID, err = session.IDFromMacaroon(ri.Macaroon)
+		macID, err = session.IDFromMacaroon(ri.Macaroon)
 		if err != nil {
 			return fmt.Errorf("could not extract ID from macaroon")
 		}
+
+		// Now, see if there is an account ID in the macaroon caveat.
+		accountID, err = accounts.AccountFromMacaroon(ri.Macaroon)
+		if err != nil {
+			return err
+		}
 	}
 
-	action := &firewalldb.Action{
-		RPCMethod:   ri.URI,
-		AttemptedAt: time.Now(),
-		State:       firewalldb.ActionStateInit,
+	req := &firewalldb.AddActionReq{
+		MacaroonIdentifier: macID,
+		RPCMethod:          ri.URI,
+		AccountID:          accountID,
 	}
 
 	if withPayloadData {
@@ -210,28 +221,25 @@ func (r *RequestLogger) addNewAction(ri *RequestInfo,
 			return fmt.Errorf("unable to decode response: %v", err)
 		}
 
-		action.RPCParamsJson = jsonBytes
+		req.RPCParamsJson = jsonBytes
 
 		meta := ri.MetaInfo
 		if meta != nil {
-			action.ActorName = meta.ActorName
-			action.FeatureName = meta.Feature
-			action.Trigger = meta.Trigger
-			action.Intent = meta.Intent
-			action.StructuredJsonData = meta.StructuredJsonData
+			req.ActorName = meta.ActorName
+			req.FeatureName = meta.Feature
+			req.Trigger = meta.Trigger
+			req.Intent = meta.Intent
+			req.StructuredJsonData = meta.StructuredJsonData
 		}
 	}
 
-	id, err := r.actionsDB.AddAction(sessionID, action)
+	locator, err := r.actionsDB.AddAction(ctx, req)
 	if err != nil {
 		return err
 	}
 
 	r.mu.Lock()
-	r.reqIDToAction[ri.RequestID] = &firewalldb.ActionLocator{
-		SessionID: sessionID,
-		ActionID:  id,
-	}
+	r.reqIDToAction[ri.RequestID] = locator
 	r.mu.Unlock()
 
 	return nil
@@ -239,7 +247,7 @@ func (r *RequestLogger) addNewAction(ri *RequestInfo,
 
 // MarkAction can be used to set the state of an action identified by the given
 // requestID.
-func (r *RequestLogger) MarkAction(reqID uint64,
+func (r *RequestLogger) MarkAction(ctx context.Context, reqID uint64,
 	state firewalldb.ActionState, errReason string) error {
 
 	r.mu.Lock()
@@ -251,5 +259,5 @@ func (r *RequestLogger) MarkAction(reqID uint64,
 	}
 	delete(r.reqIDToAction, reqID)
 
-	return r.actionsDB.SetActionState(actionLocator, state, errReason)
+	return r.actionsDB.SetActionState(ctx, actionLocator, state, errReason)
 }
