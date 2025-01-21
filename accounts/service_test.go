@@ -371,10 +371,10 @@ func TestAccountService(t *testing.T) {
 			// failed.
 			require.False(t, s.IsRunning())
 
-			// Finally let's assert that we didn't successfully add the
-			// payment to pending payment, and that lnd isn't awaiting
-			// the payment request.
-			require.NotContains(t, s.pendingPayments, testHash)
+			// Finally let's assert that we didn't successfully add
+			// the payment to pending payment, and that lnd isn't
+			// awaiting the payment request.
+			require.False(t, s.hasPayment(testHash))
 			r.assertNoPaymentRequest(t)
 		},
 	}, {
@@ -409,7 +409,9 @@ func TestAccountService(t *testing.T) {
 			// This will cause an error send an update over
 			// the payment channel, which should disable the
 			// service.
-			s.pendingPayments = make(map[lntypes.Hash]*trackedPayment)
+			s.pendingPayments = make(
+				map[lntypes.Hash]*trackedPayment,
+			)
 
 			// Send an invalid payment over the payment chan
 			// which should error and disable the service
@@ -551,7 +553,7 @@ func TestAccountService(t *testing.T) {
 				return p.Status == lnrpc.Payment_FAILED
 			})
 
-			require.NotContains(t, s.pendingPayments, testHash2)
+			require.False(t, s.hasPayment(testHash2))
 
 			// Finally, if an unknown payment turns out to be
 			// a non-initiated payment, we should stop the tracking
@@ -599,7 +601,7 @@ func TestAccountService(t *testing.T) {
 
 			// Ensure that the payment was removed from the pending
 			// payments.
-			require.NotContains(t, s.pendingPayments, testHash3)
+			require.False(t, s.hasPayment(testHash3))
 		},
 	}, {
 		name: "keep track of invoice indexes",
