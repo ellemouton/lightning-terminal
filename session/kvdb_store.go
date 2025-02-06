@@ -231,8 +231,9 @@ func (db *BoltStore) NewSession(_ context.Context, label string, typ Type,
 		if session.ID != session.GroupID {
 			_, err = getKeyForID(sessionBucket, session.GroupID)
 			if err != nil {
-				return fmt.Errorf("unknown linked session "+
-					"%x: %w", session.GroupID, err)
+				return fmt.Errorf("%w: unknown linked session "+
+					"%x: %w", ErrUnknownGroup,
+					session.GroupID, err)
 			}
 
 			// Fetch all the session IDs for this group. This will
@@ -377,17 +378,11 @@ func (db *BoltStore) ListSessionsByType(_ context.Context, t Type) ([]*Session,
 // are in the given states.
 //
 // NOTE: this is part of the Store interface.
-func (db *BoltStore) ListSessionsByState(_ context.Context, states ...State) (
+func (db *BoltStore) ListSessionsByState(_ context.Context, state State) (
 	[]*Session, error) {
 
 	return db.listSessions(func(s *Session) bool {
-		for _, state := range states {
-			if s.State == state {
-				return true
-			}
-		}
-
-		return false
+		return s.State == state
 	})
 }
 
@@ -643,8 +638,8 @@ func (db *BoltStore) GetGroupID(_ context.Context, sessionID ID) (ID, error) {
 
 		sessionIDBkt := idIndex.Bucket(sessionID[:])
 		if sessionIDBkt == nil {
-			return fmt.Errorf("no index entry for session ID: %x",
-				sessionID)
+			return fmt.Errorf("%w: no index entry for session "+
+				"ID: %x", ErrUnknownGroup, sessionID)
 		}
 
 		groupIDBytes := sessionIDBkt.Get(groupIDKey)

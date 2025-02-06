@@ -130,17 +130,6 @@ func TestBasicSessionStore(t *testing.T) {
 	assertEqualSessions(t, s2, sessions[0])
 	assertEqualSessions(t, s3, sessions[1])
 
-	sessions, err = db.ListSessionsByState(ctx, StateCreated, StateRevoked)
-	require.NoError(t, err)
-	require.Equal(t, 3, len(sessions))
-	assertEqualSessions(t, s1, sessions[0])
-	assertEqualSessions(t, s2, sessions[1])
-	assertEqualSessions(t, s3, sessions[2])
-
-	sessions, err = db.ListSessionsByState(ctx)
-	require.NoError(t, err)
-	require.Empty(t, sessions)
-
 	sessions, err = db.ListSessionsByState(ctx, StateReserved)
 	require.NoError(t, err)
 	require.Empty(t, sessions)
@@ -185,7 +174,7 @@ func TestBasicSessionStore(t *testing.T) {
 	require.Empty(t, sessions)
 
 	_, err = db.GetGroupID(ctx, s5.ID)
-	require.ErrorContains(t, err, "no index entry")
+	require.ErrorIs(t, err, ErrUnknownGroup)
 
 	// Only session 1 should remain in this group.
 	sessIDs, err = db.GetSessionIDs(ctx, s5.GroupID)
@@ -210,7 +199,7 @@ func TestLinkingSessions(t *testing.T) {
 	_, err = reserveSession(
 		db, "session 2", withLinkedGroupID(&groupID),
 	)
-	require.ErrorContains(t, err, "unknown linked session")
+	require.ErrorIs(t, err, ErrUnknownGroup)
 
 	// Create a new session with no previous link.
 	s1 := createSession(t, db, "session 1")
@@ -369,7 +358,7 @@ func reserveSession(db Store, label string,
 
 	return db.NewSession(
 		context.Background(), label, opts.sessType,
-		time.Date(99999, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC),
 		"foo.bar.baz:1234", true, nil, nil, nil, true, opts.groupID,
 		[]PrivacyFlag{ClearPubkeys},
 	)

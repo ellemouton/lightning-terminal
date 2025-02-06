@@ -210,7 +210,7 @@ type Store interface {
 
 	// ListSessionsByState returns all sessions currently known to the store
 	// that are in the given states.
-	ListSessionsByState(ctx context.Context, state ...State) ([]*Session,
+	ListSessionsByState(ctx context.Context, state State) ([]*Session,
 		error)
 
 	// UpdateSessionRemotePubKey can be used to add the given remote pub key
