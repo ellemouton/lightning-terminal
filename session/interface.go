@@ -227,7 +227,7 @@ type Store interface {
 
 	// ShiftState updates the state of the session with the given ID to the
 	// "dest" state.
-	ShiftState(id ID, dest State) error
+	ShiftState(ctx context.Context, id ID, dest State) error
 
 	IDToGroupIndex
 }
