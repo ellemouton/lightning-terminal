@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -372,7 +373,8 @@ func reserveSession(db Store, label string,
 		mod(opts)
 	}
 
-	return db.NewSession(label, opts.sessType,
+	return db.NewSession(
+		context.Background(), label, opts.sessType,
 		time.Date(99999, 1, 1, 0, 0, 0, 0, time.UTC),
 		"foo.bar.baz:1234", true, nil, nil, nil, true, opts.groupID,
 		[]PrivacyFlag{ClearPubkeys},
