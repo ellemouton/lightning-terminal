@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -187,7 +188,8 @@ func getSessionKey(session *Session) []byte {
 // ShiftState is called with StateCreated.
 //
 // NOTE: this is part of the Store interface.
-func (db *BoltStore) NewSession(label string, typ Type, expiry time.Time,
+func (db *BoltStore) NewSession(_ context.Context, label string, typ Type,
+	expiry time.Time,
 	serverAddr string, devServer bool, perms []bakery.Op,
 	caveats []macaroon.Caveat, featureConfig FeaturesConfig, privacy bool,
 	linkedGroupID *ID, flags PrivacyFlags) (*Session, error) {

@@ -309,7 +309,7 @@ func (s *sessionRpcServer) AddSession(ctx context.Context,
 	}
 
 	sess, err := s.cfg.db.NewSession(
-		req.Label, typ, expiry, req.MailboxServerAddr,
+		ctx, req.Label, typ, expiry, req.MailboxServerAddr,
 		req.DevServer, uniquePermissions, caveats, nil, false, nil,
 		session.PrivacyFlags{},
 	)
@@ -1121,7 +1121,7 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 	}
 
 	sess, err := s.cfg.db.NewSession(
-		req.Label, session.TypeAutopilot, expiry,
+		ctx, req.Label, session.TypeAutopilot, expiry,
 		req.MailboxServerAddr, req.DevServer, perms, caveats,
 		clientConfig, privacy, linkedGroupID, privacyFlags,
 	)
