@@ -7,7 +7,9 @@ import (
 
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/lightninglabs/lightning-node-connect/mailbox"
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/macaroons"
+	"github.com/lightningnetwork/lnd/fn"
 	"gopkg.in/macaroon-bakery.v2/bakery"
 	"gopkg.in/macaroon.v2"
 )
@@ -114,6 +116,7 @@ type Session struct {
 	FeatureConfig     *FeaturesConfig
 	WithPrivacyMapper bool
 	PrivacyFlags      PrivacyFlags
+	Account           fn.Option[accounts.Alias]
 
 	// GroupAlias is the Session Alias of the very first Session in the linked
 	// group of sessions. If this is the very first session in the group
@@ -198,7 +201,8 @@ type Store interface {
 		expiry time.Time, serverAddr string,
 		devServer bool, perms []bakery.Op, caveats []macaroon.Caveat,
 		featureConfig FeaturesConfig, privacy bool, linkedGroupID *Alias,
-		flags PrivacyFlags) (*Session, error)
+		flags PrivacyFlags, account fn.Option[accounts.Alias]) (
+		*Session, error)
 
 	// GetSession fetches the session with the given key.
 	GetSession(ctx context.Context, key *btcec.PublicKey) (*Session, error)

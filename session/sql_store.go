@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/db"
 	"github.com/lightninglabs/lightning-terminal/db/sqlc"
 	"github.com/lightningnetwork/lnd/clock"
+	"github.com/lightningnetwork/lnd/fn"
 	"gopkg.in/macaroon-bakery.v2/bakery"
 	"gopkg.in/macaroon.v2"
 )
@@ -42,6 +44,8 @@ type SQLQueries interface {
 	SetSessionGroupID(ctx context.Context, arg sqlc.SetSessionGroupIDParams) error
 	UpdateSessionState(ctx context.Context, arg sqlc.UpdateSessionStateParams) error
 	DeleteSessionsWithState(ctx context.Context, state int16) error
+	GetAccountIDByAlias(ctx context.Context, alias int64) (int64, error)
+	GetAccount(ctx context.Context, id int64) (sqlc.Account, error)
 }
 
 var _ Store = (*SQLStore)(nil)
@@ -83,11 +87,10 @@ func NewSQLStore(sqlDB *db.BaseDB, clock clock.Clock) *SQLStore {
 }
 
 func (s *SQLStore) NewSession(ctx context.Context, label string, typ Type,
-	expiry time.Time,
-	serverAddr string, devServer bool, perms []bakery.Op,
-	caveats []macaroon.Caveat,
-	featureConfig FeaturesConfig, privacy bool, linkedGroupID *Alias,
-	flags PrivacyFlags) (*Session, error) {
+	expiry time.Time, serverAddr string, devServer bool, perms []bakery.Op,
+	caveats []macaroon.Caveat, featureConfig FeaturesConfig, privacy bool,
+	linkedGroupID *Alias, flags PrivacyFlags,
+	account fn.Option[accounts.Alias]) (*Session, error) {
 
 	var (
 		writeTxOpts db.QueriesTxOptions
@@ -109,6 +112,36 @@ func (s *SQLStore) NewSession(ctx context.Context, label string, typ Type,
 			return err
 		}
 
+		var acctIDInt64 sql.NullInt64
+		account.WhenSome(func(alias accounts.Alias) {
+			sess.Account = fn.Some(alias)
+
+			// Do a manual check to ensure the account exists so that
+			// we can throw a predicable error.
+			var acctAlias int64
+			acctAlias, err = alias.ToInt64()
+			if err != nil {
+				return
+			}
+
+			var acctDBID int64
+			acctDBID, err = db.GetAccountIDByAlias(ctx, acctAlias)
+			if errors.Is(err, sql.ErrNoRows) {
+				err = accounts.ErrAccNotFound
+				return
+			} else if err != nil {
+				return
+			}
+
+			acctIDInt64 = sql.NullInt64{
+				Int64: acctDBID,
+				Valid: true,
+			}
+		})
+		if err != nil {
+			return fmt.Errorf("unable to convert account ID: %w", err)
+		}
+
 		localKey := sess.LocalPublicKey.SerializeCompressed()
 
 		dbID, err := db.InsertSession(ctx, sqlc.InsertSessionParams{
@@ -125,6 +158,7 @@ func (s *SQLStore) NewSession(ctx context.Context, label string, typ Type,
 			LocalPrivateKey: sess.LocalPrivateKey.Serialize(),
 			LocalPublicKey:  localKey,
 			Privacy:         sess.WithPrivacyMapper,
+			AccountID:       acctIDInt64,
 		})
 		if err != nil {
 			return fmt.Errorf("unable to insert session: %w", err)
@@ -634,6 +668,20 @@ func unmarshalSession(ctx context.Context, db SQLQueries,
 		}
 	}
 
+	var acctAlias fn.Option[accounts.Alias]
+	if dbSess.AccountID.Valid {
+		account, err := db.GetAccount(ctx, dbSess.AccountID.Int64)
+		if err != nil {
+			return nil, fmt.Errorf("unable to get account: %v", err)
+		}
+
+		accountAlias, err := accounts.AliasFromInt64(account.Alias)
+		if err != nil {
+			return nil, fmt.Errorf("unable to get account ID: %v", err)
+		}
+		acctAlias = fn.Some(accountAlias)
+	}
+
 	legacyID, err := AliasFromBytes(dbSess.LegacyID)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get legacy Alias: %v", err)
@@ -722,11 +770,12 @@ func unmarshalSession(ctx context.Context, db SQLQueries,
 		PrivacyFlags:      privFlags,
 		MacaroonRecipe:    macRecipe,
 		FeatureConfig:     featureCfgs,
+		Account:           acctAlias,
 	}, nil
 }
 
 func unmarshalMacPerms(dbPerms []sqlc.MacaroonPermission) []bakery.Op {
-	ops := make([]bakery.Op, 0, len(dbPerms))
+	ops := make([]bakery.Op, len(dbPerms))
 	for i, dbPerm := range dbPerms {
 		ops[i] = bakery.Op{
 			Entity: dbPerm.Entity,
@@ -738,7 +787,7 @@ func unmarshalMacPerms(dbPerms []sqlc.MacaroonPermission) []bakery.Op {
 }
 
 func unmarshalMacCaveats(dbCaveats []sqlc.MacaroonCaveat) []macaroon.Caveat {
-	caveats := make([]macaroon.Caveat, 0, len(dbCaveats))
+	caveats := make([]macaroon.Caveat, len(dbCaveats))
 	for i, dbCaveat := range dbCaveats {
 		caveats[i] = macaroon.Caveat{
 			Id:             dbCaveat.ID,

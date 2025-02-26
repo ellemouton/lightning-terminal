@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightningnetwork/lnd/tlv"
 	"gopkg.in/macaroon-bakery.v2/bakery"
 	"gopkg.in/macaroon.v2"
@@ -276,6 +277,15 @@ func DeserializeSession(r io.Reader) (*Session, error) {
 		copy(session.GroupAlias[:], groupID)
 	} else {
 		session.GroupAlias = session.Alias
+	}
+
+	if session.MacaroonRecipe != nil {
+		session.Account, err = accounts.AliasFromCaveats(
+			session.MacaroonRecipe.Caveats,
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return session, nil

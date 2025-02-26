@@ -22,6 +22,7 @@ import (
 	"github.com/lightninglabs/lightning-terminal/perms"
 	"github.com/lightninglabs/lightning-terminal/rules"
 	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightningnetwork/lnd/fn"
 	"github.com/lightningnetwork/lnd/macaroons"
 	"google.golang.org/grpc"
 	"gopkg.in/macaroon-bakery.v2/bakery"
@@ -221,7 +222,10 @@ func (s *sessionRpcServer) AddSession(ctx context.Context,
 		permissions[entity][action] = struct{}{}
 	}
 
-	var caveats []macaroon.Caveat
+	var (
+		caveats   []macaroon.Caveat
+		accountID fn.Option[accounts.Alias]
+	)
 	switch typ {
 	// For the default session types we use empty caveats and permissions,
 	// the macaroons are baked correctly when creating the session.
@@ -241,6 +245,8 @@ func (s *sessionRpcServer) AddSession(ctx context.Context,
 		caveats = append(caveats, macaroon.Caveat{
 			Id: []byte(cav),
 		})
+
+		accountID = fn.Some(*id)
 
 	// For the custom macaroon type, we use the custom permissions specified
 	// in the request. For the time being, the caveats list will be empty
@@ -320,7 +326,7 @@ func (s *sessionRpcServer) AddSession(ctx context.Context,
 	sess, err := s.cfg.db.NewSession(
 		ctx, req.Label, typ, expiry, req.MailboxServerAddr,
 		req.DevServer, uniquePermissions, caveats, nil, false, nil,
-		session.PrivacyFlags{},
+		session.PrivacyFlags{}, accountID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new session: %v", err)
@@ -1133,6 +1139,7 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 		ctx, req.Label, session.TypeAutopilot, expiry,
 		req.MailboxServerAddr, req.DevServer, perms, caveats,
 		clientConfig, privacy, linkedGroupID, privacyFlags,
+		fn.None[accounts.Alias](),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new session: %v", err)

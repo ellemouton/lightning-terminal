@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightningnetwork/lnd/clock"
+	"github.com/lightningnetwork/lnd/fn"
 	"go.etcd.io/bbolt"
 	"gopkg.in/macaroon-bakery.v2/bakery"
 	"gopkg.in/macaroon.v2"
@@ -84,13 +86,17 @@ type BoltStore struct {
 	*bbolt.DB
 
 	clock clock.Clock
+
+	accounts accounts.Store
 }
 
 // A compile-time check to ensure that BoltStore implements the Store interface.
 var _ Store = (*BoltStore)(nil)
 
 // NewDB creates a new bolt database that can be found at the given directory.
-func NewDB(dir, fileName string, clock clock.Clock) (*BoltStore, error) {
+func NewDB(dir, fileName string, clock clock.Clock, accounts accounts.Store) (
+	*BoltStore, error) {
+
 	firstInit := false
 	path := filepath.Join(dir, fileName)
 
@@ -114,8 +120,9 @@ func NewDB(dir, fileName string, clock clock.Clock) (*BoltStore, error) {
 	}
 
 	return &BoltStore{
-		DB:    db,
-		clock: clock,
+		DB:       db,
+		clock:    clock,
+		accounts: accounts,
 	}, nil
 }
 
@@ -188,11 +195,11 @@ func getSessionKey(session *Session) []byte {
 // ShiftState is called with StateCreated.
 //
 // NOTE: this is part of the Store interface.
-func (db *BoltStore) NewSession(_ context.Context, label string, typ Type,
-	expiry time.Time,
-	serverAddr string, devServer bool, perms []bakery.Op,
+func (db *BoltStore) NewSession(ctx context.Context, label string, typ Type,
+	expiry time.Time, serverAddr string, devServer bool, perms []bakery.Op,
 	caveats []macaroon.Caveat, featureConfig FeaturesConfig, privacy bool,
-	linkedGroupID *Alias, flags PrivacyFlags) (*Session, error) {
+	linkedGroupID *Alias, flags PrivacyFlags,
+	account fn.Option[accounts.Alias]) (*Session, error) {
 
 	var session *Session
 	err := db.Update(func(tx *bbolt.Tx) error {
@@ -211,6 +218,16 @@ func (db *BoltStore) NewSession(_ context.Context, label string, typ Type,
 			serverAddr, devServer, perms, caveats, featureConfig,
 			privacy, linkedGroupID, flags,
 		)
+		if err != nil {
+			return err
+		}
+
+		// If an account is being linked, we first need to check that
+		// it exists.
+		account.WhenSome(func(alias accounts.Alias) {
+			session.Account = fn.Some(alias)
+			_, err = db.accounts.Account(ctx, alias)
+		})
 		if err != nil {
 			return err
 		}

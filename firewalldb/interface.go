@@ -12,5 +12,6 @@ type SessionDB interface {
 	session.AliasToGroupIndex
 
 	// GetSessionByID returns the session for a specific id.
-	GetSessionByID(context.Context, session.Alias) (*session.Session, error)
+	GetSessionByAlias(context.Context, session.Alias) (*session.Session,
+		error)
 }

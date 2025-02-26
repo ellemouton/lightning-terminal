@@ -59,7 +59,7 @@ func (m *mockSessionDB) GetSessionAliases(_ context.Context, groupID session.Ali
 }
 
 // GetSessionByID returns the session for a specific id.
-func (m *mockSessionDB) GetSessionByID(_ context.Context,
+func (m *mockSessionDB) GetSessionByAlias(_ context.Context,
 	sessionID session.Alias) (*session.Session, error) {
 
 	s, ok := m.sessionToGroupID[sessionID]

@@ -33,7 +33,7 @@ func (q *Queries) GetLegacyIDBySessionID(ctx context.Context, id int64) ([]byte,
 	return legacy_id, err
 }
 
-const getSessionByID = `-- name: GetSessionByAlias :one
+const getSessionByID = `-- name: GetSessionByID :one
 SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, account_id, group_id FROM sessions
 WHERE id = $1
 `
@@ -415,11 +415,11 @@ const insertSession = `-- name: InsertSession :one
 INSERT INTO sessions (
     legacy_id, label, state, type, expiry, created_at,
     server_address, dev_server, macaroon_root_key, pairing_secret,
-    local_private_key, local_public_key, remote_public_key, privacy, group_id
+    local_private_key, local_public_key, remote_public_key, privacy, group_id, account_id
 ) VALUES (
              $1, $2, $3, $4, $5, $6, $7,
              $8, $9, $10, $11, $12,
-             $13, $14, $15
+             $13, $14, $15, $16
          ) RETURNING id
 `
 
@@ -439,6 +439,7 @@ type InsertSessionParams struct {
 	RemotePublicKey []byte
 	Privacy         bool
 	GroupID         sql.NullInt64
+	AccountID       sql.NullInt64
 }
 
 func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) (int64, error) {
@@ -458,6 +459,7 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) (i
 		arg.RemotePublicKey,
 		arg.Privacy,
 		arg.GroupID,
+		arg.AccountID,
 	)
 	var id int64
 	err := row.Scan(&id)

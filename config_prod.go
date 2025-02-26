@@ -3,9 +3,11 @@
 package terminal
 
 import (
+	"fmt"
 	"path/filepath"
 
 	"github.com/lightninglabs/lightning-terminal/accounts"
+	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightningnetwork/lnd/clock"
 )
 
@@ -26,8 +28,33 @@ func (c *DevConfig) Validate(_, _ string) error {
 
 // NewAccountStore creates a new account store using the default Bolt backend
 // since in production, this is the only backend supported currently.
-func NewAccountStore(cfg *Config, clock clock.Clock) (accounts.Store, error) {
-	return accounts.NewBoltStore(
+func NewStores(cfg *Config, clock clock.Clock) (*Stores, error) {
+	networkDir := filepath.Join(cfg.LitDir, cfg.Network)
+
+	acctStore, err := accounts.NewBoltStore(
 		filepath.Dir(cfg.MacaroonPath), accounts.DBFilename, clock,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	sessStore, err := session.NewDB(networkDir, session.DBFilename, clock, acctStore)
+	if err != nil {
+		return nil, fmt.Errorf("error creating session BoltStore: %v", err)
+	}
+
+	return &Stores{
+		AccountStore: acctStore,
+		SessionStore: sessStore,
+		Close: func() error {
+			var returnErr error
+			if err := acctStore.Close(); err != nil {
+				returnErr = fmt.Errorf("error closing account store: %v", err)
+			}
+			if err := sessStore.Close(); err != nil {
+				returnErr = fmt.Errorf("error closing session store: %v", err)
+			}
+			return returnErr
+		},
+	}, nil
 }

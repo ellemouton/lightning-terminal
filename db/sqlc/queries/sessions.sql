@@ -2,11 +2,11 @@
 INSERT INTO sessions (
     legacy_id, label, state, type, expiry, created_at,
     server_address, dev_server, macaroon_root_key, pairing_secret,
-    local_private_key, local_public_key, remote_public_key, privacy, group_id
+    local_private_key, local_public_key, remote_public_key, privacy, group_id, account_id
 ) VALUES (
              $1, $2, $3, $4, $5, $6, $7,
              $8, $9, $10, $11, $12,
-             $13, $14, $15
+             $13, $14, $15, $16
          ) RETURNING id;
 
 -- name: SetSessionGroupID :exec

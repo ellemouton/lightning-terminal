@@ -1,12 +1,15 @@
 package accounts
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	mid "github.com/lightninglabs/lightning-terminal/rpcmiddleware"
+	"github.com/lightningnetwork/lnd/fn"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
 	"google.golang.org/protobuf/proto"
@@ -217,4 +220,44 @@ func accountFromMacaroon(mac *macaroon.Macaroon) (*Alias, error) {
 	var accountID Alias
 	copy(accountID[:], accountIDBytes)
 	return &accountID, nil
+}
+
+var caveatPrefix = []byte(fmt.Sprintf(
+	"%s %s ", macaroons.CondLndCustom, CondAccount,
+))
+
+func AliasFromCaveats(caveats []macaroon.Caveat) (fn.Option[Alias], error) {
+	var accountIDStr string
+	for _, caveat := range caveats {
+		// The caveat id has a format of
+		// "lnd-custom [custom-caveat-name] [custom-caveat-condition]"
+		// and we only want the condition part. If we match the prefix
+		// part we return the condition that comes after the prefix.
+		if bytes.HasPrefix(caveat.Id, caveatPrefix) {
+			caveatSplit := strings.SplitN(
+				string(caveat.Id),
+				string(caveatPrefix),
+				2,
+			)
+			if len(caveatSplit) == 2 {
+				accountIDStr = caveatSplit[1]
+
+				break
+			}
+		}
+	}
+
+	if accountIDStr == "" {
+		return fn.None[Alias](), nil
+	}
+
+	var accountID Alias
+	accountIDBytes, err := hex.DecodeString(accountIDStr)
+	if err != nil {
+		return fn.None[Alias](), err
+	}
+
+	copy(accountID[:], accountIDBytes)
+
+	return fn.Some(accountID), nil
 }
