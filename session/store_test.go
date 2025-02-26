@@ -28,6 +28,10 @@ func TestBasicSessionStore(t *testing.T) {
 	clock := clock.NewTestClock(testTime)
 	db := NewTestDB(t, clock)
 
+	// Try fetch a session that doesn't exist yet.
+	_, err := db.GetSessionByAlias(ctx, Alias{1, 2, 3, 4})
+	require.ErrorIs(t, err, ErrSessionNotFound)
+
 	// Reserve a session. This should succeed.
 	s1, err := reserveSession(db, "session 1")
 	require.NoError(t, err)
@@ -214,7 +218,7 @@ func TestLinkingSessions(t *testing.T) {
 	// session. This should fail due to the first session still being
 	// active.
 	_, err = reserveSession(db, "session 2", withLinkedGroupID(&s1.GroupAlias))
-	require.ErrorContains(t, err, "is still active")
+	require.ErrorIs(t, err, ErrSessionsInGroupStillActive)
 
 	// Revoke the first session.
 	require.NoError(t, db.ShiftState(ctx, s1.Alias, StateRevoked))

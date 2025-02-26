@@ -273,8 +273,9 @@ func (db *BoltStore) NewSession(ctx context.Context, label string, typ Type,
 					sess.State == StateInUse ||
 					sess.State == StateReserved {
 
-					return fmt.Errorf("session (id=%x) "+
+					return fmt.Errorf("%w: session (id=%x) "+
 						"in group %x is still active",
+						ErrSessionsInGroupStillActive,
 						sess.Alias, sess.GroupAlias)
 				}
 			}
@@ -833,7 +834,7 @@ func addIDToGroupIDPair(sessionBkt *bbolt.Bucket, id, groupID Alias) error {
 func getSessionByID(bucket *bbolt.Bucket, id Alias) (*Session, error) {
 	keyBytes, err := getKeyForID(bucket, id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrSessionNotFound, err)
 	}
 
 	v := bucket.Get(keyBytes)

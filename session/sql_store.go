@@ -290,7 +290,8 @@ func (s *SQLStore) NewSession(ctx context.Context, label string, typ Type,
 		var uniqueConstraintErr *db.ErrSqlUniqueConstraintViolation
 		if errors.As(mappedSQLErr, &uniqueConstraintErr) {
 			// Add context to unique constraint errors.
-			return nil, ErrSessionExists
+			return nil, fmt.Errorf("session violates unique "+
+				"constraint: %w", uniqueConstraintErr)
 		}
 
 		return nil, fmt.Errorf("unable to add session: %w", err)
