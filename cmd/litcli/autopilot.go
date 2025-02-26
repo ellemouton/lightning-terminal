@@ -110,7 +110,7 @@ var addAutopilotSessionCmd = cli.Command{
 		},
 		cli.StringFlag{
 			Name: "group_id",
-			Usage: "The hex encoded group ID of the session " +
+			Usage: "The hex encoded group Alias of the session " +
 				"group to link this one to.",
 		},
 		cli.StringSliceFlag{

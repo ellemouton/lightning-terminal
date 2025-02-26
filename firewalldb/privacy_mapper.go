@@ -34,13 +34,13 @@ var (
 	pseudoStrAlphabetLen = len(pseudoStrAlphabet)
 )
 
-// NewPrivacyMapDB is a function type that takes a group ID and uses it to
+// NewPrivacyMapDB is a function type that takes a group Alias and uses it to
 // construct a new PrivacyMapDB.
-type NewPrivacyMapDB func(groupID session.ID) PrivacyMapDB
+type NewPrivacyMapDB func(groupID session.Alias) PrivacyMapDB
 
 // PrivacyDB constructs a PrivacyMapDB that will be indexed under the given
-// group ID key.
-func (db *DB) PrivacyDB(groupID session.ID) PrivacyMapDB {
+// group Alias key.
+func (db *DB) PrivacyDB(groupID session.Alias) PrivacyMapDB {
 	return &privacyMapDB{
 		DB:      db,
 		groupID: groupID,
@@ -88,7 +88,7 @@ type PrivacyMapTx interface {
 // privacyMapDB is an implementation of PrivacyMapDB.
 type privacyMapDB struct {
 	*DB
-	groupID session.ID
+	groupID session.Alias
 }
 
 // beginTx starts db transaction. The transaction will be a read or read-write

@@ -7,10 +7,11 @@
 package litrpc
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -41,7 +42,7 @@ type AddAutopilotSessionRequest struct {
 	SessionRules *RulesMap `protobuf:"bytes,6,opt,name=session_rules,json=sessionRules,proto3" json:"session_rules,omitempty"`
 	// Set to true of the session should not make use of the privacy mapper.
 	NoPrivacyMapper bool `protobuf:"varint,7,opt,name=no_privacy_mapper,json=noPrivacyMapper,proto3" json:"no_privacy_mapper,omitempty"`
-	// Set to the ID of the group to link this session to, if any.
+	// Set to the Alias of the group to link this session to, if any.
 	LinkedGroupId []byte `protobuf:"bytes,8,opt,name=linked_group_id,json=linkedGroupId,proto3" json:"linked_group_id,omitempty"`
 	// The privacy flags used by this session. If set, then privacy_flags_set must
 	// be set.

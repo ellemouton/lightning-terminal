@@ -26,32 +26,32 @@ var (
 	// The session bucket has the following structure:
 	// session -> <key>        -> <serialised session>
 	//	   -> id-index     -> <session-id> -> key -> <session key>
-	// 			                   -> group -> <group-ID>
+	// 			                   -> group -> <group-Alias>
 	// 	   -> group-id-index -> <group-id> -> session-id -> sequence -> <session-id>
 	sessionBucketKey = []byte("session")
 
 	// idIndexKey is the key used to define the id-index sub-bucket within
 	// the main session bucket. This bucket will be used to store the
-	// mapping from session ID to various other fields.
+	// mapping from session Alias to various other fields.
 	idIndexKey = []byte("id-index")
 
 	// sessionKeyKey is the key used within the id-index bucket to store the
 	// session key (serialised local public key) associated with the given
-	// session ID.
+	// session Alias.
 	sessionKeyKey = []byte("key")
 
 	// groupIDKey is the key used within the id-index bucket to store the
-	// group ID associated with the given session ID.
+	// group Alias associated with the given session Alias.
 	groupIDKey = []byte("group")
 
 	// groupIDIndexKey is the key used to define the group-id-index
 	// sub-bucket within the main session bucket. This bucket will be used
-	// to store the mapping from group ID to various other fields.
+	// to store the mapping from group Alias to various other fields.
 	groupIDIndexKey = []byte("group-id-index")
 
 	// sessionIDKey is a key used in the group-id-index under a sub-bucket
-	// defined by a specific group ID. It will be used to store the session
-	// IDs associated with the given group ID.
+	// defined by a specific group Alias. It will be used to store the session
+	// IDs associated with the given group Alias.
 	sessionIDKey = []byte("session-id")
 
 	// ErrDBInitErr is returned when a bucket that we expect to have been
@@ -192,7 +192,7 @@ func (db *BoltStore) NewSession(_ context.Context, label string, typ Type,
 	expiry time.Time,
 	serverAddr string, devServer bool, perms []bakery.Op,
 	caveats []macaroon.Caveat, featureConfig FeaturesConfig, privacy bool,
-	linkedGroupID *ID, flags PrivacyFlags) (*Session, error) {
+	linkedGroupID *Alias, flags PrivacyFlags) (*Session, error) {
 
 	var session *Session
 	err := db.Update(func(tx *bbolt.Tx) error {
@@ -223,23 +223,23 @@ func (db *BoltStore) NewSession(_ context.Context, label string, typ Type,
 				session.LocalPublicKey.SerializeCompressed())
 		}
 
-		// If this is a linked session (meaning the group ID is
-		// different from the ID) the make sure that the Group ID of
-		// this session is an ID known by the store. We also need to
+		// If this is a linked session (meaning the group Alias is
+		// different from the Alias) the make sure that the Group Alias of
+		// this session is an Alias known by the store. We also need to
 		// check that all older sessions in this group have been
 		// revoked.
-		if session.ID != session.GroupID {
-			_, err = getKeyForID(sessionBucket, session.GroupID)
+		if session.Alias != session.GroupAlias {
+			_, err = getKeyForID(sessionBucket, session.GroupAlias)
 			if err != nil {
 				return fmt.Errorf("%w: unknown linked session "+
 					"%x: %w", ErrUnknownGroup,
-					session.GroupID, err)
+					session.GroupAlias, err)
 			}
 
 			// Fetch all the session IDs for this group. This will
 			// through an error if this group does not exist.
 			sessionIDs, err := getSessionIDs(
-				sessionBucket, session.GroupID,
+				sessionBucket, session.GroupAlias,
 			)
 			if err != nil {
 				return err
@@ -258,21 +258,21 @@ func (db *BoltStore) NewSession(_ context.Context, label string, typ Type,
 
 					return fmt.Errorf("session (id=%x) "+
 						"in group %x is still active",
-						sess.ID, sess.GroupID)
+						sess.Alias, sess.GroupAlias)
 				}
 			}
 		}
 
-		// Add the mapping from session ID to session key to the ID
+		// Add the mapping from session Alias to session key to the Alias
 		// index.
-		err = addIDToKeyPair(sessionBucket, session.ID, sessionKey)
+		err = addIDToKeyPair(sessionBucket, session.Alias, sessionKey)
 		if err != nil {
 			return err
 		}
 
-		// Add the mapping from session ID to group ID and vice versa.
+		// Add the mapping from session Alias to group Alias and vice versa.
 		err = addIDToGroupIDPair(
-			sessionBucket, session.ID, session.GroupID,
+			sessionBucket, session.Alias, session.GroupAlias,
 		)
 		if err != nil {
 			return err
@@ -468,8 +468,8 @@ func (db *BoltStore) DeleteReservedSessions(_ context.Context) error {
 				return ErrDBInitErr
 			}
 
-			// Delete the entire session ID bucket.
-			err = idIndexBkt.DeleteBucket(session.ID[:])
+			// Delete the entire session Alias bucket.
+			err = idIndexBkt.DeleteBucket(session.Alias[:])
 			if err != nil {
 				return err
 			}
@@ -479,7 +479,7 @@ func (db *BoltStore) DeleteReservedSessions(_ context.Context) error {
 				return ErrDBInitErr
 			}
 
-			groupBkt := groupIdIndexBkt.Bucket(session.GroupID[:])
+			groupBkt := groupIdIndexBkt.Bucket(session.GroupAlias[:])
 			if groupBkt == nil {
 				return ErrDBInitErr
 			}
@@ -496,7 +496,7 @@ func (db *BoltStore) DeleteReservedSessions(_ context.Context) error {
 			err = sessionIDsBkt.ForEach(func(k, v []byte) error {
 				numSessions++
 
-				if !bytes.Equal(v, session.ID[:]) {
+				if !bytes.Equal(v, session.Alias[:]) {
 					return nil
 				}
 
@@ -510,7 +510,7 @@ func (db *BoltStore) DeleteReservedSessions(_ context.Context) error {
 
 			if numSessions == 0 {
 				return fmt.Errorf("no sessions found for "+
-					"group ID %x", session.GroupID)
+					"group Alias %x", session.GroupAlias)
 			}
 
 			if numSessions == 1 {
@@ -518,17 +518,17 @@ func (db *BoltStore) DeleteReservedSessions(_ context.Context) error {
 				return groupBkt.DeleteBucket(sessionIDKey)
 			}
 
-			// Else, delete just the session ID entry.
+			// Else, delete just the session Alias entry.
 			return sessionIDsBkt.Delete(seqKey)
 		})
 	})
 }
 
-// ShiftState updates the state of the session with the given ID to the "dest"
+// ShiftState updates the state of the session with the given Alias to the "dest"
 // state.
 //
 // NOTE: this is part of the Store interface.
-func (db *BoltStore) ShiftState(_ context.Context, id ID, dest State) error {
+func (db *BoltStore) ShiftState(_ context.Context, id Alias, dest State) error {
 	return db.Update(func(tx *bbolt.Tx) error {
 		sessionBucket, err := getBucket(tx, sessionBucketKey)
 		if err != nil {
@@ -565,10 +565,10 @@ func (db *BoltStore) ShiftState(_ context.Context, id ID, dest State) error {
 	})
 }
 
-// GetSessionByID fetches the session with the given ID.
+// GetSessionByID fetches the session with the given Alias.
 //
 // NOTE: this is part of the Store interface.
-func (db *BoltStore) GetSessionByID(_ context.Context, id ID) (*Session,
+func (db *BoltStore) GetSessionByAlias(_ context.Context, id Alias) (*Session,
 	error) {
 
 	var session *Session
@@ -590,27 +590,27 @@ func (db *BoltStore) GetSessionByID(_ context.Context, id ID) (*Session,
 }
 
 // getUnusedIDAndKeyPair can be used to generate a new, unused, local private
-// key and session ID pair. Care must be taken to ensure that no other thread
-// calls this before the returned ID and key pair from this method are either
+// key and session Alias pair. Care must be taken to ensure that no other thread
+// calls this before the returned Alias and key pair from this method are either
 // used or discarded.
-func getUnusedIDAndKeyPair(bucket *bbolt.Bucket) (ID, *btcec.PrivateKey,
+func getUnusedIDAndKeyPair(bucket *bbolt.Bucket) (Alias, *btcec.PrivateKey,
 	error) {
 
 	idIndexBkt := bucket.Bucket(idIndexKey)
 	if idIndexBkt == nil {
-		return ID{}, nil, ErrDBInitErr
+		return Alias{}, nil, ErrDBInitErr
 	}
 
-	// Spin until we find a key with an ID that does not collide with any of
+	// Spin until we find a key with an Alias that does not collide with any of
 	// our existing IDs.
 	for {
-		// Generate a new private key and ID pair.
-		privKey, id, err := NewSessionPrivKeyAndID()
+		// Generate a new private key and Alias pair.
+		privKey, id, err := NewSessionPrivKeyAndAlias()
 		if err != nil {
-			return ID{}, nil, err
+			return Alias{}, nil, err
 		}
 
-		// Check that no such ID exits in our id-to-key index.
+		// Check that no such Alias exits in our id-to-key index.
 		idBkt := idIndexBkt.Bucket(id[:])
 		if idBkt != nil {
 			continue
@@ -620,11 +620,11 @@ func getUnusedIDAndKeyPair(bucket *bbolt.Bucket) (ID, *btcec.PrivateKey,
 	}
 }
 
-// GetGroupID will return the group ID for the given session ID.
+// GetGroupID will return the group Alias for the given session Alias.
 //
-// NOTE: this is part of the IDToGroupIndex interface.
-func (db *BoltStore) GetGroupID(_ context.Context, sessionID ID) (ID, error) {
-	var groupID ID
+// NOTE: this is part of the AliasToGroupIndex interface.
+func (db *BoltStore) GetGroupAlias(_ context.Context, sessionID Alias) (Alias, error) {
+	var groupID Alias
 	err := db.View(func(tx *bbolt.Tx) error {
 		sessionBkt, err := getBucket(tx, sessionBucketKey)
 		if err != nil {
@@ -639,13 +639,13 @@ func (db *BoltStore) GetGroupID(_ context.Context, sessionID ID) (ID, error) {
 		sessionIDBkt := idIndex.Bucket(sessionID[:])
 		if sessionIDBkt == nil {
 			return fmt.Errorf("%w: no index entry for session "+
-				"ID: %x", ErrUnknownGroup, sessionID)
+				"Alias: %x", ErrUnknownGroup, sessionID)
 		}
 
 		groupIDBytes := sessionIDBkt.Get(groupIDKey)
 		if len(groupIDBytes) == 0 {
-			return fmt.Errorf("group ID not found for session "+
-				"ID %x", sessionID)
+			return fmt.Errorf("group Alias not found for session "+
+				"Alias %x", sessionID)
 		}
 
 		copy(groupID[:], groupIDBytes)
@@ -660,14 +660,14 @@ func (db *BoltStore) GetGroupID(_ context.Context, sessionID ID) (ID, error) {
 }
 
 // GetSessionIDs will return the set of session IDs that are in the
-// group with the given ID.
+// group with the given Alias.
 //
-// NOTE: this is part of the IDToGroupIndex interface.
-func (db *BoltStore) GetSessionIDs(_ context.Context, groupID ID) ([]ID,
+// NOTE: this is part of the AliasToGroupIndex interface.
+func (db *BoltStore) GetSessionAliases(_ context.Context, groupID Alias) ([]Alias,
 	error) {
 
 	var (
-		sessionIDs []ID
+		sessionIDs []Alias
 		err        error
 	)
 	err = db.View(func(tx *bbolt.Tx) error {
@@ -687,9 +687,9 @@ func (db *BoltStore) GetSessionIDs(_ context.Context, groupID ID) ([]ID,
 	return sessionIDs, nil
 }
 
-// getSessionIDs returns all the session IDs associated with the given group ID.
-func getSessionIDs(sessionBkt *bbolt.Bucket, groupID ID) ([]ID, error) {
-	var sessionIDs []ID
+// getSessionIDs returns all the session IDs associated with the given group Alias.
+func getSessionIDs(sessionBkt *bbolt.Bucket, groupID Alias) ([]Alias, error) {
+	var sessionIDs []Alias
 
 	groupIndexBkt := sessionBkt.Bucket(groupIDIndexKey)
 	if groupIndexBkt == nil {
@@ -698,20 +698,20 @@ func getSessionIDs(sessionBkt *bbolt.Bucket, groupID ID) ([]ID, error) {
 
 	groupIDBkt := groupIndexBkt.Bucket(groupID[:])
 	if groupIDBkt == nil {
-		return nil, fmt.Errorf("no sessions for group ID %v",
+		return nil, fmt.Errorf("no sessions for group Alias %v",
 			groupID)
 	}
 
 	sessionIDsBkt := groupIDBkt.Bucket(sessionIDKey)
 	if sessionIDsBkt == nil {
-		return nil, fmt.Errorf("no sessions for group ID %v",
+		return nil, fmt.Errorf("no sessions for group Alias %v",
 			groupID)
 	}
 
 	err := sessionIDsBkt.ForEach(func(_,
 		sessionIDBytes []byte) error {
 
-		var sessionID ID
+		var sessionID Alias
 		copy(sessionID[:], sessionIDBytes)
 		sessionIDs = append(sessionIDs, sessionID)
 
@@ -724,9 +724,9 @@ func getSessionIDs(sessionBkt *bbolt.Bucket, groupID ID) ([]ID, error) {
 	return sessionIDs, nil
 }
 
-// addIdToKeyPair inserts the mapping from session ID to session key into the
-// id-index bucket. An error is returned if an entry for this ID already exists.
-func addIDToKeyPair(sessionBkt *bbolt.Bucket, id ID, sessionKey []byte) error {
+// addIdToKeyPair inserts the mapping from session Alias to session key into the
+// id-index bucket. An error is returned if an entry for this Alias already exists.
+func addIDToKeyPair(sessionBkt *bbolt.Bucket, id Alias, sessionKey []byte) error {
 	idIndexBkt := sessionBkt.Bucket(idIndexKey)
 	if idIndexBkt == nil {
 		return ErrDBInitErr
@@ -738,14 +738,14 @@ func addIDToKeyPair(sessionBkt *bbolt.Bucket, id ID, sessionKey []byte) error {
 	}
 
 	if len(idBkt.Get(sessionKeyKey)) != 0 {
-		return fmt.Errorf("a session with the given ID already exists")
+		return fmt.Errorf("a session with the given Alias already exists")
 	}
 
 	return idBkt.Put(sessionKeyKey[:], sessionKey)
 }
 
-// getKeyForID fetches the session key associated with the given session ID.
-func getKeyForID(sessionBkt *bbolt.Bucket, id ID) ([]byte, error) {
+// getKeyForID fetches the session key associated with the given session Alias.
+func getKeyForID(sessionBkt *bbolt.Bucket, id Alias) ([]byte, error) {
 	idIndexBkt := sessionBkt.Bucket(idIndexKey)
 	if idIndexBkt == nil {
 		return nil, ErrDBInitErr
@@ -753,24 +753,24 @@ func getKeyForID(sessionBkt *bbolt.Bucket, id ID) ([]byte, error) {
 
 	idBkt := idIndexBkt.Bucket(id[:])
 	if idBkt == nil {
-		return nil, fmt.Errorf("no entry found in the ID index for "+
-			"ID: %x", id)
+		return nil, fmt.Errorf("no entry found in the Alias index for "+
+			"Alias: %x", id)
 	}
 
 	sessionKeyBytes := idBkt.Get(sessionKeyKey)
 	if len(sessionKeyKey) == 0 {
-		return nil, fmt.Errorf("no session key found in the ID "+
-			"index for ID: %x", id)
+		return nil, fmt.Errorf("no session key found in the Alias "+
+			"index for Alias: %x", id)
 	}
 
 	return sessionKeyBytes, nil
 }
 
-// addIDToGroupIDPair inserts the mapping from session ID to group ID into the
-// id-index bucket and also inserts the mapping from group ID to session ID into
+// addIDToGroupIDPair inserts the mapping from session Alias to group Alias into the
+// id-index bucket and also inserts the mapping from group Alias to session Alias into
 // the group-id-index bucket.
-func addIDToGroupIDPair(sessionBkt *bbolt.Bucket, id, groupID ID) error {
-	// First we will add the mapping from session ID to group ID.
+func addIDToGroupIDPair(sessionBkt *bbolt.Bucket, id, groupID Alias) error {
+	// First we will add the mapping from session Alias to group Alias.
 	idIndexBkt := sessionBkt.Bucket(idIndexKey)
 	if idIndexBkt == nil {
 		return ErrDBInitErr
@@ -786,7 +786,7 @@ func addIDToGroupIDPair(sessionBkt *bbolt.Bucket, id, groupID ID) error {
 		return err
 	}
 
-	// Now we add the mapping from group ID to session.
+	// Now we add the mapping from group Alias to session.
 	groupIdIndexBkt := sessionBkt.Bucket(groupIDIndexKey)
 	if groupIdIndexBkt == nil {
 		return ErrDBInitErr
@@ -813,7 +813,7 @@ func addIDToGroupIDPair(sessionBkt *bbolt.Bucket, id, groupID ID) error {
 	return sessionIDsBkt.Put(seqNoBytes[:], id[:])
 }
 
-func getSessionByID(bucket *bbolt.Bucket, id ID) (*Session, error) {
+func getSessionByID(bucket *bbolt.Bucket, id Alias) (*Session, error) {
 	keyBytes, err := getKeyForID(bucket, id)
 	if err != nil {
 		return nil, err

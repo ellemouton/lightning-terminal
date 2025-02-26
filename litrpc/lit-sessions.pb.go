@@ -7,10 +7,11 @@
 package litrpc
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -151,7 +152,7 @@ type AddSessionRequest struct {
 	DevServer bool `protobuf:"varint,5,opt,name=dev_server,json=devServer,proto3" json:"dev_server,omitempty"`
 	// Any custom permissions to add the session's macaroon.
 	MacaroonCustomPermissions []*MacaroonPermission `protobuf:"bytes,6,rep,name=macaroon_custom_permissions,json=macaroonCustomPermissions,proto3" json:"macaroon_custom_permissions,omitempty"`
-	// The ID of the account to associate this session with. This should only be
+	// The Alias of the account to associate this session with. This should only be
 	// set if the session_type is TYPE_MACAROON_ACCOUNT.
 	AccountId string `protobuf:"bytes,7,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 }
@@ -355,7 +356,7 @@ type Session struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// A unique ID assigned to the session. It is derived from the session
+	// A unique Alias assigned to the session. It is derived from the session
 	// macaroon.
 	Id []byte `protobuf:"bytes,14,opt,name=id,proto3" json:"id,omitempty"`
 	// A user assigned label for the session.
@@ -387,7 +388,7 @@ type Session struct {
 	// The recipe used for creating a macaroon to use with this session. This will
 	// be closely linked to the session type.
 	MacaroonRecipe *MacaroonRecipe `protobuf:"bytes,12,opt,name=macaroon_recipe,json=macaroonRecipe,proto3" json:"macaroon_recipe,omitempty"`
-	// If the session is for a specific account, then this will be the account ID
+	// If the session is for a specific account, then this will be the account Alias
 	// it is associated with.
 	AccountId string `protobuf:"bytes,13,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	// If this session is for Autopilot use, then this will be the set of features
@@ -400,9 +401,9 @@ type Session struct {
 	// readers should not assume that if this field is zero that the session is
 	// not revoked. Readers should instead first check the session_state field.
 	RevokedAt uint64 `protobuf:"varint,16,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`
-	// The ID of the group of Session's that this Session is linked to. If this
+	// The Alias of the group of Session's that this Session is linked to. If this
 	// session is not linked to any older Session, then this value will be the
-	// same as the ID.
+	// same as the Alias.
 	GroupId []byte `protobuf:"bytes,17,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
 	// Configurations for each individual feature mapping from the feature name to
 	// a JSON-serialized configuration.

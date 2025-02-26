@@ -163,7 +163,7 @@ func TestOnChainBudgetCheckRequest(t *testing.T) {
 	require.NoError(t, err)
 	assertSpentAmt(0, 30)
 
-	// Another call with the same request ID should not be allowed.
+	// Another call with the same request Alias should not be allowed.
 	_, err = enf.HandleRequest(
 		ctx, "/lnrpc.Lightning/OpenChannelSync",
 		&lnrpc.OpenChannelRequest{
@@ -173,10 +173,10 @@ func TestOnChainBudgetCheckRequest(t *testing.T) {
 		},
 	)
 	require.ErrorContains(t, err,
-		"pending payment already exists for request ID onBudget-test-0")
+		"pending payment already exists for request Alias onBudget-test-0")
 	assertSpentAmt(0, 30)
 
-	// Now check that a response using the same request ID will move the
+	// Now check that a response using the same request Alias will move the
 	// pending amount from above into the spent amount.
 	_, err = enf.HandleResponse(
 		ctx, "/lnrpc.Lightning/OpenChannelSync", &lnrpc.ChannelPoint{},
@@ -260,7 +260,7 @@ func TestOnChainBudgetCheckRequest(t *testing.T) {
 	require.NoError(t, err)
 	assertSpentAmt(30, 65)
 
-	// Check that a response for request ID 1 results in the correct budget
+	// Check that a response for request Alias 1 results in the correct budget
 	// update.
 	_, err = enf.HandleResponse(
 		ctx, "/lnrpc.Lightning/OpenChannelSync", &lnrpc.ChannelPoint{},
@@ -275,7 +275,7 @@ func TestOnChainBudgetCheckRequest(t *testing.T) {
 	require.NoError(t, err)
 	assertSpentAmt(35, 60)
 
-	// Finally, switch the request ID back to 0 and complete it.
+	// Finally, switch the request Alias back to 0 and complete it.
 	cfg.ReqID = 0
 	_, err = enf.HandleResponse(
 		ctx, "/lnrpc.Lightning/BatchOpenChannel",

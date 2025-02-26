@@ -86,7 +86,7 @@ func (s *SQLStore) NewSession(ctx context.Context, label string, typ Type,
 	expiry time.Time,
 	serverAddr string, devServer bool, perms []bakery.Op,
 	caveats []macaroon.Caveat,
-	featureConfig FeaturesConfig, privacy bool, linkedGroupID *ID,
+	featureConfig FeaturesConfig, privacy bool, linkedGroupID *Alias,
 	flags PrivacyFlags) (*Session, error) {
 
 	var (
@@ -112,7 +112,7 @@ func (s *SQLStore) NewSession(ctx context.Context, label string, typ Type,
 		localKey := sess.LocalPublicKey.SerializeCompressed()
 
 		dbID, err := db.InsertSession(ctx, sqlc.InsertSessionParams{
-			LegacyID:        sess.ID[:],
+			LegacyID:        sess.Alias[:],
 			Label:           sess.Label,
 			State:           int16(sess.State),
 			Type:            int16(sess.Type),
@@ -131,12 +131,12 @@ func (s *SQLStore) NewSession(ctx context.Context, label string, typ Type,
 		}
 
 		// Check that the linked session is known.
-		groupID, err := db.GetSessionIDByLegacyID(ctx, sess.GroupID[:])
+		groupID, err := db.GetSessionIDByLegacyID(ctx, sess.GroupAlias[:])
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrUnknownGroup
 		} else if err != nil {
 			return fmt.Errorf("unable to fetch group(%x): %w",
-				sess.GroupID[:], err)
+				sess.GroupAlias[:], err)
 		}
 
 		// Ensure that all other sessions in this group are no longer
@@ -147,7 +147,7 @@ func (s *SQLStore) NewSession(ctx context.Context, label string, typ Type,
 		})
 		if err != nil {
 			return fmt.Errorf("unable to fetch group(%x): %w",
-				sess.GroupID[:], err)
+				sess.GroupAlias[:], err)
 		}
 
 		// Make sure that all linked sessions (sessions in the same
@@ -178,7 +178,7 @@ func (s *SQLStore) NewSession(ctx context.Context, label string, typ Type,
 			},
 		})
 		if err != nil {
-			return fmt.Errorf("unable to set group ID: %w", err)
+			return fmt.Errorf("unable to set group Alias: %w", err)
 		}
 
 		// Write mac perms and caveats.
@@ -323,7 +323,7 @@ func (s *SQLStore) ListSessionsByState(ctx context.Context, state State) (
 	return sessions, err
 }
 
-func (s *SQLStore) ShiftState(ctx context.Context, id ID, dest State) error {
+func (s *SQLStore) ShiftState(ctx context.Context, id Alias, dest State) error {
 	var writeTxOpts db.QueriesTxOptions
 	return s.db.ExecTx(ctx, &writeTxOpts, func(db SQLQueries) error {
 		dbSession, err := db.GetSessionByLegacyID(ctx, id[:])
@@ -467,29 +467,29 @@ func (s *SQLStore) UpdateSessionRemotePubKey(ctx context.Context, localPubKey,
 }
 
 // getUnusedIDAndKeyPair can be used to generate a new, unused, local private
-// key and session ID pair. Care must be taken to ensure that no other thread
-// calls this before the returned ID and key pair from this method are either
+// key and session Alias pair. Care must be taken to ensure that no other thread
+// calls this before the returned Alias and key pair from this method are either
 // used or discarded.
 //
 // NOTE: This is part of the Store interface.
-func getSqlUnusedIDAndKeyPair(ctx context.Context, db SQLQueries) (ID,
+func getSqlUnusedIDAndKeyPair(ctx context.Context, db SQLQueries) (Alias,
 	*btcec.PrivateKey, error) {
 
-	// Spin until we find a key with an ID that does not collide
+	// Spin until we find a key with an Alias that does not collide
 	// with any of our existing IDs.
 	for {
-		// Generate a new private key and ID pair.
-		privKey, id, err := NewSessionPrivKeyAndID()
+		// Generate a new private key and Alias pair.
+		privKey, id, err := NewSessionPrivKeyAndAlias()
 		if err != nil {
-			return ID{}, nil, err
+			return Alias{}, nil, err
 		}
 
-		// Check that no such legacy ID exits.
+		// Check that no such legacy Alias exits.
 		_, err = db.GetSessionByLegacyID(ctx, id[:])
 		if errors.Is(err, sql.ErrNoRows) {
 			return id, privKey, nil
 		} else if err != nil {
-			return ID{}, nil, fmt.Errorf("unable to get "+
+			return Alias{}, nil, fmt.Errorf("unable to get "+
 				"session: %w", err)
 		}
 
@@ -497,10 +497,10 @@ func getSqlUnusedIDAndKeyPair(ctx context.Context, db SQLQueries) (ID,
 	}
 }
 
-// GetSessionByID returns the session with the given legacy ID.
+// GetSessionByID returns the session with the given legacy Alias.
 //
 // NOTE: This is part of the Store interface.
-func (s *SQLStore) GetSessionByID(ctx context.Context, legacyID ID) (*Session,
+func (s *SQLStore) GetSessionByAlias(ctx context.Context, legacyID Alias) (*Session,
 	error) {
 
 	var (
@@ -530,26 +530,26 @@ func (s *SQLStore) GetSessionByID(ctx context.Context, legacyID ID) (*Session,
 	return sess, nil
 }
 
-// GetGroupID will return the legacy group ID for the given legacy session ID.
+// GetGroupID will return the legacy group Alias for the given legacy session Alias.
 //
-// NOTE: This is part of the IDToGroupIndex interface.
-func (s *SQLStore) GetGroupID(ctx context.Context, sessionID ID) (ID, error) {
+// NOTE: This is part of the AliasToGroupIndex interface.
+func (s *SQLStore) GetGroupAlias(ctx context.Context, sessionID Alias) (Alias, error) {
 	var (
 		readTxOpts    = db.NewQueryReadTx()
-		legacyGroupID ID
+		legacyGroupID Alias
 	)
 	err := s.db.ExecTx(ctx, &readTxOpts, func(db SQLQueries) error {
-		// Get the session using the legacy ID.
+		// Get the session using the legacy Alias.
 		sess, err := db.GetSessionByLegacyID(ctx, sessionID[:])
 		if err != nil {
 			return ErrUnknownGroup
 		}
 
 		if !sess.GroupID.Valid {
-			return fmt.Errorf("session does not have a group ID")
+			return fmt.Errorf("session does not have a group Alias")
 		}
 
-		// Get the legacy group ID using the session group ID.
+		// Get the legacy group Alias using the session group Alias.
 		legacyGroupIDB, err := db.GetLegacyIDBySessionID(
 			ctx, sess.GroupID.Int64,
 		)
@@ -557,32 +557,32 @@ func (s *SQLStore) GetGroupID(ctx context.Context, sessionID ID) (ID, error) {
 			return err
 		}
 
-		legacyGroupID, err = IDFromBytes(legacyGroupIDB)
+		legacyGroupID, err = AliasFromBytes(legacyGroupIDB)
 
 		return err
 	})
 	if err != nil {
-		return ID{}, err
+		return Alias{}, err
 	}
 
 	return legacyGroupID, nil
 }
 
 // GetSessionIDs will return the set of legacy session IDs that are in the
-// group with the given legacy ID.
+// group with the given legacy Alias.
 //
-// NOTE: This is part of the IDToGroupIndex interface.
-func (s *SQLStore) GetSessionIDs(ctx context.Context, legacyGroupID ID) ([]ID,
+// NOTE: This is part of the AliasToGroupIndex interface.
+func (s *SQLStore) GetSessionAliases(ctx context.Context, legacyGroupID Alias) ([]Alias,
 	error) {
 
 	var (
 		readTxOpts = db.NewQueryReadTx()
-		sessionIDs []ID
+		sessionIDs []Alias
 	)
 	err := s.db.ExecTx(ctx, &readTxOpts, func(db SQLQueries) error {
 		groupID, err := db.GetSessionIDByLegacyID(ctx, legacyGroupID[:])
 		if err != nil {
-			return fmt.Errorf("unable to get session ID: %v", err)
+			return fmt.Errorf("unable to get session Alias: %v", err)
 		}
 
 		sessIDs, err := db.GetSessionLegacyIDsInGroup(
@@ -595,9 +595,9 @@ func (s *SQLStore) GetSessionIDs(ctx context.Context, legacyGroupID ID) ([]ID,
 			return fmt.Errorf("unable to get session IDs: %v", err)
 		}
 
-		sessionIDs = make([]ID, len(sessIDs))
+		sessionIDs = make([]Alias, len(sessIDs))
 		for i, sessID := range sessIDs {
-			id, err := IDFromBytes(sessID)
+			id, err := AliasFromBytes(sessID)
 			if err != nil {
 				return err
 			}
@@ -617,26 +617,26 @@ func (s *SQLStore) GetSessionIDs(ctx context.Context, legacyGroupID ID) ([]ID,
 func unmarshalSession(ctx context.Context, db SQLQueries,
 	dbSess sqlc.Session) (*Session, error) {
 
-	var legacyGroupID ID
+	var legacyGroupID Alias
 	if dbSess.GroupID.Valid {
 		groupID, err := db.GetLegacyIDBySessionID(
 			ctx, dbSess.GroupID.Int64,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to get legacy group "+
-				"ID: %v", err)
+				"Alias: %v", err)
 		}
 
-		legacyGroupID, err = IDFromBytes(groupID)
+		legacyGroupID, err = AliasFromBytes(groupID)
 		if err != nil {
-			return nil, fmt.Errorf("unable to get legacy ID: %v",
+			return nil, fmt.Errorf("unable to get legacy Alias: %v",
 				err)
 		}
 	}
 
-	legacyID, err := IDFromBytes(dbSess.LegacyID)
+	legacyID, err := AliasFromBytes(dbSess.LegacyID)
 	if err != nil {
-		return nil, fmt.Errorf("unable to get legacy ID: %v", err)
+		return nil, fmt.Errorf("unable to get legacy Alias: %v", err)
 	}
 
 	var revokedAt time.Time
@@ -703,7 +703,7 @@ func unmarshalSession(ctx context.Context, db SQLQueries,
 	copy(pairingSecret[:], dbSess.PairingSecret)
 
 	return &Session{
-		ID:                legacyID,
+		Alias:             legacyID,
 		Label:             dbSess.Label,
 		State:             State(dbSess.State),
 		Type:              Type(dbSess.Type),
@@ -718,7 +718,7 @@ func unmarshalSession(ctx context.Context, db SQLQueries,
 		LocalPublicKey:    localPub,
 		RemotePublicKey:   remotePub,
 		WithPrivacyMapper: dbSess.Privacy,
-		GroupID:           legacyGroupID,
+		GroupAlias:        legacyGroupID,
 		PrivacyFlags:      privFlags,
 		MacaroonRecipe:    macRecipe,
 		FeatureConfig:     featureCfgs,

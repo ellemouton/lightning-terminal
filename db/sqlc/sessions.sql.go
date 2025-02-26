@@ -33,7 +33,7 @@ func (q *Queries) GetLegacyIDBySessionID(ctx context.Context, id int64) ([]byte,
 	return legacy_id, err
 }
 
-const getSessionByID = `-- name: GetSessionByID :one
+const getSessionByID = `-- name: GetSessionByAlias :one
 SELECT id, legacy_id, label, state, type, expiry, created_at, revoked_at, server_address, dev_server, macaroon_root_key, pairing_secret, local_private_key, local_public_key, remote_public_key, privacy, account_id, group_id FROM sessions
 WHERE id = $1
 `

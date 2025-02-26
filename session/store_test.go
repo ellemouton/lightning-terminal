@@ -27,22 +27,22 @@ func TestBasicSessionStore(t *testing.T) {
 	require.NoError(t, err)
 
 	// Show that the session starts in the reserved state.
-	s1, err = db.GetSessionByID(ctx, s1.ID)
+	s1, err = db.GetSessionByAlias(ctx, s1.Alias)
 	require.NoError(t, err)
 	require.Equal(t, StateReserved, s1.State)
 
 	// Move session 1 to the created state. This should succeed.
-	err = db.ShiftState(ctx, s1.ID, StateCreated)
+	err = db.ShiftState(ctx, s1.Alias, StateCreated)
 	require.NoError(t, err)
 
 	// Show that the session is now in the created state.
-	s1, err = db.GetSessionByID(ctx, s1.ID)
+	s1, err = db.GetSessionByAlias(ctx, s1.Alias)
 	require.NoError(t, err)
 	require.Equal(t, StateCreated, s1.State)
 
 	// Trying to move session 1 again should have no effect since it is
 	// already in the created state.
-	require.NoError(t, db.ShiftState(ctx, s1.ID, StateCreated))
+	require.NoError(t, db.ShiftState(ctx, s1.Alias, StateCreated))
 
 	// Reserve and create a few more sessions. We increment the time by one
 	// second between each session to ensure that the created at time is
@@ -70,13 +70,13 @@ func TestBasicSessionStore(t *testing.T) {
 	require.Empty(t, sessions)
 
 	// Ensure that we can retrieve each session by both its local pub key
-	// and by its ID.
+	// and by its Alias.
 	for _, s := range []*Session{s1, s2, s3} {
 		session, err := db.GetSession(ctx, s.LocalPublicKey)
 		require.NoError(t, err)
 		assertEqualSessions(t, s, session)
 
-		session, err = db.GetSessionByID(ctx, s.ID)
+		session, err = db.GetSessionByAlias(ctx, s.Alias)
 		require.NoError(t, err)
 		assertEqualSessions(t, s, session)
 	}
@@ -105,7 +105,7 @@ func TestBasicSessionStore(t *testing.T) {
 	require.Equal(t, session1.State, StateCreated)
 
 	// Now revoke the session and assert that the state is revoked.
-	require.NoError(t, db.ShiftState(ctx, s1.ID, StateRevoked))
+	require.NoError(t, db.ShiftState(ctx, s1.Alias, StateRevoked))
 	s1, err = db.GetSession(ctx, s1.LocalPublicKey)
 	require.NoError(t, err)
 	require.Equal(t, s1.State, StateRevoked)
@@ -146,7 +146,7 @@ func TestBasicSessionStore(t *testing.T) {
 
 	// Reserve a new session and link it to session 1.
 	s5, err := reserveSession(
-		db, "session 5", withLinkedGroupID(&session1.GroupID),
+		db, "session 5", withLinkedGroupID(&session1.GroupAlias),
 	)
 	require.NoError(t, err)
 
@@ -155,31 +155,31 @@ func TestBasicSessionStore(t *testing.T) {
 	require.Equal(t, 1, len(sessions))
 	assertEqualSessions(t, s5, sessions[0])
 
-	// Show that the group ID/session ID index has also been populated with
+	// Show that the group Alias/session Alias index has also been populated with
 	// this session.
-	groupID, err := db.GetGroupID(ctx, s5.ID)
+	groupID, err := db.GetGroupAlias(ctx, s5.Alias)
 	require.NoError(t, err)
-	require.Equal(t, s1.ID, groupID)
+	require.Equal(t, s1.Alias, groupID)
 
-	sessIDs, err := db.GetSessionIDs(ctx, s5.GroupID)
+	sessIDs, err := db.GetSessionAliases(ctx, s5.GroupAlias)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ID{s5.ID, s1.ID}, sessIDs)
+	require.ElementsMatch(t, []Alias{s5.Alias, s1.Alias}, sessIDs)
 
 	// Now delete the reserved session and show that it is no longer in the
-	// database and no longer in the group ID/session ID index.
+	// database and no longer in the group Alias/session Alias index.
 	require.NoError(t, db.DeleteReservedSessions(ctx))
 
 	sessions, err = db.ListSessionsByState(ctx, StateReserved)
 	require.NoError(t, err)
 	require.Empty(t, sessions)
 
-	_, err = db.GetGroupID(ctx, s5.ID)
+	_, err = db.GetGroupAlias(ctx, s5.Alias)
 	require.ErrorIs(t, err, ErrUnknownGroup)
 
 	// Only session 1 should remain in this group.
-	sessIDs, err = db.GetSessionIDs(ctx, s5.GroupID)
+	sessIDs, err = db.GetSessionAliases(ctx, s5.GroupAlias)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ID{s1.ID}, sessIDs)
+	require.ElementsMatch(t, []Alias{s1.Alias}, sessIDs)
 }
 
 // TestLinkingSessions tests that session linking works as expected.
@@ -191,7 +191,7 @@ func TestLinkingSessions(t *testing.T) {
 	clock := clock.NewTestClock(testTime)
 	db := NewTestDB(t, clock)
 
-	groupID, err := IDFromBytes([]byte{1, 2, 3, 4})
+	groupID, err := AliasFromBytes([]byte{1, 2, 3, 4})
 	require.NoError(t, err)
 
 	// Try to reserve a session that links to another and assert that it
@@ -207,20 +207,20 @@ func TestLinkingSessions(t *testing.T) {
 	// Once again try to reserve a session that links to the now existing
 	// session. This should fail due to the first session still being
 	// active.
-	_, err = reserveSession(db, "session 2", withLinkedGroupID(&s1.GroupID))
+	_, err = reserveSession(db, "session 2", withLinkedGroupID(&s1.GroupAlias))
 	require.ErrorContains(t, err, "is still active")
 
 	// Revoke the first session.
-	require.NoError(t, db.ShiftState(ctx, s1.ID, StateRevoked))
+	require.NoError(t, db.ShiftState(ctx, s1.Alias, StateRevoked))
 
 	// Persisting the second linked session should now work.
-	_, err = reserveSession(db, "session 2", withLinkedGroupID(&s1.GroupID))
+	_, err = reserveSession(db, "session 2", withLinkedGroupID(&s1.GroupAlias))
 	require.NoError(t, err)
 }
 
-// TestIDToGroupIDIndex tests that the session-ID-to-group-ID and
-// group-ID-to-session-ID indexes work as expected by asserting the behaviour
-// of the GetGroupID and GetSessionIDs methods.
+// TestIDToGroupIDIndex tests that the session-Alias-to-group-Alias and
+// group-Alias-to-session-Alias indexes work as expected by asserting the behaviour
+// of the GetGroupAlias and GetSessionAliases methods.
 func TestLinkedSessions(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -231,48 +231,48 @@ func TestLinkedSessions(t *testing.T) {
 
 	// Create a few sessions. The first one is a new session and the two
 	// after are all linked to the prior one. All these sessions belong to
-	// the same group. The group ID is equivalent to the session ID of the
+	// the same group. The group Alias is equivalent to the session Alias of the
 	// first session.
 	s1 := createSession(t, db, "session 1")
 
-	require.NoError(t, db.ShiftState(ctx, s1.ID, StateRevoked))
-	s2 := createSession(t, db, "session 2", withLinkedGroupID(&s1.GroupID))
+	require.NoError(t, db.ShiftState(ctx, s1.Alias, StateRevoked))
+	s2 := createSession(t, db, "session 2", withLinkedGroupID(&s1.GroupAlias))
 
-	require.NoError(t, db.ShiftState(ctx, s2.ID, StateRevoked))
-	s3 := createSession(t, db, "session 3", withLinkedGroupID(&s2.GroupID))
+	require.NoError(t, db.ShiftState(ctx, s2.Alias, StateRevoked))
+	s3 := createSession(t, db, "session 3", withLinkedGroupID(&s2.GroupAlias))
 
-	// Assert that the session ID to group ID index works as expected.
+	// Assert that the session Alias to group Alias index works as expected.
 	for _, s := range []*Session{s1, s2, s3} {
-		groupID, err := db.GetGroupID(ctx, s.ID)
+		groupID, err := db.GetGroupAlias(ctx, s.Alias)
 		require.NoError(t, err)
-		require.Equal(t, s1.ID, groupID)
-		require.Equal(t, s.GroupID, groupID)
+		require.Equal(t, s1.Alias, groupID)
+		require.Equal(t, s.GroupAlias, groupID)
 	}
 
-	// Assert that the group ID to session ID index works as expected.
-	sIDs, err := db.GetSessionIDs(ctx, s1.GroupID)
+	// Assert that the group Alias to session Alias index works as expected.
+	sIDs, err := db.GetSessionAliases(ctx, s1.GroupAlias)
 	require.NoError(t, err)
-	require.EqualValues(t, []ID{s1.ID, s2.ID, s3.ID}, sIDs)
+	require.EqualValues(t, []Alias{s1.Alias, s2.Alias, s3.Alias}, sIDs)
 
 	// To ensure that different groups don't interfere with each other,
 	// let's add another set of linked sessions not linked to the first.
 	s4 := createSession(t, db, "session 4")
-	require.NoError(t, db.ShiftState(ctx, s4.ID, StateRevoked))
-	s5 := createSession(t, db, "session 5", withLinkedGroupID(&s4.GroupID))
-	require.NotEqual(t, s4.GroupID, s1.GroupID)
+	require.NoError(t, db.ShiftState(ctx, s4.Alias, StateRevoked))
+	s5 := createSession(t, db, "session 5", withLinkedGroupID(&s4.GroupAlias))
+	require.NotEqual(t, s4.GroupAlias, s1.GroupAlias)
 
-	// Assert that the session ID to group ID index works as expected.
+	// Assert that the session Alias to group Alias index works as expected.
 	for _, s := range []*Session{s4, s5} {
-		groupID, err := db.GetGroupID(ctx, s.ID)
+		groupID, err := db.GetGroupAlias(ctx, s.Alias)
 		require.NoError(t, err)
-		require.Equal(t, s4.ID, groupID)
-		require.Equal(t, s.GroupID, groupID)
+		require.Equal(t, s4.Alias, groupID)
+		require.Equal(t, s.GroupAlias, groupID)
 	}
 
-	// Assert that the group ID to session ID index works as expected.
-	sIDs, err = db.GetSessionIDs(ctx, s5.GroupID)
+	// Assert that the group Alias to session Alias index works as expected.
+	sIDs, err = db.GetSessionAliases(ctx, s5.GroupAlias)
 	require.NoError(t, err)
-	require.EqualValues(t, []ID{s4.ID, s5.ID}, sIDs)
+	require.EqualValues(t, []Alias{s4.Alias, s5.Alias}, sIDs)
 }
 
 // TestStateShift tests that the ShiftState method works as expected.
@@ -295,7 +295,7 @@ func TestStateShift(t *testing.T) {
 	require.Equal(t, time.Time{}, s1.RevokedAt)
 
 	// Shift the state of the session to StateRevoked.
-	err = db.ShiftState(ctx, s1.ID, StateRevoked)
+	err = db.ShiftState(ctx, s1.Alias, StateRevoked)
 	require.NoError(t, err)
 
 	// This should have worked. Since it is now in a terminal state, the
@@ -310,18 +310,18 @@ func TestStateShift(t *testing.T) {
 	// should not have changed though.
 	prevTime := clock.Now()
 	clock.SetTime(prevTime.Add(time.Second))
-	err = db.ShiftState(ctx, s1.ID, StateRevoked)
+	err = db.ShiftState(ctx, s1.Alias, StateRevoked)
 	require.NoError(t, err)
 	require.True(t, prevTime.Equal(s1.RevokedAt))
 
 	// Trying to shift the state from a terminal state back to StateCreated
 	// should also fail since this is not a legal state transition.
-	err = db.ShiftState(ctx, s1.ID, StateCreated)
+	err = db.ShiftState(ctx, s1.Alias, StateCreated)
 	require.ErrorContains(t, err, "illegal session state transition")
 }
 
 type testSessionOpts struct {
-	groupID  *ID
+	groupID  *Alias
 	sessType Type
 }
 
@@ -336,7 +336,7 @@ func defaultTestSessOpts() *testSessionOpts {
 // default test session created by newSession.
 type testSessionModifier func(*testSessionOpts)
 
-func withLinkedGroupID(groupID *ID) testSessionModifier {
+func withLinkedGroupID(groupID *Alias) testSessionModifier {
 	return func(s *testSessionOpts) {
 		s.groupID = groupID
 	}
@@ -370,10 +370,10 @@ func createSession(t *testing.T, db Store, label string,
 	s, err := reserveSession(db, label, mods...)
 	require.NoError(t, err)
 
-	err = db.ShiftState(context.Background(), s.ID, StateCreated)
+	err = db.ShiftState(context.Background(), s.Alias, StateCreated)
 	require.NoError(t, err)
 
-	s, err = db.GetSessionByID(context.Background(), s.ID)
+	s, err = db.GetSessionByAlias(context.Background(), s.Alias)
 	require.NoError(t, err)
 
 	return s

@@ -49,7 +49,7 @@ type RequestLogger struct {
 
 	shouldLogAction func(ri *RequestInfo) (bool, bool)
 
-	// reqIDToAction is a map from request ID to an ActionLocator that can
+	// reqIDToAction is a map from request Alias to an ActionLocator that can
 	// be used to find the corresponding action. This is used so that
 	// requests and responses can be easily linked. The mu mutex must be
 	// used when accessing this map.
@@ -183,13 +183,13 @@ func (r *RequestLogger) addNewAction(ri *RequestInfo,
 	withPayloadData bool) error {
 
 	// If no macaroon is provided, then an empty 4-byte array is used as the
-	// session ID. Otherwise, the macaroon is used to derive a session ID.
+	// session Alias. Otherwise, the macaroon is used to derive a session Alias.
 	var sessionID [4]byte
 	if ri.Macaroon != nil {
 		var err error
-		sessionID, err = session.IDFromMacaroon(ri.Macaroon)
+		sessionID, err = session.AliasFromMacaroon(ri.Macaroon)
 		if err != nil {
-			return fmt.Errorf("could not extract ID from macaroon")
+			return fmt.Errorf("could not extract Alias from macaroon")
 		}
 	}
 

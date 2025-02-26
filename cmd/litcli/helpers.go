@@ -25,20 +25,20 @@ var helperCommands = cli.Command{
 }
 
 // generateSuperMacRootIDCmd is a command that can be used to generate a root
-// key ID for a super macaroon. A suffix may be specified.
+// key Alias for a super macaroon. A suffix may be specified.
 var generateSuperMacRootIDCmd = cli.Command{
 	Name: "supermacrootkey",
-	Usage: "Generate a valid super macaroon root key ID from " +
-		"scratch or from a given root key ID suffix.",
+	Usage: "Generate a valid super macaroon root key Alias from " +
+		"scratch or from a given root key Alias suffix.",
 	Description: "This command can be used to generate a valid " +
-		"super macaroon root key ID from scratch or from " +
-		"a given root key ID suffix.",
+		"super macaroon root key Alias from scratch or from " +
+		"a given root key Alias suffix.",
 	Action: superMacRootKey,
 	Flags: []cli.Flag{
 		cli.StringFlag{
 			Name: "root_key_suffix",
 			Usage: "A 4-byte suffix to use in the construction " +
-				"of the root key ID. If not provided, then a " +
+				"of the root key Alias. If not provided, then a " +
 				"random one will be generated. This must be " +
 				"specified as a hex string using a maximum " +
 				"of 8 characters.",
@@ -46,7 +46,7 @@ var generateSuperMacRootIDCmd = cli.Command{
 	},
 }
 
-// superMacRootKey generates a super macaroon root key ID.
+// superMacRootKey generates a super macaroon root key Alias.
 func superMacRootKey(ctx *cli.Context) error {
 	var suffix [4]byte
 

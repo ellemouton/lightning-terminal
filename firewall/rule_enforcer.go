@@ -167,7 +167,7 @@ func (r *RuleEnforcer) Intercept(ctx context.Context,
 			dbErr := r.markActionErrored(ri.RequestID, err.Error())
 			if dbErr != nil {
 				log.Error("could not mark action for "+
-					"request ID %d as Errored: %v",
+					"request Alias %d as Errored: %v",
 					ri.RequestID, dbErr)
 			}
 
@@ -233,9 +233,9 @@ func (r *RuleEnforcer) Intercept(ctx context.Context,
 func (r *RuleEnforcer) handleRequest(ctx context.Context,
 	ri *RequestInfo) (proto.Message, error) {
 
-	sessionID, err := session.IDFromMacaroon(ri.Macaroon)
+	sessionID, err := session.AliasFromMacaroon(ri.Macaroon)
 	if err != nil {
-		return nil, fmt.Errorf("could not extract ID from macaroon")
+		return nil, fmt.Errorf("could not extract Alias from macaroon")
 	}
 
 	rules, err := r.collectEnforcers(ctx, ri, sessionID)
@@ -289,9 +289,9 @@ func (r *RuleEnforcer) handleRequest(ctx context.Context,
 func (r *RuleEnforcer) handleResponse(ctx context.Context,
 	ri *RequestInfo) (proto.Message, error) {
 
-	sessionID, err := session.IDFromMacaroon(ri.Macaroon)
+	sessionID, err := session.AliasFromMacaroon(ri.Macaroon)
 	if err != nil {
-		return nil, fmt.Errorf("could not extract ID from macaroon")
+		return nil, fmt.Errorf("could not extract Alias from macaroon")
 	}
 
 	enforcers, err := r.collectEnforcers(ctx, ri, sessionID)
@@ -323,9 +323,9 @@ func (r *RuleEnforcer) handleResponse(ctx context.Context,
 func (r *RuleEnforcer) handleErrorResponse(ctx context.Context,
 	ri *RequestInfo) (error, error) {
 
-	sessionID, err := session.IDFromMacaroon(ri.Macaroon)
+	sessionID, err := session.AliasFromMacaroon(ri.Macaroon)
 	if err != nil {
-		return nil, fmt.Errorf("could not extract ID from macaroon")
+		return nil, fmt.Errorf("could not extract Alias from macaroon")
 	}
 
 	enforcers, err := r.collectEnforcers(ctx, ri, sessionID)
@@ -354,7 +354,7 @@ func (r *RuleEnforcer) handleErrorResponse(ctx context.Context,
 // collectRule initialises and returns all the Rules that need to be enforced
 // for the given request.
 func (r *RuleEnforcer) collectEnforcers(ctx context.Context, ri *RequestInfo,
-	sessionID session.ID) ([]rules.Enforcer, error) {
+	sessionID session.Alias) ([]rules.Enforcer, error) {
 
 	ruleEnforcers := make(
 		[]rules.Enforcer, 0,
@@ -378,7 +378,7 @@ func (r *RuleEnforcer) collectEnforcers(ctx context.Context, ri *RequestInfo,
 
 // initRule initialises a rule.Rule with any required config values.
 func (r *RuleEnforcer) initRule(ctx context.Context, reqID uint64, name string,
-	value []byte, featureName string, sessionID session.ID,
+	value []byte, featureName string, sessionID session.Alias,
 	sessionRule, privacy bool) (rules.Enforcer, error) {
 
 	ruleValues, err := r.ruleMgrs.InitRuleValues(name, value)
@@ -392,7 +392,7 @@ func (r *RuleEnforcer) initRule(ctx context.Context, reqID uint64, name string,
 	}
 
 	if privacy {
-		privMap := r.newPrivMap(session.GroupID)
+		privMap := r.newPrivMap(session.GroupAlias)
 
 		ruleValues, err = ruleValues.PseudoToReal(
 			privMap, session.PrivacyFlags,
@@ -404,14 +404,14 @@ func (r *RuleEnforcer) initRule(ctx context.Context, reqID uint64, name string,
 	}
 
 	allActionsDB := r.actionsDB.GetActionsReadDB(
-		session.GroupID, featureName,
+		session.GroupAlias, featureName,
 	)
 	actionsDB := allActionsDB.GroupFeatureActionsDB()
-	rulesDB := r.ruleDB.GetKVStores(name, session.GroupID, featureName)
+	rulesDB := r.ruleDB.GetKVStores(name, session.GroupAlias, featureName)
 
 	if sessionRule {
 		actionsDB = allActionsDB.GroupActionsDB()
-		rulesDB = r.ruleDB.GetKVStores(name, session.GroupID, "")
+		rulesDB = r.ruleDB.GetKVStores(name, session.GroupAlias, "")
 	}
 
 	cfg := &rules.ConfigImpl{

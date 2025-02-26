@@ -7,10 +7,11 @@
 package litrpc
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -152,7 +153,7 @@ type Account struct {
 
 	// The unique alias of the Account.
 	//
-	// NOTE: the name is kept for backwards compatibility, but this ID is now
+	// NOTE: the name is kept for backwards compatibility, but this Alias is now
 	// the unique alias identifier of the Account. At an RPC level, we will
 	// continue to refer to an account using this alias.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -384,7 +385,7 @@ type UpdateAccountRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// The ID of the account to update. Either the ID or the label must be set.
+	// The Alias of the account to update. Either the Alias or the label must be set.
 	//
 	// NOTE: This is actually the account's unique alias. We keep the "id" name
 	// for backwards compatibility.
@@ -394,7 +395,7 @@ type UpdateAccountRequest struct {
 	// The new account expiry to set. Set to -1 to not update the expiry. Set to 0
 	// to never expire.
 	ExpirationDate int64 `protobuf:"varint,3,opt,name=expiration_date,json=expirationDate,proto3" json:"expiration_date,omitempty"`
-	// The label of the account to update. If an account has no label, then the ID
+	// The label of the account to update. If an account has no label, then the Alias
 	// must be used instead.
 	Label string `protobuf:"bytes,4,opt,name=label,proto3" json:"label,omitempty"`
 }
@@ -550,10 +551,10 @@ type AccountInfoRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// The hexadecimal ID of the account to remove. Either the ID or the label must
+	// The hexadecimal Alias of the account to remove. Either the Alias or the label must
 	// be set.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// The label of the account to remove. If an account has no label, then the ID
+	// The label of the account to remove. If an account has no label, then the Alias
 	// must be used instead.
 	Label string `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
 }
@@ -609,13 +610,13 @@ type RemoveAccountRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// The hexadecimal ID of the account to remove. Either the ID or the label must
+	// The hexadecimal Alias of the account to remove. Either the Alias or the label must
 	// be set.
 	//
 	// NOTE: This is actually the account's unique alias. We keep the "id" name
 	// for backwards compatibility.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// The label of the account to remove. If an account has no label, then the ID
+	// The label of the account to remove. If an account has no label, then the Alias
 	// must be used instead.
 	Label string `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
 }

@@ -395,7 +395,7 @@ func formatReqId(lndConnID string, reqID int64) string {
 	return fmt.Sprintf("%s-%s-%d", memoPrefix, lndConnID, reqID)
 }
 
-// removeReqId removes the request ID from the memo if present.
+// removeReqId removes the request Alias from the memo if present.
 func removeReqId(memo string) string {
 	// We divide the memo into two parts, one before and one after the
 	// prefix marker.
@@ -580,7 +580,7 @@ type onChainAction struct {
 	ActionType actionType `json:"type"`
 }
 
-// cancelPendingPayment removes the pending amount for the current request ID
+// cancelPendingPayment removes the pending amount for the current request Alias
 // from the temporary store. This is called when a request fails or is
 // cancelled.
 func (o *OnChainBudgetEnforcer) cancelPendingPayment(
@@ -595,7 +595,7 @@ func (o *OnChainBudgetEnforcer) cancelPendingPayment(
 
 		store := tx.Local()
 
-		// We use the request ID to fetch the pending spend amount.
+		// We use the request Alias to fetch the pending spend amount.
 		uniqueReqID := formatReqId(o.GetLndConnID(), o.GetReqID())
 		reqPref := fmt.Sprintf("%s:%s", pendingKey, uniqueReqID)
 
@@ -638,7 +638,7 @@ func (o *OnChainBudgetEnforcer) cancelPendingPayment(
 	})
 }
 
-// handlePaymentConfirmed moves any pending amount for a specific request ID
+// handlePaymentConfirmed moves any pending amount for a specific request Alias
 // into the persisted store.
 func (o *OnChainBudgetEnforcer) handlePaymentConfirmed(
 	ctx context.Context) error {
@@ -652,7 +652,7 @@ func (o *OnChainBudgetEnforcer) handlePaymentConfirmed(
 
 		store := tx.Local()
 
-		// We use the request ID to fetch the pending spend amount.
+		// We use the request Alias to fetch the pending spend amount.
 		uniqueReqID := formatReqId(o.GetLndConnID(), o.GetReqID())
 		reqPref := fmt.Sprintf("%s:%s", pendingKey, uniqueReqID)
 
@@ -663,7 +663,7 @@ func (o *OnChainBudgetEnforcer) handlePaymentConfirmed(
 
 		// Some requests can have multiple responses. So if we can't
 		// find an entry in the store corresponding to the given request
-		// ID, then we assume it has already been accounted for.
+		// Alias, then we assume it has already been accounted for.
 		if len(reqBytes) == 0 {
 			return nil
 		}
@@ -775,7 +775,7 @@ func (o *OnChainBudgetEnforcer) addPendingAmt(ctx context.Context,
 
 	if len(reqBytes) != 0 {
 		return fmt.Errorf("pending payment already exists for "+
-			"request ID %s", reqID)
+			"request Alias %s", reqID)
 	}
 
 	err = store.Set(ctx, pendingKey, b)

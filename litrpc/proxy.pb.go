@@ -7,10 +7,11 @@
 package litrpc
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -25,7 +26,7 @@ type BakeSuperMacaroonRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// The root key ID suffix is the 4-byte suffix of the root key ID that will
+	// The root key Alias suffix is the 4-byte suffix of the root key Alias that will
 	// be used to create the macaroon.
 	RootKeyIdSuffix uint32 `protobuf:"varint,1,opt,name=root_key_id_suffix,json=rootKeyIdSuffix,proto3" json:"root_key_id_suffix,omitempty"`
 	// Whether the macaroon should only contain read permissions.

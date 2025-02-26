@@ -101,14 +101,14 @@ func (o *oracleHarness) getAssetRates(id asset.ID,
 		rate, ok := o.purchasePrices[id]
 		if !ok {
 			return oraclerpc.AssetRates{}, fmt.Errorf("purchase "+
-				"price not found for asset ID=%v", id)
+				"price not found for asset Alias=%v", id)
 		}
 		subjectAssetRate = rate
 	} else {
 		rate, ok := o.salePrices[id]
 		if !ok {
 			return oraclerpc.AssetRates{}, fmt.Errorf("sale "+
-				"price not found for asset ID=%v", id)
+				"price not found for asset Alias=%v", id)
 		}
 		subjectAssetRate = rate
 	}
@@ -196,7 +196,7 @@ func (o *oracleHarness) QueryAssetRates(_ context.Context,
 
 	// Ensure that the subject asset is supported.
 	if !hasPurchase || !hasSale {
-		log.Infof("Unsupported subject asset ID str: %v\n",
+		log.Infof("Unsupported subject asset Alias str: %v\n",
 			req.SubjectAsset)
 
 		return &oraclerpc.QueryAssetRatesResponse{
@@ -247,13 +247,13 @@ func parseSubjectAsset(subjectAsset *oraclerpc.AssetSpecifier) (asset.ID,
 		)
 		if err != nil {
 			return asset.ID{}, fmt.Errorf("error decoding asset "+
-				"ID hex string: %w", err)
+				"Alias hex string: %w", err)
 		}
 
 		copy(subjectAssetID[:], assetIDBytes)
 
 	default:
-		return asset.ID{}, fmt.Errorf("subject asset ID bytes and ID " +
+		return asset.ID{}, fmt.Errorf("subject asset Alias bytes and Alias " +
 			"str not set")
 	}
 

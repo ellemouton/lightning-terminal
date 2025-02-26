@@ -9,8 +9,8 @@ import (
 // SessionDB is an interface that abstracts the database operations needed for
 // the privacy mapper to function.
 type SessionDB interface {
-	session.IDToGroupIndex
+	session.AliasToGroupIndex
 
 	// GetSessionByID returns the session for a specific id.
-	GetSessionByID(context.Context, session.ID) (*session.Session, error)
+	GetSessionByID(context.Context, session.Alias) (*session.Session, error)
 }

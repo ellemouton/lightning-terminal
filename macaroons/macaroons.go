@@ -15,7 +15,7 @@ import (
 type Baker func(ctx context.Context, rootKeyID uint64,
 	perms []bakery.Op, caveats []macaroon.Caveat) (string, error)
 
-// RootKeyIDFromMacaroon extracts the root key ID of the passed macaroon.
+// RootKeyIDFromMacaroon extracts the root key Alias of the passed macaroon.
 func RootKeyIDFromMacaroon(mac *macaroon.Macaroon) (uint64, error) {
 	rawID := mac.Id()
 	if rawID[0] != byte(bakery.LatestVersion) {
@@ -29,7 +29,7 @@ func RootKeyIDFromMacaroon(mac *macaroon.Macaroon) (uint64, error) {
 		return 0, err
 	}
 
-	// The storage ID is a string representation of a 64-bit unsigned
+	// The storage Alias is a string representation of a 64-bit unsigned
 	// number.
 	return strconv.ParseUint(string(decodedID.StorageId), 10, 64)
 }

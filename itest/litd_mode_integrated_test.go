@@ -474,7 +474,7 @@ func integratedTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
 	// in integrated mode.
 	net.SendCoins(t, btcutil.SatoshiPerBitcoin, net.Alice)
 
-	// We expect a non-empty alias (truncated node ID) to be returned.
+	// We expect a non-empty alias (truncated node Alias) to be returned.
 	resp, err := net.Alice.GetInfo(ctx, &lnrpc.GetInfoRequest{})
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.Alias)
@@ -884,7 +884,7 @@ func runGRPCAuthTest(t *testing.T, hostPort, tlsCertPath, macPath string,
 		require.ErrorContains(t, err, "macaroon service")
 		require.ErrorContains(t, err, "initialised")
 	} else {
-		require.ErrorContains(t, err, "invalid ID")
+		require.ErrorContains(t, err, "invalid Alias")
 	}
 
 	// Then finally we try with the correct macaroon which should now
@@ -959,7 +959,7 @@ func runUIPasswordCheck(t *testing.T, hostPort, tlsCertPath, uiPassword string,
 		require.ErrorContains(t, err, "macaroon service")
 		require.ErrorContains(t, err, "initialised")
 	default:
-		require.ErrorContains(t, err, "invalid ID")
+		require.ErrorContains(t, err, "invalid Alias")
 	}
 
 	// Using the correct UI password should work for all requests unless the
@@ -994,7 +994,7 @@ func runUIPasswordCheck(t *testing.T, hostPort, tlsCertPath, uiPassword string,
 			require.ErrorContains(t, err, "macaroon service")
 			require.ErrorContains(t, err, "initialised")
 		default:
-			require.ErrorContains(t, err, "invalid ID")
+			require.ErrorContains(t, err, "invalid Alias")
 		}
 
 		return

@@ -887,7 +887,7 @@ func TestPrivacyMapper(t *testing.T) {
 	macBytes, err := mac.MarshalBinary()
 	require.NoError(t, err)
 
-	sessionID, err := session.IDFromMacaroon(mac)
+	sessionID, err := session.AliasFromMacaroon(mac)
 	require.NoError(t, err)
 
 	for _, test := range tests {
@@ -1068,7 +1068,7 @@ type mockDB struct {
 }
 
 func newMockDB(t *testing.T, preloadRealToPseudo map[string]string,
-	sessID session.ID) mockDB {
+	sessID session.Alias) mockDB {
 
 	db := mockDB{privDB: make(map[string]*mockPrivacyMapDB)}
 	sessDB := db.NewSessionDB(sessID)
@@ -1083,7 +1083,7 @@ func newMockDB(t *testing.T, preloadRealToPseudo map[string]string,
 	return db
 }
 
-func (m mockDB) NewSessionDB(sessionID session.ID) firewalldb.PrivacyMapDB {
+func (m mockDB) NewSessionDB(sessionID session.Alias) firewalldb.PrivacyMapDB {
 	db, ok := m.privDB[string(sessionID[:])]
 	if ok {
 		return db
