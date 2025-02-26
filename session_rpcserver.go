@@ -227,12 +227,12 @@ func (s *sessionRpcServer) AddSession(ctx context.Context,
 	// the macaroons are baked correctly when creating the session.
 	case session.TypeMacaroonAdmin, session.TypeMacaroonReadonly:
 
-	// For account based sessions we just add the account ID caveat, the
+	// For account based sessions we just add the account Alias caveat, the
 	// permissions are added dynamically when creating the session.
 	case session.TypeMacaroonAccount:
-		id, err := accounts.ParseAccountID(req.AccountId)
+		id, err := accounts.ParseAlias(req.AccountId)
 		if err != nil {
-			return nil, fmt.Errorf("invalid account ID: %v", err)
+			return nil, fmt.Errorf("invalid account Alias: %v", err)
 		}
 
 		cav := checkers.Condition(macaroons.CondLndCustom, fmt.Sprintf(
@@ -384,7 +384,7 @@ func (s *sessionRpcServer) resumeSession(ctx context.Context,
 	case session.TypeMacaroonAdmin, session.TypeMacaroonReadonly:
 		permissions = s.cfg.permMgr.ActivePermissions(readOnly)
 
-	// For account based sessions we just add the account ID caveat, the
+	// For account based sessions we just add the account Alias caveat, the
 	// permissions are added dynamically when creating the session.
 	case session.TypeMacaroonAccount:
 		if sess.MacaroonRecipe == nil {
@@ -858,7 +858,7 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 		newPrivMapPairs   = make(map[string]string)
 	)
 
-	// If a previous session ID has been set to link this new one to, we
+	// If a previous session Alias has been set to link this new one to, we
 	// first check if we have the referenced session, and we make sure it
 	// has been revoked.
 	var (
@@ -1187,7 +1187,7 @@ func (s *sessionRpcServer) AddAutopilotSession(ctx context.Context,
 		obfuscatedConfig = clientConfig
 	}
 
-	// Register all the privacy map pairs for this session ID.
+	// Register all the privacy map pairs for this session Alias.
 	privDB := s.cfg.privMap(sess.GroupID)
 	err = privDB.Update(func(tx firewalldb.PrivacyMapTx) error {
 		for r, p := range newPrivMapPairs {

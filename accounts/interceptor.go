@@ -80,7 +80,7 @@ func (s *InterceptorService) Intercept(ctx context.Context,
 	// wouldn't have been triggered if there was no caveat, so we do expect
 	// a macaroon here.
 	if acctID == nil {
-		return mid.RPCErrString(req, "expected account ID in "+
+		return mid.RPCErrString(req, "expected account Alias in "+
 			"macaroon caveat")
 	}
 
@@ -91,7 +91,7 @@ func (s *InterceptorService) Intercept(ctx context.Context,
 		)
 	}
 
-	log.Debugf("Account auth intercepted, ID=%x, balance_sat=%d, "+
+	log.Debugf("Account auth intercepted, Alias=%x, balance_sat=%d, "+
 		"expired=%v", acct.ID[:], acct.CurrentBalanceSats(),
 		acct.HasExpired())
 
@@ -101,7 +101,7 @@ func (s *InterceptorService) Intercept(ctx context.Context,
 		)
 	}
 
-	// We now add the account and request ID to the incoming context to give
+	// We now add the account and request Alias to the incoming context to give
 	// each checker access to them if required.
 	ctx = AddAccountToContext(ctx, acct)
 	ctx = AddRequestIDToContext(ctx, req.RequestId)
@@ -196,9 +196,9 @@ func parseRPCMessage(msg *lnrpc.RPCMessage) (proto.Message, error) {
 	return parsedMsg, nil
 }
 
-// accountFromMacaroon attempts to extract an account ID from the custom account
+// accountFromMacaroon attempts to extract an account Alias from the custom account
 // caveat in the macaroon.
-func accountFromMacaroon(mac *macaroon.Macaroon) (*AccountID, error) {
+func accountFromMacaroon(mac *macaroon.Macaroon) (*Alias, error) {
 	// Extract the account caveat from the macaroon.
 	macaroonAccount := macaroons.GetCustomCaveatCondition(mac, CondAccount)
 	if macaroonAccount == "" {
@@ -214,7 +214,7 @@ func accountFromMacaroon(mac *macaroon.Macaroon) (*AccountID, error) {
 		return nil, err
 	}
 
-	var accountID AccountID
+	var accountID Alias
 	copy(accountID[:], accountIDBytes)
 	return &accountID, nil
 }

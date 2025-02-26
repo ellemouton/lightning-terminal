@@ -672,7 +672,7 @@ func checkSendResponse(ctx context.Context, service Service,
 		return nil, err
 	}
 
-	// We can now delete the request values for this request ID.
+	// We can now delete the request values for this request Alias.
 	service.DeleteValues(reqID)
 
 	return nil, nil
@@ -778,7 +778,7 @@ func sendToRouteHTLCResponseHandler(service Service) func(ctx context.Context,
 
 		// Since SendToRouteV2 is a streaming endpoint, we may get
 		// multiple responses for it. If we have already handled it then
-		// we would have deleted the request ID to hash mapping, and so
+		// we would have deleted the request Alias to hash mapping, and so
 		// we can exit early here.
 		reqValues, ok := service.GetValues(reqID)
 		if !ok {
@@ -821,7 +821,7 @@ func sendToRouteHTLCResponseHandler(service Service) func(ctx context.Context,
 			return nil, err
 		}
 
-		// We can now delete the request values for this ID.
+		// We can now delete the request values for this Alias.
 		service.DeleteValues(reqID)
 
 		return nil, nil

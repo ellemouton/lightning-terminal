@@ -645,12 +645,12 @@ func (g *LightningTerminal) start(ctx context.Context) error {
 	}
 
 	// In order to be able to create unique middleware request identifiers,
-	// we set a new unique connection ID. This should be refreshed every
+	// we set a new unique connection Alias. This should be refreshed every
 	// time we (re)connect to LND.
 	// TODO: This assumes that litd needs to be restarted when the
-	// connection to LND is interrupted, leading to a unique connection ID.
+	// connection to LND is interrupted, leading to a unique connection Alias.
 	// When automatic reconnection is implemented, we need to make sure that
-	// the connection ID is refreshed when the connection is re-established.
+	// the connection Alias is refreshed when the connection is re-established.
 	g.lndConnID = randId(rules.LndConnIdLen)
 
 	// Initialise any connections to sub-servers that we are running in

@@ -150,7 +150,11 @@ type Account struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// The ID of the account.
+	// The unique alias of the Account.
+	//
+	// NOTE: the name is kept for backwards compatibility, but this ID is now
+	// the unique alias identifier of the Account. At an RPC level, we will
+	// continue to refer to an account using this alias.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// The initial balance in satoshis that was set when the account was created.
 	InitialBalance uint64 `protobuf:"varint,2,opt,name=initial_balance,json=initialBalance,proto3" json:"initial_balance,omitempty"`
@@ -381,6 +385,9 @@ type UpdateAccountRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	// The ID of the account to update. Either the ID or the label must be set.
+	//
+	// NOTE: This is actually the account's unique alias. We keep the "id" name
+	// for backwards compatibility.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// The new account balance to set. Set to -1 to not update the balance.
 	AccountBalance int64 `protobuf:"varint,2,opt,name=account_balance,json=accountBalance,proto3" json:"account_balance,omitempty"`
@@ -604,6 +611,9 @@ type RemoveAccountRequest struct {
 
 	// The hexadecimal ID of the account to remove. Either the ID or the label must
 	// be set.
+	//
+	// NOTE: This is actually the account's unique alias. We keep the "id" name
+	// for backwards compatibility.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// The label of the account to remove. If an account has no label, then the ID
 	// must be used instead.

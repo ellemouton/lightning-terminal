@@ -23,7 +23,7 @@ var (
 	KeyAccount = ContextKey{"account"}
 
 	// KeyRequestID is the key under which we store the middleware request
-	// ID.
+	// Alias.
 	KeyRequestID = ContextKey{"request_id"}
 )
 
@@ -55,22 +55,22 @@ func AccountFromContext(ctx context.Context) (*OffChainBalanceAccount, error) {
 	return acct, nil
 }
 
-// AddRequestIDToContext adds the given request ID to the context for easy
+// AddRequestIDToContext adds the given request Alias to the context for easy
 // retrieval later on.
 func AddRequestIDToContext(ctx context.Context, value uint64) context.Context {
 	return context.WithValue(ctx, KeyRequestID, value)
 }
 
-// RequestIDFromContext attempts to extract a request ID from the given context.
+// RequestIDFromContext attempts to extract a request Alias from the given context.
 func RequestIDFromContext(ctx context.Context) (uint64, error) {
 	val := FromContext(ctx, KeyRequestID)
 	if val == nil {
-		return 0, fmt.Errorf("no request ID found in context")
+		return 0, fmt.Errorf("no request Alias found in context")
 	}
 
 	reqID, ok := val.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("invalid request ID value in context")
+		return 0, fmt.Errorf("invalid request Alias value in context")
 	}
 
 	return reqID, nil
@@ -79,7 +79,7 @@ func RequestIDFromContext(ctx context.Context) (uint64, error) {
 // requestScopedValuesFromCtx is a helper function that can be used to extract
 // an account and requestID from the given context. It also creates a new
 // prefixed logger that can be used by account request and response handlers.
-// Each log line will be prefixed by the account ID and the request ID.
+// Each log line will be prefixed by the account Alias and the request Alias.
 func requestScopedValuesFromCtx(ctx context.Context) (btclog.Logger,
 	*OffChainBalanceAccount, uint64, error) {
 

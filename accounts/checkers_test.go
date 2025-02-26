@@ -26,7 +26,7 @@ var (
 		EmitUnpopulated: true,
 	}
 
-	testID   = AccountID{77, 88, 99}
+	testID   = Alias{77, 88, 99}
 	testHash = lntypes.Hash{
 		1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
 		1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
@@ -57,7 +57,7 @@ var (
 type mockService struct {
 	acctBalanceMsat lnwire.MilliSatoshi
 
-	trackedInvoices map[lntypes.Hash]AccountID
+	trackedInvoices map[lntypes.Hash]Alias
 	trackedPayments AccountPayments
 
 	*requestValuesStore
@@ -66,13 +66,13 @@ type mockService struct {
 func newMockService() *mockService {
 	return &mockService{
 		acctBalanceMsat:    0,
-		trackedInvoices:    make(map[lntypes.Hash]AccountID),
+		trackedInvoices:    make(map[lntypes.Hash]Alias),
 		trackedPayments:    make(AccountPayments),
 		requestValuesStore: newRequestValuesStore(),
 	}
 }
 
-func (m *mockService) CheckBalance(_ context.Context, _ AccountID,
+func (m *mockService) CheckBalance(_ context.Context, _ Alias,
 	wantBalance lnwire.MilliSatoshi) error {
 
 	if wantBalance > m.acctBalanceMsat {
@@ -82,7 +82,7 @@ func (m *mockService) CheckBalance(_ context.Context, _ AccountID,
 	return nil
 }
 
-func (m *mockService) AssociateInvoice(_ context.Context, id AccountID,
+func (m *mockService) AssociateInvoice(_ context.Context, id Alias,
 	hash lntypes.Hash) error {
 
 	m.trackedInvoices[hash] = id
@@ -90,19 +90,19 @@ func (m *mockService) AssociateInvoice(_ context.Context, id AccountID,
 	return nil
 }
 
-func (m *mockService) AssociatePayment(_ context.Context, id AccountID,
+func (m *mockService) AssociatePayment(_ context.Context, id Alias,
 	paymentHash lntypes.Hash, amt lnwire.MilliSatoshi) error {
 
 	return nil
 }
 
-func (m *mockService) PaymentErrored(_ context.Context, id AccountID,
+func (m *mockService) PaymentErrored(_ context.Context, id Alias,
 	hash lntypes.Hash) error {
 
 	return nil
 }
 
-func (m *mockService) TrackPayment(_ context.Context, _ AccountID,
+func (m *mockService) TrackPayment(_ context.Context, _ Alias,
 	hash lntypes.Hash, amt lnwire.MilliSatoshi) error {
 
 	m.trackedPayments[hash] = &PaymentEntry{
@@ -532,7 +532,7 @@ func testSendPayment(t *testing.T, uri string) {
 	err = service.Start(ctx, lndMock, routerMock, chainParams)
 	require.NoError(t, err)
 
-	assertBalance := func(id AccountID, expectedBalance int64) {
+	assertBalance := func(id Alias, expectedBalance int64) {
 		acct, err := service.Account(ctx, id)
 		require.NoError(t, err)
 
@@ -554,11 +554,11 @@ func testSendPayment(t *testing.T, uri string) {
 
 	ctxWithAcct := AddAccountToContext(ctx, acct)
 
-	// This should error because there is no request ID in the context.
+	// This should error because there is no request Alias in the context.
 	err = service.checkers.checkIncomingRequest(
 		ctxWithAcct, uri, &lnrpc.SendRequest{},
 	)
-	require.ErrorContains(t, err, "no request ID found in context")
+	require.ErrorContains(t, err, "no request Alias found in context")
 
 	reqID1 := nextRequestID()
 	ctx = AddRequestIDToContext(ctxWithAcct, reqID1)
@@ -730,7 +730,7 @@ func TestSendPaymentV2(t *testing.T) {
 	err = service.Start(ctx, lndMock, routerMock, chainParams)
 	require.NoError(t, err)
 
-	assertBalance := func(id AccountID, expectedBalance int64) {
+	assertBalance := func(id Alias, expectedBalance int64) {
 		acct, err := service.Account(ctx, id)
 		require.NoError(t, err)
 
@@ -752,11 +752,11 @@ func TestSendPaymentV2(t *testing.T) {
 
 	ctxWithAcct := AddAccountToContext(ctx, acct)
 
-	// This should error because there is no request ID in the context.
+	// This should error because there is no request Alias in the context.
 	err = service.checkers.checkIncomingRequest(
 		ctxWithAcct, uri, &routerrpc.SendPaymentRequest{},
 	)
-	require.ErrorContains(t, err, "no request ID found in context")
+	require.ErrorContains(t, err, "no request Alias found in context")
 
 	reqID1 := nextRequestID()
 	ctx = AddRequestIDToContext(ctxWithAcct, reqID1)
@@ -919,7 +919,7 @@ func TestSendToRouteV2(t *testing.T) {
 	err = service.Start(ctx, lndMock, routerMock, chainParams)
 	require.NoError(t, err)
 
-	assertBalance := func(id AccountID, expectedBalance int64) {
+	assertBalance := func(id Alias, expectedBalance int64) {
 		acct, err := service.Account(ctx, id)
 		require.NoError(t, err)
 
@@ -941,11 +941,11 @@ func TestSendToRouteV2(t *testing.T) {
 
 	ctxWithAcct := AddAccountToContext(ctx, acct)
 
-	// This should error because there is no request ID in the context.
+	// This should error because there is no request Alias in the context.
 	err = service.checkers.checkIncomingRequest(
 		ctxWithAcct, uri, &routerrpc.SendToRouteRequest{},
 	)
-	require.ErrorContains(t, err, "no request ID found in context")
+	require.ErrorContains(t, err, "no request Alias found in context")
 
 	reqID1 := nextRequestID()
 	ctx = AddRequestIDToContext(ctxWithAcct, reqID1)

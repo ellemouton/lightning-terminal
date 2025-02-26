@@ -2,7 +2,6 @@ package accounts
 
 import (
 	"context"
-	"github.com/lightningnetwork/lnd/lnwire"
 	"testing"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/lightningnetwork/lnd/fn"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/lntypes"
+	"github.com/lightningnetwork/lnd/lnwire"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,7 +35,7 @@ func TestAccountStore(t *testing.T) {
 	_, err = store.NewAccount(ctx, 123, time.Time{}, "foo")
 	require.ErrorIs(t, err, ErrLabelAlreadyExists)
 
-	// Make sure we cannot set a label that looks like an account ID.
+	// Make sure we cannot set a label that looks like an account Alias.
 	_, err = store.NewAccount(ctx, 123, time.Time{}, "0011223344556677")
 	require.ErrorContains(t, err, "is not allowed as it can be mistaken")
 
@@ -181,7 +181,7 @@ func TestAccountUpdateMethods(t *testing.T) {
 		// Ensure that the function errors out if we try update an
 		// account that does not exist.
 		err := store.UpdateAccountBalanceAndExpiry(
-			ctx, AccountID{}, fn.None[int64](),
+			ctx, Alias{}, fn.None[int64](),
 			fn.None[time.Time](),
 		)
 		require.ErrorIs(t, err, ErrAccNotFound)
@@ -265,7 +265,7 @@ func TestAccountUpdateMethods(t *testing.T) {
 
 		// Adding an invoice to an account that doesnt exist yet should
 		// error out.
-		err = store.AddAccountInvoice(ctx, AccountID{}, lntypes.Hash{})
+		err = store.AddAccountInvoice(ctx, Alias{}, lntypes.Hash{})
 		require.ErrorIs(t, err, ErrAccNotFound)
 
 		// Add an invoice to the account.
@@ -295,7 +295,7 @@ func TestAccountUpdateMethods(t *testing.T) {
 
 		// Increasing the balance of an account that doesn't exist
 		// should error out.
-		err := store.CreditAccount(ctx, AccountID{}, 100)
+		err := store.CreditAccount(ctx, Alias{}, 100)
 		require.ErrorIs(t, err, ErrAccNotFound)
 
 		acct, err := store.NewAccount(ctx, 123, time.Time{}, "foo")
@@ -345,7 +345,7 @@ func TestAccountUpdateMethods(t *testing.T) {
 		// Assert that calling the method for a non-existent account
 		// errors out.
 		_, err = store.UpsertAccountPayment(
-			ctx, AccountID{}, lntypes.Hash{}, 0,
+			ctx, Alias{}, lntypes.Hash{}, 0,
 			lnrpc.Payment_UNKNOWN,
 		)
 		require.ErrorIs(t, err, ErrAccNotFound)

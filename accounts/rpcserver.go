@@ -156,7 +156,7 @@ func (s *RPCServer) ListAccounts(ctx context.Context,
 	}, nil
 }
 
-// AccountInfo returns the account with the given ID or label.
+// AccountInfo returns the account with the given Alias or label.
 func (s *RPCServer) AccountInfo(ctx context.Context,
 	req *litrpc.AccountInfoRequest) (*litrpc.Account, error) {
 
@@ -196,23 +196,23 @@ func (s *RPCServer) RemoveAccount(ctx context.Context,
 	return &litrpc.RemoveAccountResponse{}, nil
 }
 
-// findAccount finds an account by its ID or label.
+// findAccount finds an account by its Alias or label.
 func (s *RPCServer) findAccount(ctx context.Context, id string, label string) (
-	AccountID, error) {
+	Alias, error) {
 
 	switch {
 	case id != "" && label != "":
-		return AccountID{}, fmt.Errorf("either account ID or label " +
+		return Alias{}, fmt.Errorf("either account Alias or label " +
 			"must be specified, not both")
 
 	case id != "":
-		// Account ID is always a hex string, convert it to our account
-		// ID type.
-		var accountID AccountID
+		// Account Alias is always a hex string, convert it to our account
+		// Alias type.
+		var accountID Alias
 		decoded, err := hex.DecodeString(id)
 		if err != nil {
-			return AccountID{}, fmt.Errorf("error decoding "+
-				"account ID: %w", err)
+			return Alias{}, fmt.Errorf("error decoding "+
+				"account Alias: %w", err)
 		}
 		copy(accountID[:], decoded)
 
@@ -222,7 +222,7 @@ func (s *RPCServer) findAccount(ctx context.Context, id string, label string) (
 		// We need to find the account by its label.
 		accounts, err := s.service.Accounts(ctx)
 		if err != nil {
-			return AccountID{}, fmt.Errorf("unable to list "+
+			return Alias{}, fmt.Errorf("unable to list "+
 				"accounts: %w", err)
 		}
 
@@ -232,11 +232,11 @@ func (s *RPCServer) findAccount(ctx context.Context, id string, label string) (
 			}
 		}
 
-		return AccountID{}, fmt.Errorf("unable to find account "+
+		return Alias{}, fmt.Errorf("unable to find account "+
 			"with label '%s'", label)
 
 	default:
-		return AccountID{}, fmt.Errorf("either account ID or label " +
+		return Alias{}, fmt.Errorf("either account Alias or label " +
 			"must be specified")
 	}
 }
