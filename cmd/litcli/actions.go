@@ -35,7 +35,7 @@ var listActionsCommand = cli.Command{
 		},
 		cli.StringFlag{
 			Name: "session_id",
-			Usage: "The hex encoded session ID to filter the " +
+			Usage: "The hex encoded session Alias to filter the " +
 				"actions by. If left empty, then all actions " +
 				"will be returned.",
 		},
@@ -86,12 +86,12 @@ var listActionsCommand = cli.Command{
 		},
 		cli.StringFlag{
 			Name: "group_id",
-			Usage: "The hex encoded group ID to filter the " +
-				"actions by. The group ID is the same for " +
+			Usage: "The hex encoded group Alias to filter the " +
+				"actions by. The group Alias is the same for " +
 				"all sessions that have been linked. If a " +
 				"session has no linked sessions then the " +
-				"group ID will be the same as the " +
-				"session ID. This flag will be ignored if " +
+				"group Alias will be the same as the " +
+				"session Alias. This flag will be ignored if " +
 				"the `session_id` flag is set.",
 		},
 	},

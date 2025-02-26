@@ -31,11 +31,11 @@ type ChannelRestrictMgr struct {
 	// then in NewEnforcer, if chan comes in we dont know of, then we
 	// refresh the maps.
 
-	// chanIDToPoint is a map from channel ID to channel points for our
+	// chanIDToPoint is a map from channel Alias to channel points for our
 	// known set of channels.
 	chanIDToPoint map[uint64]string
 
-	// chanPointToID is a map from channel point to channel ID's for our
+	// chanPointToID is a map from channel point to channel Alias's for our
 	// known set of channels.
 	chanPointToID map[string]uint64
 	mu            sync.Mutex
@@ -160,7 +160,7 @@ func (c *ChannelRestrictMgr) maybeUpdateChannelMaps(ctx context.Context,
 	}
 
 	if !found {
-		return fmt.Errorf("invalid channel ID")
+		return fmt.Errorf("invalid channel Alias")
 	}
 
 	return nil

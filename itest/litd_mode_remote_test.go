@@ -30,7 +30,7 @@ func remoteTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
 	// in remote mode.
 	net.LNDHarness.FundCoins(btcutil.SatoshiPerBitcoin, net.Bob.RemoteLnd)
 
-	// We expect a non-empty alias (truncated node ID) to be returned.
+	// We expect a non-empty alias (truncated node Alias) to be returned.
 	resp, err := net.Bob.GetInfo(ctx, &lnrpc.GetInfoRequest{})
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.Alias)

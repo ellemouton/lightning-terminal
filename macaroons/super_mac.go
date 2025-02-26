@@ -21,7 +21,7 @@ type SuperMacaroonValidator func(ctx context.Context,
 	superMacaroon []byte, requiredPermissions []bakery.Op,
 	fullMethod string) error
 
-// NewSuperMacaroonRootKeyID returns a new macaroon root key ID that has the
+// NewSuperMacaroonRootKeyID returns a new macaroon root key Alias that has the
 // prefix to mark it as a super macaroon root key.
 func NewSuperMacaroonRootKeyID(id [4]byte) uint64 {
 	rootKeyBytes := make([]byte, 8)
@@ -47,7 +47,7 @@ func ParseMacaroon(macHex string) (*macaroon.Macaroon, error) {
 }
 
 // IsSuperMacaroon returns true if the given hex encoded macaroon is a super
-// macaroon baked by LiT which can be identified by its root key ID.
+// macaroon baked by LiT which can be identified by its root key Alias.
 func IsSuperMacaroon(macHex string) bool {
 	mac, err := ParseMacaroon(macHex)
 	if err != nil {
@@ -62,8 +62,8 @@ func IsSuperMacaroon(macHex string) bool {
 	return isSuperMacaroonRootKeyID(rootKeyID)
 }
 
-// isSuperMacaroonRootKeyID returns true if the given macaroon root key ID (also
-// known as storage ID) is a super macaroon, which can be identified by its
+// isSuperMacaroonRootKeyID returns true if the given macaroon root key Alias (also
+// known as storage Alias) is a super macaroon, which can be identified by its
 // first 4 bytes.
 func isSuperMacaroonRootKeyID(rootKeyID uint64) bool {
 	rootKeyBytes := make([]byte, 8)

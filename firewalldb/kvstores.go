@@ -16,11 +16,11 @@ we can then guarantee atomicity if changes are made to both the permanent and
 temporary stores.
 
 rules -> perm -> rule-name -> global   -> {k:v}
-              -> sessions -> group ID  -> session-kv-store  -> {k:v}
+              -> sessions -> group Alias  -> session-kv-store  -> {k:v}
 			               -> feature-kv-stores -> feature-name -> {k:v}
 
       -> temp -> rule-name -> global   -> {k:v}
-	      -> sessions -> group ID  -> session-kv-store  -> {k:v}
+	      -> sessions -> group Alias  -> session-kv-store  -> {k:v}
 				       -> feature-kv-stores -> feature-name -> {k:v}
 */
 
@@ -75,12 +75,12 @@ type KVStores interface {
 type KVStoreTx interface {
 	// Global returns a persisted global, rule-name indexed, kv store. A
 	// rule with a given name will have access to this store independent of
-	// group ID or feature.
+	// group Alias or feature.
 	Global() KVStore
 
 	// Local returns a persisted local kv store for the rule. Depending on
 	// how the implementation is initialised, this will either be under the
-	// group ID namespace or the group ID _and_ feature name namespace.
+	// group Alias namespace or the group Alias _and_ feature name namespace.
 	Local() KVStore
 
 	// GlobalTemp is similar to the Global store except that its contents
@@ -114,11 +114,11 @@ type KVStore interface {
 
 // RulesDB can be used to initialise a new rules.KVStores.
 type RulesDB interface {
-	GetKVStores(rule string, groupID session.ID, feature string) KVStores
+	GetKVStores(rule string, groupID session.Alias, feature string) KVStores
 }
 
 // GetKVStores constructs a new rules.KVStores backed by a bbolt db.
-func (db *DB) GetKVStores(rule string, groupID session.ID,
+func (db *DB) GetKVStores(rule string, groupID session.Alias,
 	feature string) KVStores {
 
 	return &kvStores{
@@ -133,7 +133,7 @@ func (db *DB) GetKVStores(rule string, groupID session.ID,
 type kvStores struct {
 	*DB
 	ruleName    string
-	groupID     session.ID
+	groupID     session.Alias
 	featureName string
 }
 
@@ -399,11 +399,11 @@ func getGlobalRuleBucket(perm bool, ruleName string) getBucketFunc {
 }
 
 // getSessionRuleBucket returns a function that can be used to fetch the
-// bucket under which a kv store for a specific rule-name and group ID is
+// bucket under which a kv store for a specific rule-name and group Alias is
 // stored. The `perm` param determines if the temporary or permanent store is
 // used.
 func getSessionRuleBucket(perm bool, ruleName string,
-	groupID session.ID) getBucketFunc {
+	groupID session.Alias) getBucketFunc {
 
 	return func(tx *bbolt.Tx, create bool) (*bbolt.Bucket, error) {
 		ruleBucket, err := getRuleBucket(perm, ruleName)(tx, create)
@@ -435,11 +435,11 @@ func getSessionRuleBucket(perm bool, ruleName string,
 }
 
 // getSessionFeatureRuleBucket returns a function that can be used to fetch the
-// bucket under which a kv store for a specific rule-name, group ID and
+// bucket under which a kv store for a specific rule-name, group Alias and
 // feature name is stored. The `perm` param determines if the temporary or
 // permanent store is used.
 func getSessionFeatureRuleBucket(perm bool, ruleName string,
-	groupID session.ID, featureName string) getBucketFunc {
+	groupID session.Alias, featureName string) getBucketFunc {
 
 	return func(tx *bbolt.Tx, create bool) (*bbolt.Bucket, error) {
 		sessBucket, err := getSessionRuleBucket(

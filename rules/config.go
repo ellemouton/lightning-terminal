@@ -22,13 +22,13 @@ type Config interface {
 	// required to use them.
 	GetMethodPerms() func(string) ([]bakery.Op, bool)
 
-	// GetNodePubKey returns the node ID of the lnd node.
+	// GetNodePubKey returns the node Alias of the lnd node.
 	GetNodePubKey() [33]byte
 
 	// GetRouterClient returns an lnd router client.
 	GetRouterClient() lndclient.RouterClient
 
-	// GetReqID is the request ID of the call being evaluated. This can be
+	// GetReqID is the request Alias of the call being evaluated. This can be
 	// used to link a request with a response.
 	GetReqID() int64
 
@@ -60,7 +60,7 @@ type ConfigImpl struct {
 	// RouterClient is an lnd router client.
 	RouterClient lndclient.RouterClient
 
-	// ReqID is the request ID of the call being evaluated. This can be used
+	// ReqID is the request Alias of the call being evaluated. This can be used
 	// to link a request with a response.
 	ReqID int64
 
@@ -86,7 +86,7 @@ func (c *ConfigImpl) GetMethodPerms() func(string) ([]bakery.Op, bool) {
 	return c.MethodPerms
 }
 
-// GetNodePubKey returns the node ID for the lnd node.
+// GetNodePubKey returns the node Alias for the lnd node.
 func (c *ConfigImpl) GetNodePubKey() [33]byte {
 	return c.NodeID
 }
@@ -96,7 +96,7 @@ func (c *ConfigImpl) GetRouterClient() lndclient.RouterClient {
 	return c.RouterClient
 }
 
-// GetReqID returns the request ID of the request or response being evaluated.
+// GetReqID returns the request Alias of the request or response being evaluated.
 func (c *ConfigImpl) GetReqID() int64 {
 	return c.ReqID
 }

@@ -1,12 +1,15 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/lightninglabs/lightning-node-connect/mailbox"
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/macaroons"
+	"github.com/lightningnetwork/lnd/fn"
 	"gopkg.in/macaroon-bakery.v2/bakery"
 	"gopkg.in/macaroon.v2"
 )
@@ -27,15 +30,16 @@ const (
 type State uint8
 
 /*
-		/---> StateExpired (terminal)
-StateCreated ---
-       		\---> StateRevoked (terminal)
+				   /---> StateExpired (terminal)
+StateReserved ---> StateCreated ---
+       | 			  |
+       	\-------------------------+---> StateRevoked (terminal)
 */
 
 const (
 	// StateCreated is the state of a session once it has been fully
-	// committed to the Store and is ready to be used. This is the first
-	// state of a session.
+	// committed to the BoltStore and is ready to be used. This is the
+	// first state after StateReserved.
 	StateCreated State = 0
 
 	// StateInUse is the state of a session that is currently being used.
@@ -52,10 +56,10 @@ const (
 	// date.
 	StateExpired State = 3
 
-	// StateReserved is a temporary initial state of a session. On start-up,
-	// any sessions in this state should be cleaned up.
-	//
-	// NOTE: this isn't used yet.
+	// StateReserved is a temporary initial state of a session. This is used
+	// to reserve a unique Alias and private key pair for a session before it
+	// is fully created. On start-up, any sessions in this state should be
+	// cleaned up.
 	StateReserved State = 4
 )
 
@@ -67,6 +71,10 @@ func (s State) Terminal() bool {
 // legalStateShifts is a map that defines the legal State transitions that a
 // Session can be put through.
 var legalStateShifts = map[State]map[State]bool{
+	StateReserved: {
+		StateCreated: true,
+		StateRevoked: true,
+	},
 	StateCreated: {
 		StateExpired: true,
 		StateRevoked: true,
@@ -90,7 +98,7 @@ type FeaturesConfig map[string][]byte
 
 // Session is a struct representing a long-term Terminal Connect session.
 type Session struct {
-	ID                ID
+	Alias             Alias
 	Label             string
 	State             State
 	Type              Type
@@ -108,18 +116,19 @@ type Session struct {
 	FeatureConfig     *FeaturesConfig
 	WithPrivacyMapper bool
 	PrivacyFlags      PrivacyFlags
+	Account           fn.Option[accounts.Alias]
 
-	// GroupID is the Session ID of the very first Session in the linked
+	// GroupAlias is the Session Alias of the very first Session in the linked
 	// group of sessions. If this is the very first session in the group
-	// then this will be the same as ID.
-	GroupID ID
+	// then this will be the same as Alias.
+	GroupAlias Alias
 }
 
 // buildSession creates a new session with the given user-defined parameters.
-func buildSession(id ID, localPrivKey *btcec.PrivateKey, label string, typ Type,
+func buildSession(alias Alias, localPrivKey *btcec.PrivateKey, label string, typ Type,
 	created, expiry time.Time, serverAddr string, devServer bool,
 	perms []bakery.Op, caveats []macaroon.Caveat,
-	featureConfig FeaturesConfig, privacy bool, linkedGroupID *ID,
+	featureConfig FeaturesConfig, privacy bool, linkedGroupAlias *Alias,
 	flags PrivacyFlags) (*Session, error) {
 
 	_, pairingSecret, err := mailbox.NewPassphraseEntropy()
@@ -127,21 +136,21 @@ func buildSession(id ID, localPrivKey *btcec.PrivateKey, label string, typ Type,
 		return nil, fmt.Errorf("error deriving pairing secret: %v", err)
 	}
 
-	macRootKey := macaroons.NewSuperMacaroonRootKeyID(id)
+	macRootKey := macaroons.NewSuperMacaroonRootKeyID(alias)
 
-	// The group ID will by default be the same as the Session ID
+	// The group Alias will by default be the same as the Session Alias
 	// unless this session links to a previous session.
-	groupID := id
-	if linkedGroupID != nil {
+	groupAlias := alias
+	if linkedGroupAlias != nil {
 		// If this session is linked to a previous session, then the
-		// group ID is the same as the linked session's group ID.
-		groupID = *linkedGroupID
+		// group Alias is the same as the linked session's group Alias.
+		groupAlias = *linkedGroupAlias
 	}
 
 	sess := &Session{
-		ID:                id,
+		Alias:             alias,
 		Label:             label,
-		State:             StateCreated,
+		State:             StateReserved,
 		Type:              typ,
 		Expiry:            expiry.UTC(),
 		CreatedAt:         created.UTC(),
@@ -154,7 +163,7 @@ func buildSession(id ID, localPrivKey *btcec.PrivateKey, label string, typ Type,
 		RemotePublicKey:   nil,
 		WithPrivacyMapper: privacy,
 		PrivacyFlags:      flags,
-		GroupID:           groupID,
+		GroupAlias:        groupAlias,
 	}
 
 	if perms != nil || caveats != nil {
@@ -171,77 +180,59 @@ func buildSession(id ID, localPrivKey *btcec.PrivateKey, label string, typ Type,
 	return sess, nil
 }
 
-// IDToGroupIndex defines an interface for the session ID to group ID index.
-type IDToGroupIndex interface {
-	// GetGroupID will return the group ID for the given session ID.
-	GetGroupID(sessionID ID) (ID, error)
+// AliasToGroupIndex defines an interface for the session Alias to group Alias
+// index.
+type AliasToGroupIndex interface {
+	// GetGroupAlias will return the group Alias for the given session Alias.
+	GetGroupAlias(ctx context.Context, sessionAlias Alias) (Alias, error)
 
-	// GetSessionIDs will return the set of session IDs that are in the
-	// group with the given ID.
-	GetSessionIDs(groupID ID) ([]ID, error)
+	// GetSessionAliases will return the set of session Aliases that are in
+	// the group with the given Alias.
+	GetSessionAliases(ctx context.Context, groupAlias Alias) ([]Alias, error)
 }
 
 // Store is the interface a persistent storage must implement for storing and
 // retrieving Terminal Connect sessions.
 type Store interface {
 	// NewSession creates a new session with the given user-defined
-	// parameters.
-	//
-	// NOTE: currently this purely a constructor of the Session type and
-	// does not make any database calls. This will be changed in a future
-	// commit.
-	NewSession(id ID, localPrivKey *btcec.PrivateKey, label string,
-		typ Type, expiry time.Time, serverAddr string, devServer bool,
-		perms []bakery.Op, caveats []macaroon.Caveat,
-		featureConfig FeaturesConfig, privacy bool, linkedGroupID *ID,
-		flags PrivacyFlags) (*Session, error)
-
-	// CreateSession adds a new session to the store. If a session with the
-	// same local public key already exists an error is returned. This
-	// can only be called with a Session with an ID that the Store has
-	// reserved.
-	CreateSession(*Session) error
+	// parameters. The session will remain in the StateReserved state until
+	// ShiftState is called to update the state.
+	NewSession(ctx context.Context, label string, typ Type,
+		expiry time.Time, serverAddr string,
+		devServer bool, perms []bakery.Op, caveats []macaroon.Caveat,
+		featureConfig FeaturesConfig, privacy bool, linkedGroupID *Alias,
+		flags PrivacyFlags, account fn.Option[accounts.Alias]) (
+		*Session, error)
 
 	// GetSession fetches the session with the given key.
-	GetSession(key *btcec.PublicKey) (*Session, error)
+	GetSession(ctx context.Context, key *btcec.PublicKey) (*Session, error)
 
 	// ListAllSessions returns all sessions currently known to the store.
-	ListAllSessions() ([]*Session, error)
+	ListAllSessions(ctx context.Context) ([]*Session, error)
 
 	// ListSessionsByType returns all sessions of the given type.
-	ListSessionsByType(t Type) ([]*Session, error)
+	ListSessionsByType(ctx context.Context, t Type) ([]*Session, error)
 
 	// ListSessionsByState returns all sessions currently known to the store
 	// that are in the given states.
-	ListSessionsByState(...State) ([]*Session, error)
+	ListSessionsByState(ctx context.Context, state State) ([]*Session,
+		error)
 
 	// UpdateSessionRemotePubKey can be used to add the given remote pub key
 	// to the session with the given local pub key.
-	UpdateSessionRemotePubKey(localPubKey,
+	UpdateSessionRemotePubKey(ctx context.Context, localPubKey,
 		remotePubKey *btcec.PublicKey) error
 
-	// GetUnusedIDAndKeyPair can be used to generate a new, unused, local
-	// private key and session ID pair. Care must be taken to ensure that no
-	// other thread calls this before the returned ID and key pair from this
-	// method are either used or discarded.
-	GetUnusedIDAndKeyPair() (ID, *btcec.PrivateKey, error)
-
-	// GetSessionByID fetches the session with the given ID.
-	GetSessionByID(id ID) (*Session, error)
-
-	// CheckSessionGroupPredicate iterates over all the sessions in a group
-	// and checks if each one passes the given predicate function. True is
-	// returned if each session passes.
-	CheckSessionGroupPredicate(groupID ID,
-		fn func(s *Session) bool) (bool, error)
+	// GetSessionByAlias fetches the session with the given Alias.
+	GetSessionByAlias(ctx context.Context, id Alias) (*Session, error)
 
 	// DeleteReservedSessions deletes all sessions that are in the
 	// StateReserved state.
-	DeleteReservedSessions() error
+	DeleteReservedSessions(ctx context.Context) error
 
-	// ShiftState updates the state of the session with the given ID to the
+	// ShiftState updates the state of the session with the given Alias to the
 	// "dest" state.
-	ShiftState(id ID, dest State) error
+	ShiftState(ctx context.Context, alias Alias, dest State) error
 
-	IDToGroupIndex
+	AliasToGroupIndex
 }

@@ -4,6 +4,7 @@ package litrpc
 
 import (
 	context "context"
+
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -39,7 +40,7 @@ type AccountsClient interface {
 	// database.
 	ListAccounts(ctx context.Context, in *ListAccountsRequest, opts ...grpc.CallOption) (*ListAccountsResponse, error)
 	// litcli: `accounts info`
-	// AccountInfo returns the account with the given ID or label.
+	// AccountInfo returns the account with the given Alias or label.
 	AccountInfo(ctx context.Context, in *AccountInfoRequest, opts ...grpc.CallOption) (*Account, error)
 	// litcli: `accounts remove`
 	// RemoveAccount removes the given account from the account database.
@@ -124,7 +125,7 @@ type AccountsServer interface {
 	// database.
 	ListAccounts(context.Context, *ListAccountsRequest) (*ListAccountsResponse, error)
 	// litcli: `accounts info`
-	// AccountInfo returns the account with the given ID or label.
+	// AccountInfo returns the account with the given Alias or label.
 	AccountInfo(context.Context, *AccountInfoRequest) (*Account, error)
 	// litcli: `accounts remove`
 	// RemoveAccount removes the given account from the account database.

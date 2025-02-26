@@ -11,7 +11,7 @@ import (
 // ErrUnknownRule indicates that LiT is unaware of a values name.
 var ErrUnknownRule = fmt.Errorf("unknown rule")
 
-// LndConnIdLen is the length of the random connection ID used to create
+// LndConnIdLen is the length of the random connection Alias used to create
 // unique request identifiers.
 const LndConnIdLen = 16
 

@@ -31,7 +31,7 @@ var privacyMapCommands = cli.Command{
 		},
 		cli.StringFlag{
 			Name: "group_id",
-			Usage: "The ID of the session group who's privacy " +
+			Usage: "The Alias of the session group who's privacy " +
 				"map DB should be queried.",
 		},
 	},

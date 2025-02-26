@@ -70,7 +70,11 @@ message CreateAccountResponse {
 }
 
 message Account {
-    // The ID of the account.
+    // The unique alias of the Account.
+    //
+    // NOTE: the name is kept for backwards compatibility, but this ID is now
+    // the unique alias identifier of the Account. At an RPC level, we will
+    // continue to refer to an account using this alias.
     string id = 1;
 
     /*
@@ -130,6 +134,9 @@ message AccountPayment {
 
 message UpdateAccountRequest {
     // The ID of the account to update. Either the ID or the label must be set.
+    //
+    // NOTE: This is actually the account's unique alias. We keep the "id" name
+    // for backwards compatibility.
     string id = 1;
 
     // The new account balance to set. Set to -1 to not update the balance.
@@ -174,6 +181,9 @@ message RemoveAccountRequest {
     /*
     The hexadecimal ID of the account to remove. Either the ID or the label must
     be set.
+
+    NOTE: This is actually the account's unique alias. We keep the "id" name
+    for backwards compatibility.
     */
     string id = 1;
 

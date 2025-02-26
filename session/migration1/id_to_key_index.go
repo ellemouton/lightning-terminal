@@ -115,10 +115,10 @@ func MigrateSessionIDToKeyIndex(tx *bbolt.Tx, timeNow func() time.Time) error {
 
 		// For each session other than the newest one, we ensure that
 		// the session is revoked. We do this in case there was a
-		// collision in the ID used for the session since now we want to
-		// populate the ID-to-key index which should be a one-to-one
+		// collision in the Alias used for the session since now we want to
+		// populate the Alias-to-key index which should be a one-to-one
 		// mapping. So there is a small chance that the DB contains a
-		// session with no entry in this ID-to-key index but at least
+		// session with no entry in this Alias-to-key index but at least
 		// this will not be an active session.
 		for _, session := range sessions[:len(sessions)-1] {
 			serialisedSession := sessionBucket.Get(session.key)

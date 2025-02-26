@@ -25,7 +25,7 @@ var litCommands = []cli.Command{
 			cli.StringFlag{
 				Name: "root_key_suffix",
 				Usage: "A 4-byte suffix to use in the " +
-					"construction of the root key ID. " +
+					"construction of the root key Alias. " +
 					"If not provided, then a random one " +
 					"will be generated. This must be " +
 					"specified as a hex string using a " +

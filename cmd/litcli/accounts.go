@@ -151,7 +151,7 @@ var updateAccountCommand = cli.Command{
 	Flags: []cli.Flag{
 		cli.StringFlag{
 			Name:  idName,
-			Usage: "The ID of the account to update.",
+			Usage: "The Alias of the account to update.",
 		},
 		cli.StringFlag{
 			Name:  labelName,
@@ -270,7 +270,7 @@ var accountInfoCommand = cli.Command{
 	Flags: []cli.Flag{
 		cli.StringFlag{
 			Name:  idName,
-			Usage: "The ID of the account.",
+			Usage: "The Alias of the account.",
 		},
 		cli.StringFlag{
 			Name:  labelName,
@@ -316,7 +316,7 @@ var removeAccountCommand = cli.Command{
 	Flags: []cli.Flag{
 		cli.StringFlag{
 			Name:  idName,
-			Usage: "The ID of the account.",
+			Usage: "The Alias of the account.",
 		},
 		cli.StringFlag{
 			Name:  labelName,
@@ -358,7 +358,7 @@ func parseIDOrLabel(ctx *cli.Context) (string, string, cli.Args, error) {
 
 	switch {
 	case ctx.IsSet(idName) && ctx.IsSet(labelName):
-		return "", "", nil, fmt.Errorf("either account ID or label " +
+		return "", "", nil, fmt.Errorf("either account Alias or label " +
 			"must be specified, not both")
 
 	case ctx.IsSet(idName):
@@ -372,13 +372,13 @@ func parseIDOrLabel(ctx *cli.Context) (string, string, cli.Args, error) {
 		args = args.Tail()
 
 		// Since we have a positional argument, we cannot be sure it's
-		// an ID. So we check if it's an ID by trying to hex decode it
+		// an Alias. So we check if it's an Alias by trying to hex decode it
 		// and by checking the length. This will break if the user
 		// chooses labels that are also valid hex encoded IDs. But since
 		// the label is supposed to be human-readable, this should be
 		// unlikely.
 		_, err := hex.DecodeString(accountID)
-		if len(accountID) != hex.EncodedLen(accounts.AccountIDLen) ||
+		if len(accountID) != hex.EncodedLen(accounts.AliasLen) ||
 			err != nil {
 
 			label = accountID

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightningnetwork/lnd/tlv"
 	"gopkg.in/macaroon-bakery.v2/bakery"
 	"gopkg.in/macaroon.v2"
@@ -71,10 +72,10 @@ func SerializeSession(w io.Writer, session *Session) error {
 
 // constructSessionTlvRecords takes a Session and gathers all the TLV records
 // that need to be serialised for the session. The withGroupID boolean can be
-// used to exclude the tlv record for the GroupID of the session. This should
+// used to exclude the tlv record for the GroupAlias of the session. This should
 // only ever be set to true for testing purposes to ensure that older sessions
-// which did do not have the GroupID serialised still correctly deserialize and
-// set the correct GroupID in the Session struct.
+// which did do not have the GroupAlias serialised still correctly deserialize and
+// set the correct GroupAlias in the Session struct.
 func constructSessionTLVRecords(session *Session, withGroupID bool) (
 	[]tlv.Record, error) {
 
@@ -168,7 +169,7 @@ func constructSessionTLVRecords(session *Session, withGroupID bool) (
 	)
 
 	if withGroupID {
-		groupID := session.GroupID[:]
+		groupID := session.GroupAlias[:]
 		tlvRecords = append(tlvRecords, tlv.MakePrimitiveRecord(
 			typeGroupID, &groupID,
 		))
@@ -233,7 +234,7 @@ func DeserializeSession(r io.Reader) (*Session, error) {
 		return nil, err
 	}
 
-	session.ID = IDFromMacRootKeyID(session.MacaroonRootKey)
+	session.Alias = AliasFromMacRootKeyID(session.MacaroonRootKey)
 	session.Label = string(label)
 	session.State = State(state)
 	session.Type = Type(typ)
@@ -269,13 +270,22 @@ func DeserializeSession(r io.Reader) (*Session, error) {
 		session.FeatureConfig = &featureConfig
 	}
 
-	// The GroupID field might not be set for older sessions. So we attempt
-	// to read it from the DB, otherwise we set the group ID to the session
-	// ID.
+	// The GroupAlias field might not be set for older sessions. So we attempt
+	// to read it from the DB, otherwise we set the group Alias to the session
+	// Alias.
 	if t, ok := parsedTypes[typeGroupID]; ok && t == nil {
-		copy(session.GroupID[:], groupID)
+		copy(session.GroupAlias[:], groupID)
 	} else {
-		session.GroupID = session.ID
+		session.GroupAlias = session.Alias
+	}
+
+	if session.MacaroonRecipe != nil {
+		session.Account, err = accounts.AliasFromCaveats(
+			session.MacaroonRecipe.Caveats,
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return session, nil

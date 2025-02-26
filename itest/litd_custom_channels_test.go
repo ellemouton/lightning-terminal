@@ -2059,7 +2059,7 @@ func testCustomChannelsLiquidityEdgeCases(ctx context.Context,
 	// We now create a hodl invoice on Fabia, for 10k assets.
 	hodlInv := createAssetHodlInvoice(t.t, erin, fabia, 10_000, assetID)
 
-	// Charlie tries to pay via Dave, by providing the RFQ quote ID that was
+	// Charlie tries to pay via Dave, by providing the RFQ quote Alias that was
 	// manually created above.
 	var quoteID rfqmsg.ID
 	copy(quoteID[:], resQ.GetAcceptedQuote().Id)
@@ -2103,7 +2103,7 @@ func testCustomChannelsLiquidityEdgeCases(ctx context.Context,
 	)
 
 	// Now Charlie pays the invoice, again by using the manually specified
-	// RFQ quote ID. This payment should succeed.
+	// RFQ quote Alias. This payment should succeed.
 	payInvoiceWithAssets(
 		t.t, charlie, dave, invoiceResp.PaymentRequest, assetID,
 		withSmallShards(), withRFQ(quoteID),

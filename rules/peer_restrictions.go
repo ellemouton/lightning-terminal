@@ -111,7 +111,7 @@ func (c *PeerRestrictMgr) EmptyValue() Values {
 }
 
 // maybeUpdateMaps updates the managers peer-to-channel and channel-to-peer maps
-// if the given peer ID is unknown to the manager.
+// if the given peer Alias is unknown to the manager.
 func (c *PeerRestrictMgr) maybeUpdateMaps(ctx context.Context,
 	cfg peerRestrictCfg, id string) error {
 

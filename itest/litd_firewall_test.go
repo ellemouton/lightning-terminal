@@ -199,7 +199,7 @@ func testFirewallRules(ctx context.Context, net *NetworkHarness,
 	// in integrated mode.
 	net.SendCoins(t.t, btcutil.SatoshiPerBitcoin, net.Alice)
 
-	// We expect a non-empty alias (truncated node ID) to be returned.
+	// We expect a non-empty alias (truncated node Alias) to be returned.
 	resp, err := net.Alice.GetInfo(ctx, &lnrpc.GetInfoRequest{})
 	require.NoError(t.t, err)
 	require.NotEmpty(t.t, resp.Alias)
@@ -819,7 +819,7 @@ func testSessionLinking(net *NetworkHarness, t *harnessTest) {
 		require.True(t.t, aliceObfchans[channel.ChanId])
 
 		// Check that the obfuscated channel point for the unrestricted
-		// channel's ID is equal to the one created before due to the
+		// channel's Alias is equal to the one created before due to the
 		// contents of the feature config.
 		if channel.ChanId == obfUnrestrictedChanID {
 			require.Equal(t.t, channel.ChannelPoint,
@@ -2159,7 +2159,7 @@ func testPeerAndChannelRestrictRules(net *NetworkHarness, t *harnessTest) {
 	require.NoError(t.t, err)
 	require.Len(t.t, feeReport.ChannelFees, 4)
 
-	// Query Alice's privacy mapper to see which pseudo channel ID the
+	// Query Alice's privacy mapper to see which pseudo channel Alias the
 	// autopilot should use when it tries to update one of the channels
 	// that Alice has with Bob.
 	litClient := litrpc.NewFirewallClient(rawConn)
@@ -2250,7 +2250,7 @@ func testPeerAndChannelRestrictRules(net *NetworkHarness, t *harnessTest) {
 	require.ErrorContains(t.t, err, "illegal action on peer in peer "+
 		"restriction list")
 
-	// Again we query Alice's privacy mapper to see which pseudo channel ID
+	// Again we query Alice's privacy mapper to see which pseudo channel Alias
 	// the autopilot should use for the channel she has with Charlie.
 	// We first do this for the channel that is in the channel restrict
 	// list.

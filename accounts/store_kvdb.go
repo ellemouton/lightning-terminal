@@ -54,8 +54,8 @@ var (
 	// byteOrder is the binary byte order we use to encode integers.
 	byteOrder = binary.BigEndian
 
-	// zeroID is an empty account ID.
-	zeroID = AccountID{}
+	// zeroID is an empty account Alias.
+	zeroID = Alias{}
 )
 
 // BoltStore wraps the bolt DB that stores all accounts and their balances.
@@ -114,7 +114,7 @@ func (s *BoltStore) Close() error {
 }
 
 // NewAccount creates a new OffChainBalanceAccount with the given balance and a
-// randomly chosen ID.
+// randomly chosen Alias.
 //
 // NOTE: This is part of the Store interface.
 func (s *BoltStore) NewAccount(ctx context.Context, balance lnwire.MilliSatoshi,
@@ -123,14 +123,14 @@ func (s *BoltStore) NewAccount(ctx context.Context, balance lnwire.MilliSatoshi,
 
 	// If a label is set, it must be unique, as we use it to identify the
 	// account in some of the RPCs. It also can't be mistaken for a hex
-	// encoded account ID to avoid confusion and make it easier for the CLI
+	// encoded account Alias to avoid confusion and make it easier for the CLI
 	// to distinguish between the two.
 	if len(label) > 0 {
 		if _, err := hex.DecodeString(label); err == nil &&
-			len(label) == hex.EncodedLen(AccountIDLen) {
+			len(label) == hex.EncodedLen(AliasLen) {
 
 			return nil, fmt.Errorf("the label '%s' is not allowed "+
-				"as it can be mistaken for an account ID",
+				"as it can be mistaken for an account Alias",
 				label)
 		}
 
@@ -170,7 +170,7 @@ func (s *BoltStore) NewAccount(ctx context.Context, balance lnwire.MilliSatoshi,
 
 		id, err := uniqueRandomAccountID(bucket)
 		if err != nil {
-			return fmt.Errorf("error creating random account ID: "+
+			return fmt.Errorf("error creating random account Alias: "+
 				"%w", err)
 		}
 
@@ -191,7 +191,7 @@ func (s *BoltStore) NewAccount(ctx context.Context, balance lnwire.MilliSatoshi,
 //
 // NOTE: This is part of the Store interface.
 func (s *BoltStore) UpdateAccountBalanceAndExpiry(_ context.Context,
-	id AccountID, newBalance fn.Option[int64],
+	id Alias, newBalance fn.Option[int64],
 	newExpiry fn.Option[time.Time]) error {
 
 	update := func(account *OffChainBalanceAccount) error {
@@ -208,10 +208,10 @@ func (s *BoltStore) UpdateAccountBalanceAndExpiry(_ context.Context,
 	return s.updateAccount(id, update)
 }
 
-// AddAccountInvoice adds an invoice hash to the account with the given ID.
+// AddAccountInvoice adds an invoice hash to the account with the given Alias.
 //
 // NOTE: This is part of the Store interface.
-func (s *BoltStore) AddAccountInvoice(_ context.Context, id AccountID,
+func (s *BoltStore) AddAccountInvoice(_ context.Context, id Alias,
 	hash lntypes.Hash) error {
 
 	update := func(account *OffChainBalanceAccount) error {
@@ -223,11 +223,11 @@ func (s *BoltStore) AddAccountInvoice(_ context.Context, id AccountID,
 	return s.updateAccount(id, update)
 }
 
-// CreditAccount increases the balance of the account with the given ID
+// CreditAccount increases the balance of the account with the given Alias
 // by the given amount.
 //
 // NOTE: This is part of the Store interface.
-func (s *BoltStore) CreditAccount(_ context.Context, id AccountID,
+func (s *BoltStore) CreditAccount(_ context.Context, id Alias,
 	amount lnwire.MilliSatoshi) error {
 
 	update := func(account *OffChainBalanceAccount) error {
@@ -244,11 +244,11 @@ func (s *BoltStore) CreditAccount(_ context.Context, id AccountID,
 	return s.updateAccount(id, update)
 }
 
-// DebitAccount decreases the balance of the account with the given ID
+// DebitAccount decreases the balance of the account with the given Alias
 // by the given amount.
 //
 // NOTE: This is part of the Store interface.
-func (s *BoltStore) DebitAccount(_ context.Context, id AccountID,
+func (s *BoltStore) DebitAccount(_ context.Context, id Alias,
 	amount lnwire.MilliSatoshi) error {
 
 	if amount > math.MaxInt64 {
@@ -279,7 +279,7 @@ func (s *BoltStore) DebitAccount(_ context.Context, id AccountID,
 // set correctly.
 //
 // NOTE: This is part of the Store interface.
-func (s *BoltStore) UpsertAccountPayment(_ context.Context, id AccountID,
+func (s *BoltStore) UpsertAccountPayment(_ context.Context, id Alias,
 	paymentHash lntypes.Hash, fullAmount lnwire.MilliSatoshi,
 	status lnrpc.Payment_PaymentStatus,
 	options ...UpsertPaymentOption) (bool, error) {
@@ -335,11 +335,11 @@ func (s *BoltStore) UpsertAccountPayment(_ context.Context, id AccountID,
 }
 
 // DeleteAccountPayment removes a payment entry from the account with the given
-// ID. It will return the ErrPaymentNotAssociated error if the payment is not
+// Alias. It will return the ErrPaymentNotAssociated error if the payment is not
 // associated with the account.
 //
 // NOTE: This is part of the Store interface.
-func (s *BoltStore) DeleteAccountPayment(_ context.Context, id AccountID,
+func (s *BoltStore) DeleteAccountPayment(_ context.Context, id Alias,
 	hash lntypes.Hash) error {
 
 	update := func(account *OffChainBalanceAccount) error {
@@ -361,7 +361,7 @@ func (s *BoltStore) DeleteAccountPayment(_ context.Context, id AccountID,
 	return s.updateAccount(id, update)
 }
 
-func (s *BoltStore) updateAccount(id AccountID,
+func (s *BoltStore) updateAccount(id Alias,
 	updateFn func(*OffChainBalanceAccount) error) error {
 
 	return s.db.Update(func(tx kvdb.RwTx) error {
@@ -406,7 +406,7 @@ func (s *BoltStore) storeAccount(accountBucket kvdb.RwBucket,
 
 // getAccount retrieves an account from the given account bucket and
 // deserializes it.
-func getAccount(accountBucket kvdb.RwBucket, id AccountID) (
+func getAccount(accountBucket kvdb.RwBucket, id Alias) (
 	*OffChainBalanceAccount, error) {
 
 	accountBinary := accountBucket.Get(id[:])
@@ -417,11 +417,11 @@ func getAccount(accountBucket kvdb.RwBucket, id AccountID) (
 	return deserializeAccount(accountBinary)
 }
 
-// uniqueRandomAccountID generates a new random ID and makes sure it does not
+// uniqueRandomAccountID generates a new random Alias and makes sure it does not
 // yet exist in the DB.
-func uniqueRandomAccountID(accountBucket kvdb.RBucket) (AccountID, error) {
+func uniqueRandomAccountID(accountBucket kvdb.RBucket) (Alias, error) {
 	var (
-		newID    AccountID
+		newID    Alias
 		numTries = 10
 	)
 	for numTries > 0 {
@@ -431,24 +431,24 @@ func uniqueRandomAccountID(accountBucket kvdb.RBucket) (AccountID, error) {
 
 		accountBytes := accountBucket.Get(newID[:])
 		if accountBytes == nil {
-			// No account found with this new ID, we can use it.
+			// No account found with this new Alias, we can use it.
 			return newID, nil
 		}
 
 		numTries--
 	}
 
-	return newID, fmt.Errorf("couldn't create new account ID")
+	return newID, fmt.Errorf("couldn't create new account Alias")
 }
 
 // Account retrieves an account from the bolt DB and un-marshals it. If the
 // account cannot be found, then ErrAccNotFound is returned.
 //
 // NOTE: This is part of the Store interface.
-func (s *BoltStore) Account(_ context.Context, id AccountID) (
+func (s *BoltStore) Account(_ context.Context, id Alias) (
 	*OffChainBalanceAccount, error) {
 
-	// Try looking up and reading the account by its ID from the local
+	// Try looking up and reading the account by its Alias from the local
 	// bolt DB.
 	var accountBinary []byte
 	err := s.db.View(func(tx kvdb.RTx) error {
@@ -490,7 +490,7 @@ func (s *BoltStore) Accounts(_ context.Context) ([]*OffChainBalanceAccount,
 	err := s.db.View(func(tx kvdb.RTx) error {
 		// This function will be called in the ForEach and receive
 		// the key and value of each account in the DB. The key, which
-		// is also the ID is not used because it is also marshaled into
+		// is also the Alias is not used because it is also marshaled into
 		// the value.
 		readFn := func(k, v []byte) error {
 			// Skip the two special purpose keys.
@@ -527,10 +527,10 @@ func (s *BoltStore) Accounts(_ context.Context) ([]*OffChainBalanceAccount,
 	return accounts, nil
 }
 
-// RemoveAccount finds an account by its ID and removes it from the DB.
+// RemoveAccount finds an account by its Alias and removes it from the DB.
 //
 // NOTE: This is part of the Store interface.
-func (s *BoltStore) RemoveAccount(_ context.Context, id AccountID) error {
+func (s *BoltStore) RemoveAccount(_ context.Context, id Alias) error {
 	return s.db.Update(func(tx kvdb.RwTx) error {
 		bucket := tx.ReadWriteBucket(accountBucketName)
 		if bucket == nil {

@@ -348,8 +348,8 @@ func TestKVStoreNameSpaces(t *testing.T) {
 	require.True(t, bytes.Equal(v, []byte("thing 3")))
 }
 
-func intToSessionID(i uint32) session.ID {
-	var id session.ID
+func intToSessionID(i uint32) session.Alias {
+	var id session.Alias
 	byteOrder.PutUint32(id[:], i)
 
 	return id

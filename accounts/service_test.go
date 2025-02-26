@@ -201,14 +201,14 @@ func TestAccountService(t *testing.T) {
 	testCases := []struct {
 		name  string
 		setup func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			s *InterceptorService) []AccountID
+			s *InterceptorService) []Alias
 		startupErr string
 		validate   func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			ids []AccountID, s *InterceptorService)
+			ids []Alias, s *InterceptorService)
 	}{{
 		name: "startup err on invoice subscription",
 		setup: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			s *InterceptorService) []AccountID {
+			s *InterceptorService) []Alias {
 
 			lnd.invoiceSubscriptionErr = testErr
 
@@ -216,7 +216,7 @@ func TestAccountService(t *testing.T) {
 		},
 		startupErr: testErr.Error(),
 		validate: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			ids []AccountID, s *InterceptorService) {
+			ids []Alias, s *InterceptorService) {
 
 			lnd.assertNoInvoiceRequest(t)
 			require.False(t, s.IsRunning())
@@ -224,7 +224,7 @@ func TestAccountService(t *testing.T) {
 	}, {
 		name: "err on invoice update",
 		setup: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			s *InterceptorService) []AccountID {
+			s *InterceptorService) []Alias {
 
 			acct, err := s.store.NewAccount(
 				ctx, 1234, testExpiration, "",
@@ -234,10 +234,10 @@ func TestAccountService(t *testing.T) {
 			err = s.store.AddAccountInvoice(ctx, acct.ID, testHash)
 			require.NoError(t, err)
 
-			return []AccountID{acct.ID}
+			return []Alias{acct.ID}
 		},
 		validate: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			ids []AccountID, s *InterceptorService) {
+			ids []Alias, s *InterceptorService) {
 
 			// Start by closing the store. This should cause an
 			// error once we make an invoice update, as the service
@@ -267,7 +267,7 @@ func TestAccountService(t *testing.T) {
 	}, {
 		name: "err in invoice err channel",
 		setup: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			s *InterceptorService) []AccountID {
+			s *InterceptorService) []Alias {
 
 			acct, err := s.store.NewAccount(
 				ctx, 1234, testExpiration, "",
@@ -277,10 +277,10 @@ func TestAccountService(t *testing.T) {
 			err = s.store.AddAccountInvoice(ctx, acct.ID, testHash)
 			require.NoError(t, err)
 
-			return []AccountID{acct.ID}
+			return []Alias{acct.ID}
 		},
 		validate: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			ids []AccountID, s *InterceptorService) {
+			ids []Alias, s *InterceptorService) {
 
 			// Ensure that the service was started successfully.
 			require.True(t, s.IsRunning())
@@ -299,7 +299,7 @@ func TestAccountService(t *testing.T) {
 	}, {
 		name: "goroutine err sent on main err chan",
 		setup: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			s *InterceptorService) []AccountID {
+			s *InterceptorService) []Alias {
 
 			acct, err := s.store.NewAccount(
 				ctx, 1234, testExpiration, "",
@@ -311,10 +311,10 @@ func TestAccountService(t *testing.T) {
 
 			s.mainErrCallback(testErr)
 
-			return []AccountID{acct.ID}
+			return []Alias{acct.ID}
 		},
 		validate: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			ids []AccountID, s *InterceptorService) {
+			ids []Alias, s *InterceptorService) {
 
 			lnd.assertInvoiceRequest(t, 0, 0)
 			lnd.assertMainErrContains(t, testErr.Error())
@@ -322,7 +322,7 @@ func TestAccountService(t *testing.T) {
 	}, {
 		name: "startup do not track completed payments",
 		setup: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			s *InterceptorService) []AccountID {
+			s *InterceptorService) []Alias {
 
 			acct, err := s.store.NewAccount(
 				ctx, 1234, testExpiration, "",
@@ -338,10 +338,10 @@ func TestAccountService(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			return []AccountID{acct.ID}
+			return []Alias{acct.ID}
 		},
 		validate: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			ids []AccountID, s *InterceptorService) {
+			ids []Alias, s *InterceptorService) {
 
 			require.Contains(t, s.invoiceToAccount, testHash)
 			r.assertNoPaymentRequest(t)
@@ -352,7 +352,7 @@ func TestAccountService(t *testing.T) {
 	}, {
 		name: "startup err on payment tracking",
 		setup: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			s *InterceptorService) []AccountID {
+			s *InterceptorService) []Alias {
 
 			acct, err := s.store.NewAccount(
 				ctx, 1234, testExpiration, "",
@@ -370,11 +370,11 @@ func TestAccountService(t *testing.T) {
 
 			r.trackPaymentErr = testErr
 
-			return []AccountID{acct.ID}
+			return []Alias{acct.ID}
 		},
 		startupErr: testErr.Error(),
 		validate: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			ids []AccountID, s *InterceptorService) {
+			ids []Alias, s *InterceptorService) {
 
 			// Assert that the invoice subscription succeeded.
 			require.Contains(t, s.invoiceToAccount, testHash)
@@ -392,7 +392,7 @@ func TestAccountService(t *testing.T) {
 	}, {
 		name: "err on payment update",
 		setup: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			s *InterceptorService) []AccountID {
+			s *InterceptorService) []Alias {
 
 			acct, err := s.store.NewAccount(
 				ctx, 1234, testExpiration, "",
@@ -405,10 +405,10 @@ func TestAccountService(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			return []AccountID{acct.ID}
+			return []Alias{acct.ID}
 		},
 		validate: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			ids []AccountID, s *InterceptorService) {
+			ids []Alias, s *InterceptorService) {
 
 			// Ensure that the service was started successfully,
 			// and lnd contains the payment request.
@@ -444,7 +444,7 @@ func TestAccountService(t *testing.T) {
 	}, {
 		name: "err in payment update chan",
 		setup: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			s *InterceptorService) []AccountID {
+			s *InterceptorService) []Alias {
 
 			acct, err := s.store.NewAccount(
 				ctx, 1234, testExpiration, "",
@@ -457,10 +457,10 @@ func TestAccountService(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			return []AccountID{acct.ID}
+			return []Alias{acct.ID}
 		},
 		validate: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			ids []AccountID, s *InterceptorService) {
+			ids []Alias, s *InterceptorService) {
 
 			// Ensure that the service was started successfully,
 			// and lnd contains the payment request.
@@ -483,7 +483,7 @@ func TestAccountService(t *testing.T) {
 	}, {
 		name: "startup track in-flight payments",
 		setup: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			s *InterceptorService) []AccountID {
+			s *InterceptorService) []Alias {
 
 			acct, err := s.store.NewAccount(
 				ctx, 5000, testExpiration, "",
@@ -511,10 +511,10 @@ func TestAccountService(t *testing.T) {
 			err = s.store.AddAccountInvoice(ctx, acct.ID, testHash)
 			require.NoError(t, err)
 
-			return []AccountID{acct.ID}
+			return []Alias{acct.ID}
 		},
 		validate: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			ids []AccountID, s *InterceptorService) {
+			ids []Alias, s *InterceptorService) {
 
 			testID := ids[0]
 
@@ -620,7 +620,7 @@ func TestAccountService(t *testing.T) {
 	}, {
 		name: "keep track of invoice indexes",
 		setup: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			s *InterceptorService) []AccountID {
+			s *InterceptorService) []Alias {
 
 			err := s.store.StoreLastIndexes(ctx, 987_654, 555_555)
 			require.NoError(t, err)
@@ -628,7 +628,7 @@ func TestAccountService(t *testing.T) {
 			return nil
 		},
 		validate: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			ids []AccountID, s *InterceptorService) {
+			ids []Alias, s *InterceptorService) {
 
 			// We expect the initial subscription to start at the
 			// indexes we stored in the DB.
@@ -677,7 +677,7 @@ func TestAccountService(t *testing.T) {
 	}, {
 		name: "credit account",
 		setup: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			s *InterceptorService) []AccountID {
+			s *InterceptorService) []Alias {
 
 			acct, err := s.store.NewAccount(ctx, 0, time.Time{}, "")
 			require.NoError(t, err)
@@ -686,10 +686,10 @@ func TestAccountService(t *testing.T) {
 			err = s.store.AddAccountInvoice(ctx, acct.ID, testHash2)
 			require.NoError(t, err)
 
-			return []AccountID{acct.ID}
+			return []Alias{acct.ID}
 		},
 		validate: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			ids []AccountID, s *InterceptorService) {
+			ids []Alias, s *InterceptorService) {
 
 			testID := ids[0]
 
@@ -731,7 +731,7 @@ func TestAccountService(t *testing.T) {
 	}, {
 		name: "in-flight payments",
 		setup: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			s *InterceptorService) []AccountID {
+			s *InterceptorService) []Alias {
 
 			// We set up two accounts with a balance of 5k msats.
 
@@ -773,10 +773,10 @@ func TestAccountService(t *testing.T) {
 			err = s.store.AddAccountInvoice(ctx, acct2.ID, testHash)
 			require.NoError(t, err)
 
-			return []AccountID{acct.ID, acct2.ID}
+			return []Alias{acct.ID, acct2.ID}
 		},
 		validate: func(t *testing.T, lnd *mockLnd, r *mockRouter,
-			ids []AccountID, s *InterceptorService) {
+			ids []Alias, s *InterceptorService) {
 
 			testID := ids[0]
 			testID2 := ids[1]
@@ -830,7 +830,7 @@ func TestAccountService(t *testing.T) {
 
 			// Is a setup call required to initialize
 			// initial conditions?
-			var accountIDs []AccountID
+			var accountIDs []Alias
 			if tc.setup != nil {
 				accountIDs = tc.setup(
 					t, lndMock, routerMock, service,

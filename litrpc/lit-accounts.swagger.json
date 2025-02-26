@@ -92,7 +92,7 @@
         "parameters": [
           {
             "name": "id",
-            "description": "The hexadecimal ID of the account to remove. Either the ID or the label must\nbe set.",
+            "description": "The hexadecimal ID of the account to remove. Either the ID or the label must\nbe set.\n\nNOTE: This is actually the account's unique alias. We keep the \"id\" name\nfor backwards compatibility.",
             "in": "path",
             "required": true,
             "type": "string"
@@ -129,7 +129,7 @@
         "parameters": [
           {
             "name": "id",
-            "description": "The ID of the account to update. Either the ID or the label must be set.",
+            "description": "The ID of the account to update. Either the ID or the label must be set.\n\nNOTE: This is actually the account's unique alias. We keep the \"id\" name\nfor backwards compatibility.",
             "in": "path",
             "required": true,
             "type": "string"
@@ -174,7 +174,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "The ID of the account."
+          "description": "The unique alias of the Account.\n\nNOTE: the name is kept for backwards compatibility, but this ID is now\nthe unique alias identifier of the Account. At an RPC level, we will\ncontinue to refer to an account using this alias."
         },
         "initial_balance": {
           "type": "string",

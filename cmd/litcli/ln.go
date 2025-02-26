@@ -84,7 +84,7 @@ var fundChannelCommand = cli.Command{
 		},
 		cli.StringFlag{
 			Name:  "asset_id",
-			Usage: "The asset ID to commit to the channel.",
+			Usage: "The asset Alias to commit to the channel.",
 		},
 	},
 	Action: fundChannel,
@@ -108,7 +108,7 @@ func fundChannel(c *cli.Context) error {
 
 	assetIDBytes, err := hex.DecodeString(c.String("asset_id"))
 	if err != nil {
-		return fmt.Errorf("error hex decoding asset ID: %w", err)
+		return fmt.Errorf("error hex decoding asset Alias: %w", err)
 	}
 
 	requestedAmount := c.Uint64("asset_amount")
@@ -140,7 +140,7 @@ func fundChannel(c *cli.Context) error {
 	}
 
 	if !assetFound {
-		return fmt.Errorf("asset with ID %x not found or no combined "+
+		return fmt.Errorf("asset with Alias %x not found or no combined "+
 			"UTXOs with at least amount %d is available",
 			assetIDBytes, requestedAmount)
 	}
@@ -166,7 +166,7 @@ func fundChannel(c *cli.Context) error {
 var (
 	assetIDFlag = cli.StringFlag{
 		Name: "asset_id",
-		Usage: "the asset ID of the asset to use when sending " +
+		Usage: "the asset Alias of the asset to use when sending " +
 			"payments with assets",
 	}
 
@@ -181,7 +181,7 @@ var (
 		Usage: "(optional) the public key of the peer to ask for a " +
 			"quote when converting from assets to sats; must be " +
 			"set if there are multiple channels with the same " +
-			"asset ID present",
+			"asset Alias present",
 	}
 
 	allowOverpayFlag = cli.BoolFlag{
@@ -435,7 +435,7 @@ var payInvoiceCommand = cli.Command{
 	Usage:    "Pay an invoice over lightning using an asset.",
 	Description: `
 	This command attempts to pay an invoice using an asset channel as the
-	source of the payment. The asset ID of the channel must be specified
+	source of the payment. The asset Alias of the channel must be specified
 	using the --asset_id flag.
 	`,
 	ArgsUsage: "pay_req --asset_id=X",
@@ -551,7 +551,7 @@ var addInvoiceCommand = cli.Command{
 		commands.AddInvoiceCommand.Flags,
 		cli.StringFlag{
 			Name:  "asset_id",
-			Usage: "the asset ID of the asset to receive",
+			Usage: "the asset Alias of the asset to receive",
 		},
 		cli.Uint64Flag{
 			Name:  "asset_amount",
@@ -563,7 +563,7 @@ var addInvoiceCommand = cli.Command{
 				"for a quote when converting from assets to " +
 				"sats for the invoice; must be set if there " +
 				"are multiple channels with the same " +
-				"asset ID present",
+				"asset Alias present",
 		},
 	),
 	Action: addInvoice,
@@ -668,7 +668,7 @@ var decodeAssetInvoiceCommand = cli.Command{
 	Name:     "decodeassetinvoice",
 	Category: "Payments",
 	Usage: "Decodes an LN invoice and displays the invoice's amount in " +
-		"asset units specified by an asset ID",
+		"asset units specified by an asset Alias",
 	Description: `
 	This command can be used to display the information encoded in an
 	invoice.

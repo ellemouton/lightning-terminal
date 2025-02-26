@@ -71,6 +71,8 @@ type SQLStore struct {
 	*sql.DB
 
 	clock clock.Clock
+
+	BaseDB *db.BaseDB
 }
 
 // NewSQLStore creates a new SQLStore instance given an open BatchedSQLQueries
@@ -83,14 +85,15 @@ func NewSQLStore(sqlDB *db.BaseDB, clock clock.Clock) *SQLStore {
 	)
 
 	return &SQLStore{
-		db:    executor,
-		DB:    sqlDB.DB,
-		clock: clock,
+		db:     executor,
+		DB:     sqlDB.DB,
+		clock:  clock,
+		BaseDB: sqlDB,
 	}
 }
 
 // NewAccount creates and persists a new OffChainBalanceAccount with the given
-// balance and a randomly chosen ID. If the given label is not empty, then it
+// balance and a randomly chosen Alias. If the given label is not empty, then it
 // must be unique; if it is not, then ErrLabelAlreadyExists is returned.
 //
 // NOTE: This is part of the Store interface.
@@ -99,15 +102,15 @@ func (s *SQLStore) NewAccount(ctx context.Context, balance lnwire.MilliSatoshi,
 	error) {
 
 	// Ensure that if a label is set, it can't be mistaken for a hex
-	// encoded account ID to avoid confusion and make it easier for the CLI
+	// encoded account Alias to avoid confusion and make it easier for the CLI
 	// to distinguish between the two.
 	var labelVal sql.NullString
 	if len(label) > 0 {
 		if _, err := hex.DecodeString(label); err == nil &&
-			len(label) == hex.EncodedLen(AccountIDLen) {
+			len(label) == hex.EncodedLen(AliasLen) {
 
 			return nil, fmt.Errorf("the label '%s' is not allowed "+
-				"as it can be mistaken for an account ID",
+				"as it can be mistaken for an account Alias",
 				label)
 		}
 
@@ -122,7 +125,7 @@ func (s *SQLStore) NewAccount(ctx context.Context, balance lnwire.MilliSatoshi,
 		account     *OffChainBalanceAccount
 	)
 	err := s.db.ExecTx(ctx, &writeTxOpts, func(db SQLQueries) error {
-		// First, find a unique alias (this is what the ID was in the
+		// First, find a unique alias (this is what the Alias was in the
 		// kvdb implementation of the DB).
 		alias, err := uniqueRandomAccountAlias(ctx, db)
 		if err != nil {
@@ -165,7 +168,7 @@ func (s *SQLStore) NewAccount(ctx context.Context, balance lnwire.MilliSatoshi,
 	return account, nil
 }
 
-// getAndMarshalAccount retrieves the account with the given ID. If the account
+// getAndMarshalAccount retrieves the account with the given Alias. If the account
 // cannot be found, then ErrAccNotFound is returned.
 func getAndMarshalAccount(ctx context.Context, db SQLQueries, id int64) (
 	*OffChainBalanceAccount, error) {
@@ -183,7 +186,7 @@ func getAndMarshalAccount(ctx context.Context, db SQLQueries, id int64) (
 func marshalDBAccount(ctx context.Context, db SQLQueries,
 	dbAcct sqlc.Account) (*OffChainBalanceAccount, error) {
 
-	alias, err := AccountIDFromInt64(dbAcct.Alias)
+	alias, err := AliasFromInt64(dbAcct.Alias)
 	if err != nil {
 		return nil, err
 	}
@@ -229,15 +232,15 @@ func marshalDBAccount(ctx context.Context, db SQLQueries,
 
 // uniqueRandomAccountAlias generates a random account alias that is not already
 // in use. An account "alias" is a unique 8 byte identifier (which corresponds
-// to the AccountID type) that is used to identify accounts in the database. The
-// reason for using this alias in addition to the SQL auto-incremented ID is to
+// to the Alias type) that is used to identify accounts in the database. The
+// reason for using this alias in addition to the SQL auto-incremented Alias is to
 // remain backwards compatible with the kvdb implementation of the DB which only
 // used the alias.
 func uniqueRandomAccountAlias(ctx context.Context, db SQLQueries) (int64,
 	error) {
 
 	var (
-		newAlias AccountID
+		newAlias Alias
 		numTries = 10
 	)
 	for numTries > 0 {
@@ -252,7 +255,7 @@ func uniqueRandomAccountAlias(ctx context.Context, db SQLQueries) (int64,
 
 		_, err = db.GetAccountIDByAlias(ctx, newAliasID)
 		if errors.Is(err, sql.ErrNoRows) {
-			// No account found with this new ID, we can use it.
+			// No account found with this new Alias, we can use it.
 			return newAliasID, nil
 		} else if err != nil {
 			return 0, err
@@ -261,14 +264,14 @@ func uniqueRandomAccountAlias(ctx context.Context, db SQLQueries) (int64,
 		numTries--
 	}
 
-	return 0, fmt.Errorf("couldn't create new account ID")
+	return 0, fmt.Errorf("couldn't create new account Alias")
 }
 
 // AddAccountInvoice adds and invoice hash to the account with the given
-// AccountID alias.
+// Alias alias.
 //
 // NOTE: This is part of the Store interface.
-func (s *SQLStore) AddAccountInvoice(ctx context.Context, alias AccountID,
+func (s *SQLStore) AddAccountInvoice(ctx context.Context, alias Alias,
 	hash lntypes.Hash) error {
 
 	var writeTxOpts db.QueriesTxOptions
@@ -302,7 +305,7 @@ func (s *SQLStore) AddAccountInvoice(ctx context.Context, alias AccountID,
 	})
 }
 
-func getAccountIDByAlias(ctx context.Context, db SQLQueries, alias AccountID) (
+func getAccountIDByAlias(ctx context.Context, db SQLQueries, alias Alias) (
 	int64, error) {
 
 	aliasInt, err := alias.ToInt64()
@@ -320,7 +323,7 @@ func getAccountIDByAlias(ctx context.Context, db SQLQueries, alias AccountID) (
 }
 
 // markAccountUpdated is a helper that updates the last updated timestamp of
-// the account with the given ID.
+// the account with the given Alias.
 func (s *SQLStore) markAccountUpdated(ctx context.Context,
 	db SQLQueries, id int64) error {
 
@@ -342,7 +345,7 @@ func (s *SQLStore) markAccountUpdated(ctx context.Context,
 //
 // NOTE: This is part of the Store interface.
 func (s *SQLStore) UpdateAccountBalanceAndExpiry(ctx context.Context,
-	alias AccountID, newBalance fn.Option[int64],
+	alias Alias, newBalance fn.Option[int64],
 	newExpiry fn.Option[time.Time]) error {
 
 	var writeTxOpts db.QueriesTxOptions
@@ -384,7 +387,7 @@ func (s *SQLStore) UpdateAccountBalanceAndExpiry(ctx context.Context,
 // the given amount.
 //
 // NOTE: This is part of the Store interface.
-func (s *SQLStore) CreditAccount(ctx context.Context, alias AccountID,
+func (s *SQLStore) CreditAccount(ctx context.Context, alias Alias,
 	amount lnwire.MilliSatoshi) error {
 
 	var writeTxOpts db.QueriesTxOptions
@@ -419,7 +422,7 @@ func (s *SQLStore) CreditAccount(ctx context.Context, alias AccountID,
 // given amount.
 //
 // NOTE: This is part of the Store interface.
-func (s *SQLStore) DebitAccount(ctx context.Context, alias AccountID,
+func (s *SQLStore) DebitAccount(ctx context.Context, alias Alias,
 	amount lnwire.MilliSatoshi) error {
 
 	var writeTxOpts db.QueriesTxOptions
@@ -460,7 +463,7 @@ func (s *SQLStore) DebitAccount(ctx context.Context, alias AccountID,
 // account cannot be found, then ErrAccNotFound is returned.
 //
 // NOTE: This is part of the Store interface.
-func (s *SQLStore) Account(ctx context.Context, alias AccountID) (
+func (s *SQLStore) Account(ctx context.Context, alias Alias) (
 	*OffChainBalanceAccount, error) {
 
 	var (
@@ -512,10 +515,10 @@ func (s *SQLStore) Accounts(ctx context.Context) ([]*OffChainBalanceAccount,
 	return accounts, err
 }
 
-// RemoveAccount finds an account by its ID and removes it from the DB.
+// RemoveAccount finds an account by its Alias and removes it from the DB.
 //
 // NOTE: This is part of the Store interface.
-func (s *SQLStore) RemoveAccount(ctx context.Context, alias AccountID) error {
+func (s *SQLStore) RemoveAccount(ctx context.Context, alias Alias) error {
 	var writeTxOpts db.QueriesTxOptions
 	return s.db.ExecTx(ctx, &writeTxOpts, func(db SQLQueries) error {
 		id, err := getAccountIDByAlias(ctx, db, alias)
@@ -535,7 +538,7 @@ func (s *SQLStore) RemoveAccount(ctx context.Context, alias AccountID) error {
 // set correctly.
 //
 // NOTE: This is part of the Store interface.
-func (s *SQLStore) UpsertAccountPayment(ctx context.Context, alias AccountID,
+func (s *SQLStore) UpsertAccountPayment(ctx context.Context, alias Alias,
 	hash lntypes.Hash, fullAmount lnwire.MilliSatoshi,
 	status lnrpc.Payment_PaymentStatus,
 	options ...UpsertPaymentOption) (bool, error) {
@@ -638,11 +641,11 @@ func (s *SQLStore) UpsertAccountPayment(ctx context.Context, alias AccountID,
 }
 
 // DeleteAccountPayment removes a payment entry from the account with the given
-// ID. It will return an error if the payment is not associated with the
+// Alias. It will return an error if the payment is not associated with the
 // account.
 //
 // NOTE: This is part of the Store interface.
-func (s *SQLStore) DeleteAccountPayment(ctx context.Context, alias AccountID,
+func (s *SQLStore) DeleteAccountPayment(ctx context.Context, alias Alias,
 	hash lntypes.Hash) error {
 
 	var writeTxOpts db.QueriesTxOptions

@@ -418,7 +418,7 @@ func assertUniverseProofExists(t *testing.T, universe *tapClient,
 		}
 
 	default:
-		t.Fatalf("Need either asset ID or group key")
+		t.Fatalf("Need either asset Alias or group key")
 	}
 
 	ctxb := context.Background()
@@ -512,7 +512,7 @@ func assertAssetChan(t *testing.T, src, dst *HarnessNode, fundingAmount uint64,
 		}
 
 		if a.AssetInfo.AssetGenesis.AssetID != assetIDStr {
-			return fmt.Errorf("expected asset ID %s, got %s",
+			return fmt.Errorf("expected asset Alias %s, got %s",
 				assetIDStr, a.AssetInfo.AssetGenesis.AssetID)
 		}
 		if a.Capacity != fundingAmount {
@@ -1177,7 +1177,7 @@ func createAssetInvoice(t *testing.T, dstRfqPeer, dst *HarnessNode,
 
 // assertInvoiceHtlcAssets makes sure the invoice with the given hash shows the
 // individual HTLCs that arrived for it and that they show the correct asset
-// amounts for the given ID when decoded.
+// amounts for the given Alias when decoded.
 func assertInvoiceHtlcAssets(t *testing.T, node *HarnessNode,
 	addedInvoice *lnrpc.AddInvoiceResponse, assetID []byte,
 	assetAmount uint64) {
@@ -1223,7 +1223,7 @@ func assertInvoiceHtlcAssets(t *testing.T, node *HarnessNode,
 
 // assertPaymentHtlcAssets makes sure the payment with the given hash shows the
 // individual HTLCs that arrived for it and that they show the correct asset
-// amounts for the given ID when decoded.
+// amounts for the given Alias when decoded.
 func assertPaymentHtlcAssets(t *testing.T, node *HarnessNode, payHash []byte,
 	assetID []byte, assetAmount uint64) {
 

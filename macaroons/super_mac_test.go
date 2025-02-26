@@ -26,7 +26,7 @@ var (
 )
 
 // TestSuperMacaroonRootKeyID tests that adding the super macaroon prefix to
-// a root key ID results in a valid super macaroon root key ID.
+// a root key Alias results in a valid super macaroon root key Alias.
 func TestSuperMacaroonRootKeyID(t *testing.T) {
 	t.Parallel()
 

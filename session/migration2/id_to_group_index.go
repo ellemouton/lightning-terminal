@@ -16,32 +16,32 @@ var (
 	// The session bucket has the following structure:
 	// session -> <key>       -> <serialised session>
 	//	   -> id-index    -> <session-id> -> key   -> <session key>
-	// 			                  -> group -> <group-ID>
+	// 			                  -> group -> <group-Alias>
 	// 	   -> group-id-index -> <group-id> -> session-id -> sequence -> <session-id>
 	sessionBucketKey = []byte("session")
 
 	// idIndexKey is the key used to define the id-index sub-bucket within
 	// the main session bucket. This bucket will be used to store the
-	// mapping from session ID to various other fields.
+	// mapping from session Alias to various other fields.
 	idIndexKey = []byte("id-index")
 
 	// sessionKeyKey is the key used within the id-index bucket to store the
 	// session key (serialised local public key) associated with the given
-	// session ID.
+	// session Alias.
 	sessionKeyKey = []byte("key")
 
 	// groupIDKey is the key used within the id-index bucket to store the
-	// group ID associated with the given session ID.
+	// group Alias associated with the given session Alias.
 	groupIDKey = []byte("group")
 
 	// groupIDIndexKey is the key used to define the group-id-index
 	// sub-bucket within the main session bucket. This bucket will be used
-	// to store the mapping from group ID to various other fields.
+	// to store the mapping from group Alias to various other fields.
 	groupIDIndexKey = []byte("group-id-index")
 
 	// sessionIDKey is a key used in the group-id-index under a sub-bucket
-	// defined by a specific group ID. It will be used to store the session
-	// IDs associated with the given group ID.
+	// defined by a specific group Alias. It will be used to store the session
+	// IDs associated with the given group Alias.
 	sessionIDKey = []byte("session-id")
 
 	// ErrDBInitErr is returned when a bucket that we expect to have been
@@ -53,7 +53,7 @@ var (
 	byteOrder = binary.BigEndian
 )
 
-// MigrateSessionIDToGroupIndex back-fills the session ID to group index so that
+// MigrateSessionIDToGroupIndex back-fills the session Alias to group index so that
 // it has an entry for all sessions that the session store is currently aware of.
 func MigrateSessionIDToGroupIndex(tx *bbolt.Tx) error {
 	sessionBucket := tx.Bucket(sessionBucketKey)
@@ -76,11 +76,11 @@ func MigrateSessionIDToGroupIndex(tx *bbolt.Tx) error {
 		// This migration is done before the logic in LiT is added that
 		// would allow groupIDs to differ from session IDs. And so all
 		// this migration needs to do is add the current 1:1 mapping
-		// from group ID to session ID and vice versa where group ID is
-		// equal to the session ID.
+		// from group Alias to session Alias and vice versa where group Alias is
+		// equal to the session Alias.
 		groupID := sessionID
 
-		// First we add the session ID to group ID mapping.
+		// First we add the session Alias to group Alias mapping.
 		sessionIDBkt := idIndexBkt.Bucket(sessionID)
 		if sessionIDBkt == nil {
 			return fmt.Errorf("unexpected non-bucket entry in " +
@@ -92,7 +92,7 @@ func MigrateSessionIDToGroupIndex(tx *bbolt.Tx) error {
 			return err
 		}
 
-		// Now we will add the group ID to session ID mapping.
+		// Now we will add the group Alias to session Alias mapping.
 		groupIDBkt, err := groupIndexBkt.CreateBucketIfNotExists(
 			groupID,
 		)

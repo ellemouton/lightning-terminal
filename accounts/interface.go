@@ -17,10 +17,10 @@ import (
 )
 
 const (
-	// AccountIDLen is the length of the ID that is generated as a unique
+	// AliasLen is the length of the Alias that is generated as a unique
 	// identifier of an account. It is 8 bytes long so guessing is
 	// improbable, but it's still not mistaken for a SHA256 hash.
-	AccountIDLen = 8
+	AliasLen = 8
 )
 
 // AccountType is an enum-like type which denotes the possible account types
@@ -37,28 +37,28 @@ const (
 	// allowance) or spend-only (no invoice creation) accounts.
 )
 
-// AccountID represents an account's unique ID.
-type AccountID [AccountIDLen]byte
+// Alias represents an account's unique Alias.
+type Alias [AliasLen]byte
 
-// ParseAccountID attempts to parse a string as an account ID.
-func ParseAccountID(idStr string) (*AccountID, error) {
-	if len(idStr) != hex.EncodedLen(AccountIDLen) {
-		return nil, fmt.Errorf("invalid account ID length")
+// ParseAlias attempts to parse a string as an account Alias.
+func ParseAlias(idStr string) (*Alias, error) {
+	if len(idStr) != hex.EncodedLen(AliasLen) {
+		return nil, fmt.Errorf("invalid account Alias length")
 	}
 
-	idBytes, err := hex.DecodeString(idStr)
+	aliasBytes, err := hex.DecodeString(idStr)
 	if err != nil {
-		return nil, fmt.Errorf("error decoding account ID: %w", err)
+		return nil, fmt.Errorf("error decoding account Alias: %w", err)
 	}
 
-	var id AccountID
-	copy(id[:], idBytes)
+	var alias Alias
+	copy(alias[:], aliasBytes)
 
-	return &id, nil
+	return &alias, nil
 }
 
-// ToInt64 converts an AccountID to its int64 representation.
-func (a AccountID) ToInt64() (int64, error) {
+// ToInt64 converts an Alias to its int64 representation.
+func (a Alias) ToInt64() (int64, error) {
 	var value int64
 	buf := bytes.NewReader(a[:])
 	if err := binary.Read(buf, byteOrder, &value); err != nil {
@@ -68,10 +68,10 @@ func (a AccountID) ToInt64() (int64, error) {
 	return value, nil
 }
 
-// AccountIDFromInt64 converts an int64 to an AccountID.
-func AccountIDFromInt64(value int64) (AccountID, error) {
+// AliasFromInt64 converts an int64 to an Alias.
+func AliasFromInt64(value int64) (Alias, error) {
 	var (
-		a   = AccountID{}
+		a   = Alias{}
 		buf = new(bytes.Buffer)
 	)
 	if err := binary.Write(buf, byteOrder, value); err != nil {
@@ -82,8 +82,8 @@ func AccountIDFromInt64(value int64) (AccountID, error) {
 	return a, nil
 }
 
-// String returns the string representation of the AccountID.
-func (a AccountID) String() string {
+// String returns the string representation of the Alias.
+func (a Alias) String() string {
 	return hex.EncodeToString(a[:])
 }
 
@@ -112,7 +112,7 @@ type AccountPayments map[lntypes.Hash]*PaymentEntry
 // invoices.
 type OffChainBalanceAccount struct {
 	// ID is the randomly generated account identifier.
-	ID AccountID
+	ID Alias
 
 	// Type is the account type.
 	Type AccountType
@@ -229,14 +229,14 @@ var (
 // Store is the main account store interface.
 type Store interface {
 	// NewAccount creates a new OffChainBalanceAccount with the given
-	// balance and a randomly chosen ID.
+	// balance and a randomly chosen Alias.
 	NewAccount(ctx context.Context, balance lnwire.MilliSatoshi,
 		expirationDate time.Time, label string) (
 		*OffChainBalanceAccount, error)
 
 	// Account retrieves an account from the Store and un-marshals it. If
 	// the account cannot be found, then ErrAccNotFound is returned.
-	Account(ctx context.Context, id AccountID) (*OffChainBalanceAccount,
+	Account(ctx context.Context, id Alias) (*OffChainBalanceAccount,
 		error)
 
 	// Accounts retrieves all accounts from the store and un-marshals them.
@@ -244,22 +244,22 @@ type Store interface {
 
 	// UpdateAccountBalanceAndExpiry updates the balance and/or expiry of an
 	// account.
-	UpdateAccountBalanceAndExpiry(ctx context.Context, id AccountID,
+	UpdateAccountBalanceAndExpiry(ctx context.Context, id Alias,
 		newBalance fn.Option[int64],
 		newExpiry fn.Option[time.Time]) error
 
 	// AddAccountInvoice adds an invoice hash to an account.
-	AddAccountInvoice(ctx context.Context, id AccountID,
+	AddAccountInvoice(ctx context.Context, id Alias,
 		hash lntypes.Hash) error
 
 	// CreditAccount increases the balance of the account with the
-	// given ID by the given amount.
-	CreditAccount(ctx context.Context, id AccountID,
+	// given Alias by the given amount.
+	CreditAccount(ctx context.Context, id Alias,
 		amount lnwire.MilliSatoshi) error
 
 	// DebitAccount decreases the balance of the account with the
-	// given ID by the given amount.
-	DebitAccount(ctx context.Context, id AccountID,
+	// given Alias by the given amount.
+	DebitAccount(ctx context.Context, id Alias,
 		amount lnwire.MilliSatoshi) error
 
 	// UpsertAccountPayment updates or inserts a payment entry for the given
@@ -268,20 +268,20 @@ type Store interface {
 	// was already known before the update. This is to be treated as a
 	// best-effort indication if an error is also returned since the method
 	// may error before the boolean can be set correctly.
-	UpsertAccountPayment(_ context.Context, id AccountID,
+	UpsertAccountPayment(_ context.Context, id Alias,
 		paymentHash lntypes.Hash, fullAmount lnwire.MilliSatoshi,
 		status lnrpc.Payment_PaymentStatus,
 		options ...UpsertPaymentOption) (bool, error)
 
 	// DeleteAccountPayment removes a payment entry from the account with
-	// the given ID. It will return the ErrPaymentNotAssociated error if the
+	// the given Alias. It will return the ErrPaymentNotAssociated error if the
 	// payment is not associated with the account.
-	DeleteAccountPayment(_ context.Context, id AccountID,
+	DeleteAccountPayment(_ context.Context, id Alias,
 		hash lntypes.Hash) error
 
-	// RemoveAccount finds an account by its ID and removes it from the¨
+	// RemoveAccount finds an account by its Alias and removes it from the¨
 	// store.
-	RemoveAccount(ctx context.Context, id AccountID) error
+	RemoveAccount(ctx context.Context, id Alias) error
 
 	// LastIndexes returns the last invoice add and settle index or
 	// ErrNoInvoiceIndexKnown if no indexes are known yet.
@@ -299,19 +299,19 @@ type Store interface {
 type Service interface {
 	// CheckBalance ensures an account is valid and has a balance equal to
 	// or larger than the amount that is required.
-	CheckBalance(ctx context.Context, id AccountID,
+	CheckBalance(ctx context.Context, id Alias,
 		requiredBalance lnwire.MilliSatoshi) error
 
 	// AssociateInvoice associates a generated invoice with the given
 	// account, making it possible for the account to be credited in case
 	// the invoice is paid.
-	AssociateInvoice(ctx context.Context, id AccountID,
+	AssociateInvoice(ctx context.Context, id Alias,
 		hash lntypes.Hash) error
 
 	// TrackPayment adds a new payment to be tracked to the service. If the
 	// payment is eventually settled, its amount needs to be debited from
 	// the given account.
-	TrackPayment(ctx context.Context, id AccountID, hash lntypes.Hash,
+	TrackPayment(ctx context.Context, id Alias, hash lntypes.Hash,
 		fullAmt lnwire.MilliSatoshi) error
 
 	// RemovePayment removes a failed payment from the service because it no
@@ -322,13 +322,13 @@ type Service interface {
 	// AssociatePayment associates a payment (hash) with the given account,
 	// ensuring that the payment will be tracked for a user when LiT is
 	// restarted.
-	AssociatePayment(ctx context.Context, id AccountID,
+	AssociatePayment(ctx context.Context, id Alias,
 		paymentHash lntypes.Hash, fullAmt lnwire.MilliSatoshi) error
 
 	// PaymentErrored removes a pending payment from the accounts
 	// registered payment list. This should only ever be called if we are
 	// sure that the payment request errored out.
-	PaymentErrored(ctx context.Context, id AccountID,
+	PaymentErrored(ctx context.Context, id Alias,
 		hash lntypes.Hash) error
 
 	RequestValuesStore
@@ -347,17 +347,17 @@ type RequestValues struct {
 }
 
 // RequestValuesStore is a store that can be used to keep track of the mapping
-// between a request ID and various values associated with that request which
+// between a request Alias and various values associated with that request which
 // we may want access to when handling the request response.
 type RequestValuesStore interface {
-	// RegisterValues stores values for the given request ID.
+	// RegisterValues stores values for the given request Alias.
 	RegisterValues(reqID uint64, values *RequestValues) error
 
 	// GetValues returns the corresponding request values for the given
-	// request ID if they exist.
+	// request Alias if they exist.
 	GetValues(reqID uint64) (*RequestValues, bool)
 
-	// DeleteValues deletes any values stored for the given request ID.
+	// DeleteValues deletes any values stored for the given request Alias.
 	DeleteValues(reqID uint64)
 }
 

@@ -75,10 +75,10 @@ const (
 
 // Action represents an RPC call made through the firewall.
 type Action struct {
-	// SessionID is the ID of the session that this action belongs to.
+	// SessionID is the Alias of the session that this action belongs to.
 	// Note that this is not serialized on persistence since the action is
-	// already stored under a bucket identified by the session ID.
-	SessionID session.ID
+	// already stored under a bucket identified by the session Alias.
+	SessionID session.Alias
 
 	// ActorName is the name of the entity who performed the Action.
 	ActorName string
@@ -117,7 +117,7 @@ type Action struct {
 }
 
 // AddAction serialises and adds an Action to the DB under the given sessionID.
-func (db *DB) AddAction(sessionID session.ID, action *Action) (uint64, error) {
+func (db *DB) AddAction(sessionID session.Alias, action *Action) (uint64, error) {
 	var buf bytes.Buffer
 	if err := SerializeAction(&buf, action); err != nil {
 		return 0, err
@@ -205,7 +205,7 @@ func putAction(tx *bbolt.Tx, al *ActionLocator, a *Action) error {
 
 	sessBucket := actionsBucket.Bucket(al.SessionID[:])
 	if sessBucket == nil {
-		return fmt.Errorf("session bucket for session ID %x does not "+
+		return fmt.Errorf("session bucket for session Alias %x does not "+
 			"exist", al.SessionID)
 	}
 
@@ -218,7 +218,7 @@ func putAction(tx *bbolt.Tx, al *ActionLocator, a *Action) error {
 func getAction(actionsBkt *bbolt.Bucket, al *ActionLocator) (*Action, error) {
 	sessBucket := actionsBkt.Bucket(al.SessionID[:])
 	if sessBucket == nil {
-		return nil, fmt.Errorf("session bucket for session ID "+
+		return nil, fmt.Errorf("session bucket for session Alias "+
 			"%x does not exist", al.SessionID)
 	}
 
@@ -345,7 +345,7 @@ func (db *DB) ListActions(filterFn ListActionsFilterFn,
 
 // ListSessionActions returns a list of the given session's Actions that pass
 // the filterFn requirements.
-func (db *DB) ListSessionActions(sessionID session.ID,
+func (db *DB) ListSessionActions(sessionID session.Alias,
 	filterFn ListActionsFilterFn, query *ListActionsQuery) ([]*Action,
 	uint64, uint64, error) {
 
@@ -391,7 +391,7 @@ func (db *DB) ListSessionActions(sessionID session.ID,
 // pass the filterFn requirements.
 //
 // TODO: update to allow for pagination.
-func (db *DB) ListGroupActions(groupID session.ID,
+func (db *DB) ListGroupActions(ctx context.Context, groupID session.Alias,
 	filterFn ListActionsFilterFn) ([]*Action, error) {
 
 	if filterFn == nil {
@@ -400,7 +400,7 @@ func (db *DB) ListGroupActions(groupID session.ID,
 		}
 	}
 
-	sessionIDs, err := db.sessionIDIndex.GetSessionIDs(groupID)
+	sessionIDs, err := db.sessionIDIndex.GetSessionAliases(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -420,7 +420,7 @@ func (db *DB) ListGroupActions(groupID session.ID,
 			return ErrNoSuchKeyFound
 		}
 
-		// Iterate over each session ID in this group.
+		// Iterate over each session Alias in this group.
 		for _, sessionID := range sessionIDs {
 			sessionsBucket := actionsBucket.Bucket(sessionID[:])
 			if sessionsBucket == nil {
@@ -503,7 +503,7 @@ func SerializeAction(w io.Writer, action *Action) error {
 
 // DeserializeAction deserializes an action from the given reader, expecting
 // the data to be encoded in the tlv format.
-func DeserializeAction(r io.Reader, sessionID session.ID) (*Action, error) {
+func DeserializeAction(r io.Reader, sessionID session.Alias) (*Action, error) {
 	var (
 		action                = Action{}
 		actor, featureName    []byte
@@ -552,7 +552,7 @@ func DeserializeAction(r io.Reader, sessionID session.ID) (*Action, error) {
 // ActionsWriteDB is an abstraction over the Actions DB that will allow a
 // caller to add new actions as well as change the values of an existing action.
 type ActionsWriteDB interface {
-	AddAction(sessionID session.ID, action *Action) (uint64, error)
+	AddAction(sessionID session.Alias, action *Action) (uint64, error)
 	SetActionState(al *ActionLocator, state ActionState,
 		errReason string) error
 }
@@ -585,11 +585,11 @@ type ActionsReadDB interface {
 // ActionReadDBGetter represents a function that can be used to construct
 // an ActionsReadDB.
 type ActionReadDBGetter interface {
-	GetActionsReadDB(groupID session.ID, featureName string) ActionsReadDB
+	GetActionsReadDB(groupID session.Alias, featureName string) ActionsReadDB
 }
 
 // GetActionsReadDB is a method on DB that constructs an ActionsReadDB.
-func (db *DB) GetActionsReadDB(groupID session.ID,
+func (db *DB) GetActionsReadDB(groupID session.Alias,
 	featureName string) ActionsReadDB {
 
 	return &allActionsReadDB{
@@ -602,7 +602,7 @@ func (db *DB) GetActionsReadDB(groupID session.ID,
 // allActionsReadDb is an implementation of the ActionsReadDB.
 type allActionsReadDB struct {
 	db          *DB
-	groupID     session.ID
+	groupID     session.Alias
 	featureName string
 }
 
@@ -629,11 +629,11 @@ type groupActionsReadDB struct {
 var _ ActionsDB = (*groupActionsReadDB)(nil)
 
 // ListActions will return all the Actions for a particular group.
-func (s *groupActionsReadDB) ListActions(_ context.Context) ([]*RuleAction,
+func (s *groupActionsReadDB) ListActions(ctx context.Context) ([]*RuleAction,
 	error) {
 
 	sessionActions, err := s.db.ListGroupActions(
-		s.groupID, func(a *Action, _ bool) (bool, bool) {
+		ctx, s.groupID, func(a *Action, _ bool) (bool, bool) {
 			return a.State == ActionStateDone, true
 		},
 	)
@@ -660,11 +660,11 @@ var _ ActionsDB = (*groupFeatureActionsReadDB)(nil)
 
 // ListActions will return all the Actions for a particular group that were
 // executed by a particular feature.
-func (a *groupFeatureActionsReadDB) ListActions(_ context.Context) (
+func (a *groupFeatureActionsReadDB) ListActions(ctx context.Context) (
 	[]*RuleAction, error) {
 
 	featureActions, err := a.db.ListGroupActions(
-		a.groupID, func(action *Action, _ bool) (bool, bool) {
+		ctx, a.groupID, func(action *Action, _ bool) (bool, bool) {
 			return action.State == ActionStateDone &&
 				action.FeatureName == a.featureName, true
 		},
@@ -690,7 +690,7 @@ func actionToRulesAction(a *Action) *RuleAction {
 
 // ActionLocator helps us find an action in the database.
 type ActionLocator struct {
-	SessionID session.ID
+	SessionID session.Alias
 	ActionID  uint64
 }
 
@@ -739,7 +739,7 @@ func deserializeActionLocator(r io.Reader) (*ActionLocator, error) {
 		return nil, err
 	}
 
-	id, err := session.IDFromBytes(sessionID)
+	id, err := session.AliasFromBytes(sessionID)
 	if err != nil {
 		return nil, err
 	}

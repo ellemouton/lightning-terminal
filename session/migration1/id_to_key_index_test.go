@@ -11,7 +11,7 @@ import (
 )
 
 // TestMigrateSessionIDIndex tests that the MigrateSessionIDIndex migration
-// correctly back-fills the session-ID to session-key index.
+// correctly back-fills the session-Alias to session-key index.
 func TestMigrateSessionIDIndex(t *testing.T) {
 	t.Parallel()
 
@@ -36,7 +36,7 @@ func TestMigrateSessionIDIndex(t *testing.T) {
 	sess4Bytes := sessBuff.Bytes()
 
 	// Overwrite the first 4 bytes of the key of session 4 so that it is
-	// the same as session 3. This will mean that they have the same ID.
+	// the same as session 3. This will mean that they have the same Alias.
 	copy(sess4Key[0:4], sess3Key[0:4])
 
 	// Put together a sample session DB based on the above.

@@ -23,7 +23,7 @@ func TestMigrateSessionIDToGroupIDIndex(t *testing.T) {
 	sess2ID, sess2Key := newSessionID(t)
 	sess3ID, sess3Key := newSessionID(t)
 
-	// Put together a sample session ID index DB based on the above.
+	// Put together a sample session Alias index DB based on the above.
 	idIndexBefore := map[string]interface{}{
 		string(sess1ID[:]): map[string]interface{}{
 			string(sessionKeyKey): string(sess1Key),
@@ -64,7 +64,7 @@ func TestMigrateSessionIDToGroupIDIndex(t *testing.T) {
 		},
 	}
 
-	// Put together what we expect the resulting group-ID-index bucket to
+	// Put together what we expect the resulting group-Alias-index bucket to
 	// look like after the migration.
 	groupIDIndexAfter := map[string]interface{}{
 		string(sess1ID[:]): map[string]interface{}{

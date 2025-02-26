@@ -1,12 +1,17 @@
 package firewalldb
 
-import "github.com/lightninglabs/lightning-terminal/session"
+import (
+	"context"
+
+	"github.com/lightninglabs/lightning-terminal/session"
+)
 
 // SessionDB is an interface that abstracts the database operations needed for
 // the privacy mapper to function.
 type SessionDB interface {
-	session.IDToGroupIndex
+	session.AliasToGroupIndex
 
 	// GetSessionByID returns the session for a specific id.
-	GetSessionByID(session.ID) (*session.Session, error)
+	GetSessionByAlias(context.Context, session.Alias) (*session.Session,
+		error)
 }

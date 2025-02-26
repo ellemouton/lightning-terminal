@@ -27,8 +27,8 @@ type Config struct {
 // trackedPayment is a struct that holds all information that identifies a
 // payment that we are tracking in the service.
 type trackedPayment struct {
-	// accountID is the ID of the account the payment was associated with.
-	accountID AccountID
+	// accountID is the Alias of the account the payment was associated with.
+	accountID Alias
 
 	// hash is the payment hash of the payment.
 	hash lntypes.Hash
@@ -65,7 +65,7 @@ type InterceptorService struct {
 	currentAddIndex    uint64
 	currentSettleIndex uint64
 
-	invoiceToAccount map[lntypes.Hash]AccountID
+	invoiceToAccount map[lntypes.Hash]Alias
 	pendingPayments  map[lntypes.Hash]*trackedPayment
 
 	*requestValuesStore
@@ -84,7 +84,7 @@ func NewService(store Store, errCallback func(error)) (*InterceptorService,
 
 	return &InterceptorService{
 		store:              store,
-		invoiceToAccount:   make(map[lntypes.Hash]AccountID),
+		invoiceToAccount:   make(map[lntypes.Hash]Alias),
 		pendingPayments:    make(map[lntypes.Hash]*trackedPayment),
 		requestValuesStore: newRequestValuesStore(),
 		mainErrCallback:    errCallback,
@@ -285,7 +285,7 @@ func (s *InterceptorService) disableAndErrorfUnsafe(format string,
 }
 
 // NewAccount creates a new OffChainBalanceAccount with the given balance and a
-// randomly chosen ID.
+// randomly chosen Alias.
 func (s *InterceptorService) NewAccount(ctx context.Context,
 	balance lnwire.MilliSatoshi,
 	expirationDate time.Time, label string) (*OffChainBalanceAccount,
@@ -300,7 +300,7 @@ func (s *InterceptorService) NewAccount(ctx context.Context,
 // UpdateAccount writes an account to the database, overwriting the existing one
 // if it exists.
 func (s *InterceptorService) UpdateAccount(ctx context.Context,
-	accountID AccountID, accountBalance btcutil.Amount,
+	accountID Alias, accountBalance btcutil.Amount,
 	expirationDate int64) (*OffChainBalanceAccount, error) {
 
 	s.Lock()
@@ -348,7 +348,7 @@ func (s *InterceptorService) UpdateAccount(ctx context.Context,
 // Account retrieves an account from the bolt DB and un-marshals it. If the
 // account cannot be found, then ErrAccNotFound is returned.
 func (s *InterceptorService) Account(ctx context.Context,
-	id AccountID) (*OffChainBalanceAccount, error) {
+	id Alias) (*OffChainBalanceAccount, error) {
 
 	s.RLock()
 	defer s.RUnlock()
@@ -366,9 +366,9 @@ func (s *InterceptorService) Accounts(ctx context.Context) (
 	return s.store.Accounts(ctx)
 }
 
-// RemoveAccount finds an account by its ID and removes it from the DB.
+// RemoveAccount finds an account by its Alias and removes it from the DB.
 func (s *InterceptorService) RemoveAccount(ctx context.Context,
-	id AccountID) error {
+	id Alias) error {
 
 	s.Lock()
 	defer s.Unlock()
@@ -391,7 +391,7 @@ func (s *InterceptorService) RemoveAccount(ctx context.Context,
 
 // CheckBalance ensures an account is valid and has a balance equal to or larger
 // than the amount that is required.
-func (s *InterceptorService) CheckBalance(ctx context.Context, id AccountID,
+func (s *InterceptorService) CheckBalance(ctx context.Context, id Alias,
 	requiredBalance lnwire.MilliSatoshi) error {
 
 	s.RLock()
@@ -433,7 +433,7 @@ func calcAvailableAccountBalance(account *OffChainBalanceAccount) int64 {
 // AssociateInvoice associates a generated invoice with the given account,
 // making it possible for the account to be credited in case the invoice is
 // paid.
-func (s *InterceptorService) AssociateInvoice(ctx context.Context, id AccountID,
+func (s *InterceptorService) AssociateInvoice(ctx context.Context, id Alias,
 	hash lntypes.Hash) error {
 
 	s.Lock()
@@ -453,7 +453,7 @@ func (s *InterceptorService) AssociateInvoice(ctx context.Context, id AccountID,
 // PaymentErrored removes a pending payment from the account's registered
 // payment list. This should only ever be called if we are sure that the payment
 // request errored out.
-func (s *InterceptorService) PaymentErrored(ctx context.Context, id AccountID,
+func (s *InterceptorService) PaymentErrored(ctx context.Context, id Alias,
 	hash lntypes.Hash) error {
 
 	s.Lock()
@@ -473,7 +473,7 @@ func (s *InterceptorService) PaymentErrored(ctx context.Context, id AccountID,
 // AssociatePayment associates a payment (hash) with the given account,
 // ensuring that the payment will be tracked for a user when LiT is
 // restarted.
-func (s *InterceptorService) AssociatePayment(ctx context.Context, id AccountID,
+func (s *InterceptorService) AssociatePayment(ctx context.Context, id Alias,
 	paymentHash lntypes.Hash, fullAmt lnwire.MilliSatoshi) error {
 
 	s.Lock()
@@ -578,7 +578,7 @@ func (s *InterceptorService) invoiceUpdate(ctx context.Context,
 
 // TrackPayment adds a new payment to be tracked to the service. If the payment
 // is eventually settled, its amount needs to be debited from the given account.
-func (s *InterceptorService) TrackPayment(ctx context.Context, id AccountID,
+func (s *InterceptorService) TrackPayment(ctx context.Context, id Alias,
 	hash lntypes.Hash, fullAmt lnwire.MilliSatoshi) error {
 
 	s.Lock()
@@ -904,7 +904,7 @@ func newRequestValuesStore() *requestValuesStore {
 	}
 }
 
-// RegisterValues stores values for the given request ID.
+// RegisterValues stores values for the given request Alias.
 func (s *requestValuesStore) RegisterValues(reqID uint64,
 	values *RequestValues) error {
 
@@ -912,7 +912,7 @@ func (s *requestValuesStore) RegisterValues(reqID uint64,
 	defer s.mu.Unlock()
 
 	if _, ok := s.m[reqID]; ok {
-		return fmt.Errorf("values for request ID %d have already "+
+		return fmt.Errorf("values for request Alias %d have already "+
 			"been registered", reqID)
 	}
 
@@ -921,7 +921,7 @@ func (s *requestValuesStore) RegisterValues(reqID uint64,
 	return nil
 }
 
-// GetValues returns the corresponding request values for the given request ID
+// GetValues returns the corresponding request values for the given request Alias
 // if they exist.
 func (s *requestValuesStore) GetValues(reqID uint64) (*RequestValues, bool) {
 	s.mu.Lock()
@@ -932,7 +932,7 @@ func (s *requestValuesStore) GetValues(reqID uint64) (*RequestValues, bool) {
 	return values, ok
 }
 
-// DeleteValues deletes any values stored for the given request ID.
+// DeleteValues deletes any values stored for the given request Alias.
 func (s *requestValuesStore) DeleteValues(reqID uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

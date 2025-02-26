@@ -106,9 +106,9 @@ func (p *PrivacyMapper) Intercept(ctx context.Context,
 			"interception request: %v", err)
 	}
 
-	sessionID, err := session.IDFromMacaroon(ri.Macaroon)
+	sessionID, err := session.AliasFromMacaroon(ri.Macaroon)
 	if err != nil {
-		return nil, fmt.Errorf("could not extract ID from macaroon")
+		return nil, fmt.Errorf("could not extract Alias from macaroon")
 	}
 
 	log.Tracef("PrivacyMapper: Intercepting %v", ri)
@@ -187,15 +187,15 @@ func (p *PrivacyMapper) Intercept(ctx context.Context,
 // checkAndReplaceIncomingRequest inspects an incoming request and optionally
 // modifies some of the request parameters.
 func (p *PrivacyMapper) checkAndReplaceIncomingRequest(ctx context.Context,
-	uri string, req proto.Message, sessionID session.ID) (proto.Message,
+	uri string, req proto.Message, sessionID session.Alias) (proto.Message,
 	error) {
 
-	session, err := p.sessionDB.GetSessionByID(sessionID)
+	session, err := p.sessionDB.GetSessionByAlias(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
 
-	db := p.newDB(session.GroupID)
+	db := p.newDB(session.GroupAlias)
 
 	// If we don't have a handler for the URI, we don't allow the request
 	// to go through.
@@ -218,14 +218,14 @@ func (p *PrivacyMapper) checkAndReplaceIncomingRequest(ctx context.Context,
 // replaceOutgoingResponse inspects the responses before sending them out to the
 // client and replaces them if needed.
 func (p *PrivacyMapper) replaceOutgoingResponse(ctx context.Context, uri string,
-	resp proto.Message, sessionID session.ID) (proto.Message, error) {
+	resp proto.Message, sessionID session.Alias) (proto.Message, error) {
 
-	session, err := p.sessionDB.GetSessionByID(sessionID)
+	session, err := p.sessionDB.GetSessionByAlias(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
 
-	db := p.newDB(session.GroupID)
+	db := p.newDB(session.GroupAlias)
 
 	// If we don't have a handler for the URI, we don't allow the response
 	// to go to avoid accidental leaks.

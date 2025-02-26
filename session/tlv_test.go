@@ -46,7 +46,7 @@ var (
 		},
 	}
 
-	groupID = ID{0, 1, 3, 4}
+	groupID = Alias{0, 1, 3, 4}
 )
 
 // TestSerializeDeserializeSession makes sure that a session can be serialized
@@ -61,7 +61,7 @@ func TestSerializeDeserializeSession(t *testing.T) {
 		perms         []bakery.Op
 		caveats       []macaroon.Caveat
 		featureConfig map[string][]byte
-		linkedGroupID *ID
+		linkedGroupID *Alias
 	}{
 		{
 			name:     "revoked-at field",
@@ -85,7 +85,7 @@ func TestSerializeDeserializeSession(t *testing.T) {
 			},
 		},
 		{
-			name:     "linked session with no group ID",
+			name:     "linked session with no group Alias",
 			sessType: TypeMacaroonCustom,
 			featureConfig: map[string][]byte{
 				"AutoFees":      {1, 2, 3, 4},
@@ -94,7 +94,7 @@ func TestSerializeDeserializeSession(t *testing.T) {
 			linkedGroupID: &groupID,
 		},
 		{
-			name:     "linked session with group ID",
+			name:     "linked session with group Alias",
 			sessType: TypeMacaroonCustom,
 			featureConfig: map[string][]byte{
 				"AutoFees":      {1, 2, 3, 4},
@@ -126,7 +126,7 @@ func TestSerializeDeserializeSession(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			priv, id, err := NewSessionPrivKeyAndID()
+			priv, id, err := NewSessionPrivKeyAndAlias()
 			require.NoError(t, err)
 
 			session, err := buildSession(
@@ -176,12 +176,12 @@ func TestSerializeDeserializeSession(t *testing.T) {
 }
 
 // TestGroupIDForOlderSessions tests that older sessions that were added before
-// the GroupID was introduced still deserialize correctly by using the session's
-// ID as the GroupID.
+// the GroupAlias was introduced still deserialize correctly by using the session's
+// Alias as the GroupAlias.
 func TestGroupIDForOlderSessions(t *testing.T) {
 	t.Parallel()
 
-	priv, id, err := NewSessionPrivKeyAndID()
+	priv, id, err := NewSessionPrivKeyAndAlias()
 	require.NoError(t, err)
 
 	session, err := buildSession(
@@ -204,19 +204,19 @@ func TestGroupIDForOlderSessions(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, stream.Encode(&buf))
 
-	// Now deserialize the session and ensure that the group ID _does_ get
-	// set correctly the session's ID.
+	// Now deserialize the session and ensure that the group Alias _does_ get
+	// set correctly the session's Alias.
 	sess, err := DeserializeSession(&buf)
 	require.NoError(t, err)
-	require.Equal(t, session.ID, sess.GroupID)
+	require.Equal(t, session.Alias, sess.GroupAlias)
 }
 
-// TestGroupID tests that a Session's GroupID member gets correctly set
+// TestGroupID tests that a Session's GroupAlias member gets correctly set
 // depending on if the Session is linked to a previous one.
 func TestGroupID(t *testing.T) {
 	t.Parallel()
 
-	priv, id, err := NewSessionPrivKeyAndID()
+	priv, id, err := NewSessionPrivKeyAndAlias()
 	require.NoError(t, err)
 
 	// Create session 1 which is not linked to any previous session.
@@ -229,26 +229,26 @@ func TestGroupID(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// The group ID of this session should be the same as the session ID.
-	require.Equal(t, session1.ID, session1.GroupID)
+	// The group Alias of this session should be the same as the session Alias.
+	require.Equal(t, session1.Alias, session1.GroupAlias)
 
 	// Create session 2 and link it to session 1.
-	priv, id, err = NewSessionPrivKeyAndID()
+	priv, id, err = NewSessionPrivKeyAndAlias()
 	require.NoError(t, err)
 	session2, err := buildSession(
 		id, priv, "test-session", TypeMacaroonAdmin,
 		time.Now(),
 		time.Date(99999, 1, 1, 0, 0, 0, 0, time.UTC),
 		"foo.bar.baz:1234", true, nil, nil, nil, false,
-		&session1.GroupID, PrivacyFlags{},
+		&session1.GroupAlias, PrivacyFlags{},
 	)
 	require.NoError(t, err)
 
-	// The group ID of this session should _not_ the same as its session ID.
-	require.NotEqual(t, session2.ID, session2.GroupID)
+	// The group Alias of this session should _not_ the same as its session Alias.
+	require.NotEqual(t, session2.Alias, session2.GroupAlias)
 
-	// Instead, the group ID should match the session ID of session 1.
-	require.Equal(t, session1.ID, session2.GroupID)
+	// Instead, the group Alias should match the session Alias of session 1.
+	require.Equal(t, session1.Alias, session2.GroupAlias)
 }
 
 // TestSerializeDeserializeCaveats makes sure that a list of caveats can be

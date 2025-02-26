@@ -7,10 +7,11 @@
 package litrpc
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -89,13 +90,13 @@ type PrivacyMapConversionRequest struct {
 	// string will be assumed to be the pseudo value.
 	RealToPseudo bool `protobuf:"varint,1,opt,name=real_to_pseudo,json=realToPseudo,proto3" json:"real_to_pseudo,omitempty"`
 	// Deprecated, use group_id.
-	// The session ID under which to search for the real-pseudo pair.
+	// The session Alias under which to search for the real-pseudo pair.
 	//
 	// Deprecated: Marked as deprecated in firewall.proto.
 	SessionId []byte `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	// The input to be converted into the real or pseudo value.
 	Input string `protobuf:"bytes,3,opt,name=input,proto3" json:"input,omitempty"`
-	// The group ID under which to search for the real-pseudo pair.
+	// The group Alias under which to search for the real-pseudo pair.
 	GroupId []byte `protobuf:"bytes,4,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
 }
 
@@ -238,7 +239,7 @@ type ListActionsRequest struct {
 	// significantly decrease the performance of the query if there are many
 	// actions in the db.
 	CountTotal bool `protobuf:"varint,8,opt,name=count_total,json=countTotal,proto3" json:"count_total,omitempty"`
-	// The session ID to filter on. If left empty, actions for any session will
+	// The session Alias to filter on. If left empty, actions for any session will
 	// be returned.
 	SessionId []byte `protobuf:"bytes,9,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	// If specified, then only actions created after the given timestamp will be
@@ -462,7 +463,7 @@ type Action struct {
 	// If the state is Error, then this string will show the human readable reason
 	// for why the action errored out.
 	ErrorReason string `protobuf:"bytes,10,opt,name=error_reason,json=errorReason,proto3" json:"error_reason,omitempty"`
-	// The ID of the session under which the action was performed.
+	// The Alias of the session under which the action was performed.
 	SessionId []byte `protobuf:"bytes,11,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 }
 
