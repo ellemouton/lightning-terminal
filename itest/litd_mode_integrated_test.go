@@ -884,7 +884,7 @@ func runGRPCAuthTest(t *testing.T, hostPort, tlsCertPath, macPath string,
 		require.ErrorContains(t, err, "macaroon service")
 		require.ErrorContains(t, err, "initialised")
 	} else {
-		require.ErrorContains(t, err, "invalid Alias")
+		require.ErrorContains(t, err, "invalid ID")
 	}
 
 	// Then finally we try with the correct macaroon which should now
@@ -959,7 +959,7 @@ func runUIPasswordCheck(t *testing.T, hostPort, tlsCertPath, uiPassword string,
 		require.ErrorContains(t, err, "macaroon service")
 		require.ErrorContains(t, err, "initialised")
 	default:
-		require.ErrorContains(t, err, "invalid Alias")
+		require.ErrorContains(t, err, "invalid ID")
 	}
 
 	// Using the correct UI password should work for all requests unless the
@@ -994,7 +994,7 @@ func runUIPasswordCheck(t *testing.T, hostPort, tlsCertPath, uiPassword string,
 			require.ErrorContains(t, err, "macaroon service")
 			require.ErrorContains(t, err, "initialised")
 		default:
-			require.ErrorContains(t, err, "invalid Alias")
+			require.ErrorContains(t, err, "invalid ID")
 		}
 
 		return
