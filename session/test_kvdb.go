@@ -3,6 +3,7 @@ package session
 import (
 	"testing"
 
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightningnetwork/lnd/clock"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +18,24 @@ func NewTestDB(t *testing.T, clock clock.Clock) *BoltStore {
 func NewTestDBFromPath(t *testing.T, dbPath string,
 	clock clock.Clock) *BoltStore {
 
-	store, err := NewDB(dbPath, DBFilename, clock)
+	acctStore := accounts.NewTestDB(t, clock)
+
+	store, err := NewDB(dbPath, DBFilename, clock, acctStore)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		require.NoError(t, store.DB.Close())
+	})
+
+	return store
+}
+
+// NewTestDBWithAccounts creates a new test session Store with access to an
+// existing accounts DB.
+func NewTestDBWithAccounts(t *testing.T, clock clock.Clock,
+	acctStore accounts.Store) *BoltStore {
+
+	store, err := NewDB(t.TempDir(), DBFilename, clock, acctStore)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
