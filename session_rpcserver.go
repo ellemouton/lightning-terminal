@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1499,6 +1500,11 @@ func (s *sessionRpcServer) marshalRPCSession(sess *session.Session) (
 		}
 	}
 
+	var accountID string
+	sess.AccountID.WhenSome(func(id accounts.AccountID) {
+		accountID = hex.EncodeToString(id[:])
+	})
+
 	return &litrpc.Session{
 		Id:                     sess.ID[:],
 		Label:                  sess.Label,
@@ -1518,6 +1524,7 @@ func (s *sessionRpcServer) marshalRPCSession(sess *session.Session) (
 		GroupId:                sess.GroupID[:],
 		FeatureConfigs:         clientConfig,
 		PrivacyFlags:           sess.PrivacyFlags.Serialize(),
+		AccountId:              accountID,
 	}, nil
 }
 
