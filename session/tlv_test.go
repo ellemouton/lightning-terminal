@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/lightninglabs/lightning-terminal/accounts"
+	"github.com/lightningnetwork/lnd/fn"
 	"github.com/lightningnetwork/lnd/tlv"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/macaroon-bakery.v2/bakery"
@@ -137,6 +139,7 @@ func TestSerializeDeserializeSession(t *testing.T) {
 				test.caveats, test.featureConfig, true,
 				test.linkedGroupID,
 				[]PrivacyFlag{ClearPubkeys},
+				fn.None[accounts.AccountID](),
 			)
 			require.NoError(t, err)
 
@@ -189,7 +192,7 @@ func TestGroupIDForOlderSessions(t *testing.T) {
 		time.Now(),
 		time.Date(99999, 1, 1, 0, 0, 0, 0, time.UTC),
 		"foo.bar.baz:1234", true, nil, nil, nil, false, nil,
-		PrivacyFlags{},
+		PrivacyFlags{}, fn.None[accounts.AccountID](),
 	)
 	require.NoError(t, err)
 
@@ -225,7 +228,7 @@ func TestGroupID(t *testing.T) {
 		time.Now(),
 		time.Date(99999, 1, 1, 0, 0, 0, 0, time.UTC),
 		"foo.bar.baz:1234", true, nil, nil, nil, false, nil,
-		PrivacyFlags{},
+		PrivacyFlags{}, fn.None[accounts.AccountID](),
 	)
 	require.NoError(t, err)
 
@@ -241,6 +244,7 @@ func TestGroupID(t *testing.T) {
 		time.Date(99999, 1, 1, 0, 0, 0, 0, time.UTC),
 		"foo.bar.baz:1234", true, nil, nil, nil, false,
 		&session1.GroupID, PrivacyFlags{},
+		fn.None[accounts.AccountID](),
 	)
 	require.NoError(t, err)
 

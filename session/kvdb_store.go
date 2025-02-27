@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightningnetwork/lnd/clock"
+	"github.com/lightningnetwork/lnd/fn"
 	"go.etcd.io/bbolt"
 	"gopkg.in/macaroon-bakery.v2/bakery"
 	"gopkg.in/macaroon.v2"
@@ -196,7 +198,10 @@ func getSessionKey(session *Session) []byte {
 func (db *BoltStore) NewSession(label string, typ Type, expiry time.Time,
 	serverAddr string, devServer bool, perms []bakery.Op,
 	caveats []macaroon.Caveat, featureConfig FeaturesConfig, privacy bool,
-	linkedGroupID *ID, flags PrivacyFlags) (*Session, error) {
+	linkedGroupID *ID, flags PrivacyFlags,
+	account fn.Option[accounts.AccountID]) (*Session, error) {
+
+	ctx := context.TODO()
 
 	var session *Session
 	err := db.Update(func(tx *bbolt.Tx) error {
@@ -213,13 +218,23 @@ func (db *BoltStore) NewSession(label string, typ Type, expiry time.Time,
 		session, err = buildSession(
 			id, localPrivKey, label, typ, db.clock.Now(), expiry,
 			serverAddr, devServer, perms, caveats, featureConfig,
-			privacy, linkedGroupID, flags,
+			privacy, linkedGroupID, flags, account,
 		)
 		if err != nil {
 			return err
 		}
 
 		sessionKey := getSessionKey(session)
+
+		// If an account is being linked, we first need to check that
+		// it exists.
+		account.WhenSome(func(account accounts.AccountID) {
+			session.AccountID = fn.Some(account)
+			_, err = db.accounts.Account(ctx, account)
+		})
+		if err != nil {
+			return err
+		}
 
 		if len(sessionBucket.Get(sessionKey)) != 0 {
 			return fmt.Errorf("session with local public key(%x) "+

@@ -6,7 +6,9 @@ import (
 
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/lightninglabs/lightning-node-connect/mailbox"
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/macaroons"
+	"github.com/lightningnetwork/lnd/fn"
 	"gopkg.in/macaroon-bakery.v2/bakery"
 	"gopkg.in/macaroon.v2"
 )
@@ -116,6 +118,9 @@ type Session struct {
 	// group of sessions. If this is the very first session in the group
 	// then this will be the same as ID.
 	GroupID ID
+
+	// AccountID is an optional account that the session has been linked to.
+	AccountID fn.Option[accounts.AccountID]
 }
 
 // buildSession creates a new session with the given user-defined parameters.
@@ -123,7 +128,8 @@ func buildSession(id ID, localPrivKey *btcec.PrivateKey, label string, typ Type,
 	created, expiry time.Time, serverAddr string, devServer bool,
 	perms []bakery.Op, caveats []macaroon.Caveat,
 	featureConfig FeaturesConfig, privacy bool, linkedGroupID *ID,
-	flags PrivacyFlags) (*Session, error) {
+	flags PrivacyFlags, account fn.Option[accounts.AccountID]) (*Session,
+	error) {
 
 	_, pairingSecret, err := mailbox.NewPassphraseEntropy()
 	if err != nil {
@@ -158,6 +164,7 @@ func buildSession(id ID, localPrivKey *btcec.PrivateKey, label string, typ Type,
 		WithPrivacyMapper: privacy,
 		PrivacyFlags:      flags,
 		GroupID:           groupID,
+		AccountID:         account,
 	}
 
 	if perms != nil || caveats != nil {
@@ -193,7 +200,8 @@ type Store interface {
 	NewSession(label string, typ Type, expiry time.Time, serverAddr string,
 		devServer bool, perms []bakery.Op, caveats []macaroon.Caveat,
 		featureConfig FeaturesConfig, privacy bool, linkedGroupID *ID,
-		flags PrivacyFlags) (*Session, error)
+		flags PrivacyFlags,
+		account fn.Option[accounts.AccountID]) (*Session, error)
 
 	// GetSession fetches the session with the given key.
 	GetSession(key *btcec.PublicKey) (*Session, error)
