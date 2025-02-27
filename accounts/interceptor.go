@@ -1,15 +1,19 @@
 package accounts
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	mid "github.com/lightninglabs/lightning-terminal/rpcmiddleware"
+	"github.com/lightningnetwork/lnd/fn"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
 	"google.golang.org/protobuf/proto"
+	"gopkg.in/macaroon-bakery.v2/bakery/checkers"
 	"gopkg.in/macaroon.v2"
 )
 
@@ -21,6 +25,15 @@ const (
 	// accountMiddlewareName is the name that is used for the account system
 	// when registering it to lnd as an RPC middleware.
 	accountMiddlewareName = "lit-account"
+)
+
+var (
+	// caveatPrefix is the prefix that is used for custom caveats that are
+	// used by the account system. This prefix is used to identify the
+	// custom caveat and extract the condition (the AccountID) from it.
+	caveatPrefix = []byte(fmt.Sprintf(
+		"%s %s ", macaroons.CondLndCustom, CondAccount,
+	))
 )
 
 // Name returns the name of the interceptor.
@@ -199,22 +212,68 @@ func parseRPCMessage(msg *lnrpc.RPCMessage) (proto.Message, error) {
 // accountFromMacaroon attempts to extract an account ID from the custom account
 // caveat in the macaroon.
 func accountFromMacaroon(mac *macaroon.Macaroon) (*AccountID, error) {
-	// Extract the account caveat from the macaroon.
-	macaroonAccount := macaroons.GetCustomCaveatCondition(mac, CondAccount)
-	if macaroonAccount == "" {
-		// There is no condition that locks the macaroon to an account,
-		// so there is nothing to check.
+	if mac == nil {
 		return nil, nil
 	}
 
-	// The macaroon is indeed locked to an account. Fetch the account and
-	// validate its balance.
-	accountIDBytes, err := hex.DecodeString(macaroonAccount)
+	// Extract the account caveat from the macaroon.
+	accountID, err := IDFromCaveats(mac.Caveats())
 	if err != nil {
 		return nil, err
 	}
 
+	var id *AccountID
+	accountID.WhenSome(func(aID AccountID) {
+		id = &aID
+	})
+
+	return id, nil
+}
+
+// CaveatFromID creates a custom caveat that can be used to bind a macaroon to
+// a certain account.
+func CaveatFromID(id AccountID) macaroon.Caveat {
+	condition := checkers.Condition(macaroons.CondLndCustom, fmt.Sprintf(
+		"%s %x", CondAccount, id[:],
+	))
+
+	return macaroon.Caveat{Id: []byte(condition)}
+}
+
+// IDFromCaveats attempts to extract an AccountID from the given set of caveats
+// by looking for the custom caveat that binds a macaroon to a certain account.
+func IDFromCaveats(caveats []macaroon.Caveat) (fn.Option[AccountID], error) {
+	var accountIDStr string
+	for _, caveat := range caveats {
+		// The caveat id has a format of
+		// "lnd-custom [custom-caveat-name] [custom-caveat-condition]"
+		// and we only want the condition part. If we match the prefix
+		// part we return the condition that comes after the prefix.
+		if bytes.HasPrefix(caveat.Id, caveatPrefix) {
+			caveatSplit := strings.SplitN(
+				string(caveat.Id),
+				string(caveatPrefix),
+				2,
+			)
+			if len(caveatSplit) == 2 {
+				accountIDStr = caveatSplit[1]
+
+				break
+			}
+		}
+	}
+
+	if accountIDStr == "" {
+		return fn.None[AccountID](), nil
+	}
+
 	var accountID AccountID
+	accountIDBytes, err := hex.DecodeString(accountIDStr)
+	if err != nil {
+		return fn.None[AccountID](), err
+	}
+
 	copy(accountID[:], accountIDBytes)
-	return &accountID, nil
+
+	return fn.Some(accountID), nil
 }
