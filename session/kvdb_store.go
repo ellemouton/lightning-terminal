@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightningnetwork/lnd/clock"
+	"github.com/lightningnetwork/lnd/fn"
 	"go.etcd.io/bbolt"
 )
 
@@ -82,13 +84,17 @@ type BoltStore struct {
 	*bbolt.DB
 
 	clock clock.Clock
+
+	accounts accounts.Store
 }
 
 // A compile-time check to ensure that BoltStore implements the Store interface.
 var _ Store = (*BoltStore)(nil)
 
 // NewDB creates a new bolt database that can be found at the given directory.
-func NewDB(dir, fileName string, clock clock.Clock) (*BoltStore, error) {
+func NewDB(dir, fileName string, clock clock.Clock,
+	store accounts.Store) (*BoltStore, error) {
+
 	firstInit := false
 	path := filepath.Join(dir, fileName)
 
@@ -112,8 +118,9 @@ func NewDB(dir, fileName string, clock clock.Clock) (*BoltStore, error) {
 	}
 
 	return &BoltStore{
-		DB:    db,
-		clock: clock,
+		DB:       db,
+		clock:    clock,
+		accounts: store,
 	}, nil
 }
 
@@ -210,6 +217,16 @@ func (db *BoltStore) NewSession(ctx context.Context, label string, typ Type,
 		}
 
 		sessionKey := getSessionKey(session)
+
+		// If an account is being linked, we first need to check that
+		// it exists.
+		session.AccountID.WhenSome(func(account accounts.AccountID) {
+			session.AccountID = fn.Some(account)
+			_, err = db.accounts.Account(ctx, account)
+		})
+		if err != nil {
+			return err
+		}
 
 		if len(sessionBucket.Get(sessionKey)) != 0 {
 			return fmt.Errorf("session with local public key(%x) "+
@@ -370,20 +387,14 @@ func (db *BoltStore) ListSessionsByType(_ context.Context, t Type) ([]*Session,
 }
 
 // ListSessionsByState returns all sessions currently known to the store that
-// are in the given states.
+// are in the given state.
 //
 // NOTE: this is part of the Store interface.
-func (db *BoltStore) ListSessionsByState(_ context.Context, states ...State) (
+func (db *BoltStore) ListSessionsByState(_ context.Context, state State) (
 	[]*Session, error) {
 
 	return db.listSessions(func(s *Session) bool {
-		for _, state := range states {
-			if s.State == state {
-				return true
-			}
-		}
-
-		return false
+		return s.State == state
 	})
 }
 
