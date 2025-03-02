@@ -104,12 +104,19 @@ func (s *sessionRpcServer) start(ctx context.Context) error {
 	}
 
 	// Start up all previously created sessions.
-	sessions, err := s.cfg.db.ListSessionsByState(
-		ctx, session.StateCreated, session.StateInUse,
-	)
+	sessions, err := s.cfg.db.ListSessionsByState(ctx, session.StateCreated)
 	if err != nil {
 		return fmt.Errorf("error listing sessions: %v", err)
 	}
+
+	// For backwards compatibility, we will also resume sessions that are in
+	// the InUse state even though we no longer put sessions into this
+	// state.
+	inUseSessions, err := s.cfg.db.ListSessionsByState(
+		ctx, session.StateInUse,
+	)
+
+	sessions = append(sessions, inUseSessions...)
 
 	for _, sess := range sessions {
 		key := sess.LocalPublicKey.SerializeCompressed()
