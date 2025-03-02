@@ -68,11 +68,9 @@ type SQLStore struct {
 	db BatchedSQLQueries
 
 	// DB represents the underlying database connection.
-	*sql.DB
+	*db.BaseDB
 
 	clock clock.Clock
-
-	BaseDB *db.BaseDB
 }
 
 // NewSQLStore creates a new SQLStore instance given an open BatchedSQLQueries
@@ -86,7 +84,6 @@ func NewSQLStore(sqlDB *db.BaseDB, clock clock.Clock) *SQLStore {
 
 	return &SQLStore{
 		db:     executor,
-		DB:     sqlDB.DB,
 		clock:  clock,
 		BaseDB: sqlDB,
 	}
