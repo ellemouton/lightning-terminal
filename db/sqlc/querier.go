@@ -13,20 +13,44 @@ type Querier interface {
 	AddAccountInvoice(ctx context.Context, arg AddAccountInvoiceParams) error
 	DeleteAccount(ctx context.Context, id int64) error
 	DeleteAccountPayment(ctx context.Context, arg DeleteAccountPaymentParams) error
+	DeleteSessionsWithState(ctx context.Context, state int16) error
 	GetAccount(ctx context.Context, id int64) (Account, error)
 	GetAccountByLabel(ctx context.Context, label sql.NullString) (Account, error)
 	GetAccountIDByAlias(ctx context.Context, alias int64) (int64, error)
 	GetAccountIndex(ctx context.Context, name string) (int64, error)
 	GetAccountInvoice(ctx context.Context, arg GetAccountInvoiceParams) (AccountInvoice, error)
 	GetAccountPayment(ctx context.Context, arg GetAccountPaymentParams) (AccountPayment, error)
+	GetLegacyIDBySessionID(ctx context.Context, id int64) ([]byte, error)
+	GetSessionByID(ctx context.Context, id int64) (Session, error)
+	GetSessionByLegacyID(ctx context.Context, legacyID []byte) (Session, error)
+	GetSessionByLocalPublicKey(ctx context.Context, localPublicKey []byte) (Session, error)
+	GetSessionFeatureConfigs(ctx context.Context, sessionID int64) ([]FeatureConfig, error)
+	GetSessionIDByLegacyID(ctx context.Context, legacyID []byte) (int64, error)
+	GetSessionLegacyIDsInGroup(ctx context.Context, groupID sql.NullInt64) ([][]byte, error)
+	GetSessionMacaroonCaveats(ctx context.Context, sessionID int64) ([]MacaroonCaveat, error)
+	GetSessionMacaroonPermissions(ctx context.Context, sessionID int64) ([]MacaroonPermission, error)
+	GetSessionPrivacyFlags(ctx context.Context, sessionID int64) ([]PrivacyFlag, error)
+	GetSessionsInGroup(ctx context.Context, groupID sql.NullInt64) ([]Session, error)
 	InsertAccount(ctx context.Context, arg InsertAccountParams) (int64, error)
+	InsertFeatureConfig(ctx context.Context, arg InsertFeatureConfigParams) error
+	InsertMacaroonCaveat(ctx context.Context, arg InsertMacaroonCaveatParams) error
+	InsertMacaroonPermission(ctx context.Context, arg InsertMacaroonPermissionParams) error
+	InsertPrivacyFlag(ctx context.Context, arg InsertPrivacyFlagParams) error
+	InsertSession(ctx context.Context, arg InsertSessionParams) (int64, error)
 	ListAccountInvoices(ctx context.Context, accountID int64) ([]AccountInvoice, error)
 	ListAccountPayments(ctx context.Context, accountID int64) ([]AccountPayment, error)
 	ListAllAccounts(ctx context.Context) ([]Account, error)
+	ListSessions(ctx context.Context) ([]Session, error)
+	ListSessionsByState(ctx context.Context, state int16) ([]Session, error)
+	ListSessionsByType(ctx context.Context, type_ int16) ([]Session, error)
 	SetAccountIndex(ctx context.Context, arg SetAccountIndexParams) error
+	SetRemotePublicKeyByLocalPublicKey(ctx context.Context, arg SetRemotePublicKeyByLocalPublicKeyParams) error
+	SetSessionGroupID(ctx context.Context, arg SetSessionGroupIDParams) error
+	SetSessionRevokedAt(ctx context.Context, arg SetSessionRevokedAtParams) error
 	UpdateAccountBalance(ctx context.Context, arg UpdateAccountBalanceParams) (int64, error)
 	UpdateAccountExpiry(ctx context.Context, arg UpdateAccountExpiryParams) (int64, error)
 	UpdateAccountLastUpdate(ctx context.Context, arg UpdateAccountLastUpdateParams) (int64, error)
+	UpdateSessionState(ctx context.Context, arg UpdateSessionStateParams) error
 	UpsertAccountPayment(ctx context.Context, arg UpsertAccountPaymentParams) error
 }
 
