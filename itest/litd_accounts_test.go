@@ -42,7 +42,9 @@ func runAccountSystemTest(t *harnessTest, node *HarnessNode, hostPort,
 	})
 	require.NoError(t.t, err)
 
-	mineBlocks(t, net, 1, 1)
+	mineBlocks(t, net, 6, 1)
+	assertWalletBalance(ctxt, t.t, node.LightningClient, 0, 0, 0, 0)
+	assertChannelBalance(ctxt, t.t, node.LightningClient, 0, 0)
 
 	// Set up our channel partner Charlie that is being used to open
 	// channels to, send and receive payments to verify the responses of the
@@ -60,6 +62,13 @@ func runAccountSystemTest(t *harnessTest, node *HarnessNode, hostPort,
 	)
 
 	net.SendCoins(t.t, initialBalance, node)
+	assertWalletBalance(
+		ctxt, t.t, node.LightningClient, initialBalance, 0,
+		initialBalance, 0,
+	)
+	assertChannelBalance(ctxt, t.t, node.LightningClient, 0, 0)
+	assertNumChannels(ctxt, t.t, node.LightningClient, 0, 0, 0, 0)
+
 	net.EnsureConnected(t.t, node, charlie)
 
 	channelOp := openChannelAndAssert(
@@ -70,6 +79,7 @@ func runAccountSystemTest(t *harnessTest, node *HarnessNode, hostPort,
 	)
 
 	// Make sure our normal calls all return the expected values.
+	assertNumChannels(ctxt, t.t, node.LightningClient, 1, 0, 0, 0)
 	localBalance := uint64(fundingAmt - pushAmt - chanReserve)
 	assertChannelBalance(
 		ctxt, t.t, node.LightningClient, localBalance, pushAmt,
@@ -79,7 +89,6 @@ func runAccountSystemTest(t *harnessTest, node *HarnessNode, hostPort,
 		ctxt, t.t, node.LightningClient, walletBalance, 0,
 		walletBalance, 0,
 	)
-	assertNumChannels(ctxt, t.t, node.LightningClient, 1, 0, 0, 0)
 
 	// Before the big lnd itest framework refactor the passive nodes Alice
 	// and Bob were always started. Now they are optional, and we don't

@@ -31,6 +31,8 @@ func TestLightningTerminal(t *testing.T) {
 		"--default-remote-max-htlcs=483",
 		"--dust-threshold=5000000",
 		"--rpcmiddleware.enable",
+		"--bitcoin.timelockdelta=18",
+		"--bitcoin.defaultremotedelay=2",
 	}
 
 	// Run the subset of the test cases selected in this tranche.
@@ -65,7 +67,7 @@ func TestLightningTerminal(t *testing.T) {
 
 			lndSubTest := lndHarness.Subtest(t1)
 			litdHarness, err := NewNetworkHarness(
-				lndSubTest, chainBackend, binary,
+				lndSubTest, chainBackend, binary, feeService,
 			)
 			require.NoError(t1, err)
 
