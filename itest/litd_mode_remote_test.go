@@ -11,15 +11,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testModeIntegrated makes sure that in integrated mode all daemons work
-// correctly. It tests the full integrated mode test suite with the ui password
-// set and then again with no ui password and a disabled UI.
-func testModeRemote(ctx context.Context, net *NetworkHarness,
-	t *harnessTest) {
+// remoteModeTestCases defines a set of tests that focuses on the
+// behavior of the LiT in remote mode.
+var remoteModeTestCases = []*testCase{
+	{
+		name: "UI password",
+		test: func(ctx context.Context, net *NetworkHarness,
+			t *harnessTest) {
 
-	testWithAndWithoutUIPassword(ctx, net, t.t, remoteTestSuite, net.Bob)
+			testWithAndWithoutUIPassword(
+				ctx, net, t.t, remoteTestSuite, net.Bob,
+			)
+		},
+	},
+	{
+		name: "disabled sub-servers",
+		test: func(ctx context.Context, net *NetworkHarness,
+			t *harnessTest) {
 
-	testDisablingSubServers(ctx, net, t.t, remoteTestSuite, net.Bob)
+			testDisablingSubServers(
+				ctx, net, t.t, remoteTestSuite, net.Bob,
+			)
+		},
+	},
+	{
+		name: "accounts",
+		test: func(ctx context.Context, net *NetworkHarness,
+			t *harnessTest) {
+
+			testAccounts(t, net.Bob)
+		},
+	},
 }
 
 // remoteTestSuite makes sure that in remote mode all daemons work correctly.
@@ -257,25 +279,5 @@ func remoteTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
 				)
 			})
 		}
-	})
-
-	t.Run("gRPC super macaroon account system test", func(tt *testing.T) {
-		cfg := net.Bob.Cfg
-
-		// If the accounts service is disabled, we skip this test as it
-		// will fail due to the accounts service being disabled.
-		if subServersDisabled {
-			return
-		}
-
-		superMacFile := bakeSuperMacaroon(
-			tt, cfg, getLiTMacFromFile, false,
-		)
-
-		ht := newHarnessTest(tt, net)
-		runAccountSystemTest(
-			ht, net.Bob, cfg.LitAddr(), cfg.LitTLSCertPath,
-			superMacFile, runNum,
-		)
 	})
 }

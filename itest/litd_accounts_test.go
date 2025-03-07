@@ -22,14 +22,16 @@ var (
 	burnAddr = "bcrt1qlthqw0zmup27nx35hcy82vkc4qjcxgmkvhnjtc"
 )
 
-// runAccountSystemTest tests the macaroon account system.
-func runAccountSystemTest(t *harnessTest, node *HarnessNode, hostPort,
-	tlsCertPath, macPath string, runNumber int) {
+// testAccounts tests the macaroon account system.
+func testAccounts(t *harnessTest, node *HarnessNode) {
+	cfg := node.Cfg
 
 	net := t.lndHarness
 	ctxb := context.Background()
 	ctxt, cancel := context.WithTimeout(ctxb, defaultTimeout)
 	defer cancel()
+
+	assertNumChannels(ctxt, t.t, node.LightningClient, 0, 0, 0, 0)
 
 	// Before we start opening channels, we want to make sure we don't have
 	// any leftover funds in the tested node's wallet, so we can always
@@ -53,6 +55,8 @@ func runAccountSystemTest(t *harnessTest, node *HarnessNode, hostPort,
 	require.NoError(t.t, err)
 	defer shutdownAndAssert(net, t, charlie)
 
+	log.Infof("Done creating Charlie")
+
 	const (
 		initialBalance = btcutil.SatoshiPerBitcoin
 		fundingAmt     = 5_000_000
@@ -71,12 +75,14 @@ func runAccountSystemTest(t *harnessTest, node *HarnessNode, hostPort,
 
 	net.EnsureConnected(t.t, node, charlie)
 
+	log.Infof("opening channel")
 	channelOp := openChannelAndAssert(
 		t, net, node, charlie, lntest.OpenChannelParams{
 			Amt:     fundingAmt,
 			PushAmt: pushAmt,
 		},
 	)
+	log.Infof("done channel")
 
 	// Make sure our normal calls all return the expected values.
 	assertNumChannels(ctxt, t.t, node.LightningClient, 1, 0, 0, 0)
@@ -98,20 +104,22 @@ func runAccountSystemTest(t *harnessTest, node *HarnessNode, hostPort,
 
 	// Prepare our gRPC connection with the super macaroon as the
 	// authentication mechanism.
-	rawConn, err := connectRPC(ctxt, hostPort, tlsCertPath)
+	rawConn, err := connectRPC(ctxt, cfg.LitAddr(), cfg.LitTLSCertPath)
 	require.NoError(t.t, err)
 	defer func() {
 		require.NoError(t.t, rawConn.Close())
 	}()
 
-	macBytes, err := os.ReadFile(macPath)
+	superMacFile := bakeSuperMacaroon(t.t, cfg, getLiTMacFromFile, false)
+
+	macBytes, err := os.ReadFile(superMacFile)
 	require.NoError(t.t, err)
 	ctxm := macaroonContext(ctxt, macBytes)
 	acctClient := litrpc.NewAccountsClient(rawConn)
 
 	// Create a new account with a balance of 50k sats.
 	const acctBalance uint64 = 50_000
-	acctLabel := fmt.Sprintf("test account %d", runNumber)
+	acctLabel := "test account"
 	acctResp, err := acctClient.CreateAccount(
 		ctxm, &litrpc.CreateAccountRequest{
 			AccountBalance: acctBalance,
@@ -157,9 +165,7 @@ func runAccountSystemTest(t *harnessTest, node *HarnessNode, hostPort,
 
 	// We can't delete invoices, so there will be residual invoices from
 	// previous runs on the same node.
-	assertNumInvoices(
-		ctxt, t.t, node.LightningClient, runNumber*2+(runNumber-1),
-	)
+	assertNumInvoices(ctxt, t.t, node.LightningClient, 2)
 
 	payNode(ctxt, ctxt, t, node.RouterClient, charlie, 4567, "invoice 1")
 	payNode(ctxt, ctxt, t, node.RouterClient, charlie, 2345, "invoice 2")

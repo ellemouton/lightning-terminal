@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
-	"github.com/btcsuite/btcd/btcutil"
 	"github.com/lightninglabs/faraday/frdrpc"
 	"github.com/lightninglabs/lightning-node-connect/mailbox"
 	"github.com/lightninglabs/lightning-terminal/litrpc"
@@ -49,6 +48,39 @@ const (
 	// integration tests.
 	mailboxServerAddr = "mailbox.testnet.lightningcluster.com:443"
 )
+
+// integratedModeTestCases defines a set of tests that focuses on the
+// behavior of the LiT in integrated mode.
+var integratedModeTestCases = []*testCase{
+	{
+		name: "UI password",
+		test: func(ctx context.Context, net *NetworkHarness,
+			t *harnessTest) {
+
+			testWithAndWithoutUIPassword(
+				ctx, net, t.t, integratedTestSuite, net.Alice,
+			)
+		},
+	},
+	{
+		name: "disabled sub-servers",
+		test: func(ctx context.Context, net *NetworkHarness,
+			t *harnessTest) {
+
+			testDisablingSubServers(
+				ctx, net, t.t, integratedTestSuite, net.Alice,
+			)
+		},
+	},
+	{
+		name: "accounts",
+		test: func(ctx context.Context, net *NetworkHarness,
+			t *harnessTest) {
+
+			testAccounts(t, net.Alice)
+		},
+	},
+}
 
 // requestFn is a function type for a helper function that makes a daemon
 // specific request and returns the response and error for it. This is used to
@@ -450,35 +482,10 @@ func testWithAndWithoutUIPassword(ctx context.Context, net *NetworkHarness,
 	})
 }
 
-// testModeIntegrated makes sure that in integrated mode all daemons work
-// correctly. It tests the full integrated mode test suite with the ui password
-// set and then again with no ui password and a disabled UI.
-func testModeIntegrated(ctx context.Context, net *NetworkHarness,
-	t *harnessTest) {
-
-	testWithAndWithoutUIPassword(
-		ctx, net, t.t, integratedTestSuite, net.Alice,
-	)
-
-	testDisablingSubServers(
-		ctx, net, t.t, integratedTestSuite, net.Alice,
-	)
-}
-
 // integratedTestSuite makes sure that in integrated mode all daemons work
 // correctly.
-func integratedTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
+func integratedTestSuite(_ context.Context, net *NetworkHarness, t *testing.T,
 	withoutUIPassword, subServersDisabled bool, runNum int) {
-
-	// Some very basic functionality tests to make sure lnd is working fine
-	// in integrated mode.
-	net.SendCoins(t, btcutil.SatoshiPerBitcoin, net.Alice)
-
-	// We expect a non-empty alias (truncated node ID) to be returned.
-	resp, err := net.Alice.GetInfo(ctx, &lnrpc.GetInfoRequest{})
-	require.NoError(t, err)
-	require.NotEmpty(t, resp.Alias)
-	require.Contains(t, resp.Alias, "Alice")
 
 	t.Run("certificate check", func(tt *testing.T) {
 		runCertificateCheck(tt, net.Alice)
@@ -613,30 +620,6 @@ func integratedTestSuite(ctx context.Context, net *NetworkHarness, t *testing.T,
 				)
 			})
 		}
-	})
-
-	t.Run("gRPC super macaroon account system test", func(tt *testing.T) {
-		cfg := net.Alice.Cfg
-
-		// If the accounts service is disabled, we skip this test as it
-		// will fail due to the accounts service being disabled.
-		if subServersDisabled {
-			return
-		}
-
-		superMacFile := bakeSuperMacaroon(
-			tt, cfg, getLiTMacFromFile, false,
-		)
-
-		ht := newHarnessTest(tt, net)
-		runAccountSystemTest(
-			ht, net.Alice, cfg.LitAddr(), cfg.LitTLSCertPath,
-			superMacFile, (runNum*2)-1,
-		)
-		runAccountSystemTest(
-			ht, net.Alice, cfg.LitAddr(), cfg.LitTLSCertPath,
-			superMacFile, runNum*2,
-		)
 	})
 
 	t.Run("lnc auth custom mac perms", func(tt *testing.T) {

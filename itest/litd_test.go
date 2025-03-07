@@ -37,8 +37,6 @@ func TestLightningTerminal(t *testing.T) {
 
 	// Run the subset of the test cases selected in this tranche.
 	for _, testCase := range allTestCases {
-		testCase := testCase
-
 		success := t.Run(testCase.name, func(t1 *testing.T) {
 			cleanTestCaseName := strings.ReplaceAll(
 				testCase.name, " ", "_",

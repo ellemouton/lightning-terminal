@@ -3,15 +3,11 @@
 
 package itest
 
+import (
+	"fmt"
+)
+
 var allTestCases = []*testCase{
-	{
-		name: "test mode integrated",
-		test: testModeIntegrated,
-	},
-	{
-		name: "test mode remote",
-		test: testModeRemote,
-	},
 	{
 		name: "stateless init mode",
 		test: testStatelessInitMode,
@@ -80,4 +76,30 @@ var allTestCases = []*testCase{
 		name: "test custom channels decode payreq",
 		test: testCustomChannelsDecodeAssetInvoice,
 	},
+}
+
+// appendPrefixed is used to add a prefix to each test name in the subtests
+// before appending them to the main test cases.
+func appendPrefixed(prefix string, testCases,
+	subtestCases []*testCase) []*testCase {
+
+	for _, tc := range subtestCases {
+		name := fmt.Sprintf("%s-%s", prefix, tc.name)
+		testCases = append(testCases, &testCase{
+			name: name,
+			test: tc.test,
+		})
+	}
+
+	return testCases
+}
+
+func init() {
+	// Register subtests.
+	allTestCases = appendPrefixed(
+		"mode integrated", allTestCases, integratedModeTestCases,
+	)
+	allTestCases = appendPrefixed(
+		"mode remote", allTestCases, remoteModeTestCases,
+	)
 }
