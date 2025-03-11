@@ -3,10 +3,12 @@
 package terminal
 
 import (
+	"fmt"
 	"path/filepath"
 
 	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/db"
+	"github.com/lightninglabs/lightning-terminal/firewalldb"
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightningnetwork/lnd/clock"
 )
@@ -87,7 +89,7 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 		networkDir = filepath.Join(cfg.LitDir, cfg.Network)
 		acctStore  accounts.Store
 		sessStore  session.Store
-		closeFn    func() error
+		closeFn    []func() error
 	)
 
 	switch cfg.DatabaseBackend {
@@ -106,7 +108,7 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 
 		acctStore = accounts.NewSQLStore(sqlStore.BaseDB, clock)
 		sessStore = session.NewSQLStore(sqlStore.BaseDB, clock)
-		closeFn = sqlStore.BaseDB.Close
+		closeFn = append(closeFn, sqlStore.BaseDB.Close)
 
 	case DatabaseBackendPostgres:
 		sqlStore, err := db.NewPostgresStore(cfg.Postgres)
@@ -116,7 +118,7 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 
 		acctStore = accounts.NewSQLStore(sqlStore.BaseDB, clock)
 		sessStore = session.NewSQLStore(sqlStore.BaseDB, clock)
-		closeFn = sqlStore.BaseDB.Close
+		closeFn = append(closeFn, sqlStore.BaseDB.Close)
 
 	default:
 		accountStore, err := accounts.NewBoltStore(
@@ -136,7 +138,7 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 
 		acctStore = accountStore
 		sessStore = sessionStore
-		closeFn = func() error {
+		closeFn = append(closeFn, func() error {
 			var returnErr error
 			err = accountStore.Close()
 			if err != nil {
@@ -149,12 +151,33 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 			}
 
 			return returnErr
-		}
+		})
 	}
 
+	firewallBoltDB, err := firewalldb.NewBoltDB(
+		networkDir, firewalldb.DBFilename, sessStore,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating firewall BoltDB: %v",
+			err)
+	}
+	closeFn = append(closeFn, firewallBoltDB.Close)
+
 	return &stores{
-		accounts: acctStore,
-		sessions: sessStore,
-		close:    closeFn,
+		accounts:     acctStore,
+		sessions:     sessStore,
+		firewall:     firewalldb.NewDB(firewallBoltDB),
+		firewallBolt: firewallBoltDB,
+		close: func() error {
+			var returnErr error
+			for _, fn := range closeFn {
+				err := fn()
+				if err != nil {
+					returnErr = err
+				}
+			}
+
+			return returnErr
+		},
 	}, nil
 }

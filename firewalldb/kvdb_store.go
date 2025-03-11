@@ -114,15 +114,8 @@ func initDB(filepath string, firstInit bool) (*bbolt.DB, error) {
 			}
 		}
 
-		rulesBucket, err := tx.CreateBucketIfNotExists(rulesBucketKey)
+		_, err := tx.CreateBucketIfNotExists(rulesBucketKey)
 		if err != nil {
-			return err
-		}
-
-		// Delete everything under the "temp" key if such a bucket
-		// exists.
-		err = rulesBucket.DeleteBucket(tempBucketKey)
-		if err != nil && !errors.Is(err, bbolt.ErrBucketNotFound) {
 			return err
 		}
 
@@ -151,6 +144,25 @@ func initDB(filepath string, firstInit bool) (*bbolt.DB, error) {
 	}
 
 	return db, nil
+}
+
+// DeleteTempKVStores deletes all kv-stores in the temporary namespace.
+func (db *BoltDB) DeleteTempKVStores(_ context.Context) error {
+	return db.Update(func(tx *bbolt.Tx) error {
+		rulesBucket, err := tx.CreateBucketIfNotExists(rulesBucketKey)
+		if err != nil {
+			return err
+		}
+
+		// Delete everything under the "temp" key if such a bucket
+		// exists.
+		err = rulesBucket.DeleteBucket(tempBucketKey)
+		if err != nil && !errors.Is(err, bbolt.ErrBucketNotFound) {
+			return err
+		}
+
+		return nil
+	})
 }
 
 // kvdbExecutor is a concrete implementation of the DBExecutor interface that

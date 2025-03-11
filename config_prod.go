@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/lightninglabs/lightning-terminal/accounts"
+	"github.com/lightninglabs/lightning-terminal/firewalldb"
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightningnetwork/lnd/clock"
 )
@@ -46,9 +47,18 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 			err)
 	}
 
+	firewallDB, err := firewalldb.NewBoltDB(
+		networkDir, firewalldb.DBFilename, sessStore,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating firewall DB: %v", err)
+	}
+
 	return &stores{
-		accounts: acctStore,
-		sessions: sessStore,
+		accounts:     acctStore,
+		sessions:     sessStore,
+		firewallBolt: firewallDB,
+		firewall:     firewalldb.NewDB(firewallDB),
 		close: func() error {
 			var returnErr error
 			if err := acctStore.Close(); err != nil {
@@ -58,6 +68,10 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 			if err := sessStore.Close(); err != nil {
 				returnErr = fmt.Errorf("error closing "+
 					"session store: %v", err)
+			}
+			if err := firewallDB.Close(); err != nil {
+				returnErr = fmt.Errorf("error closing "+
+					"firewall db: %v", err)
 			}
 
 			return returnErr
