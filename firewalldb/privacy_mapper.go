@@ -40,7 +40,7 @@ type NewPrivacyMapDB func(groupID session.ID) PrivacyMapDB
 
 // PrivacyDB constructs a PrivacyMapDB that will be indexed under the given
 // group ID key.
-func (db *DB) PrivacyDB(groupID session.ID) PrivacyMapDB {
+func (db *BoltDB) PrivacyDB(groupID session.ID) PrivacyMapDB {
 	return &kvdbExecutor[PrivacyMapTx]{
 		db: db.DB,
 		wrapper: &privacyMapDB{
@@ -76,7 +76,7 @@ type PrivacyMapTx interface {
 
 // privacyMapDB is an implementation of PrivacyMapDB.
 type privacyMapDB struct {
-	db      *DB
+	db      *BoltDB
 	groupID session.ID
 }
 
