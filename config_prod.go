@@ -58,6 +58,7 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 		accounts:     acctStore,
 		sessions:     sessStore,
 		firewallBolt: firewallDB,
+		rules:        firewallDB,
 		firewall:     firewalldb.NewDB(firewallDB),
 		close: func() error {
 			var returnErr error
