@@ -9,6 +9,7 @@ import (
 
 type SQLQueries interface {
 	SQLKVStoreQueries
+	SQLPrivacyPairQueries
 }
 
 // BatchedSQLQueries is a version of the SQLQueries that's capable of batched
