@@ -18,7 +18,7 @@ type SQLSessionQueries interface {
 	GetSessionIDByAlias(ctx context.Context, legacyID []byte) (int64, error)
 }
 
-type SQLQueries interface {
+type SQLKVDBQueries interface {
 	SQLSessionQueries
 
 	DeleteKVStoreRecord(ctx context.Context, arg sqlc.DeleteKVStoreRecordParams) error
@@ -26,41 +26,6 @@ type SQLQueries interface {
 	InsertKVStoreRecord(ctx context.Context, arg sqlc.InsertKVStoreRecordParams) error
 	DeleteAllTemp(ctx context.Context) error
 	UpdateKVStoreRecord(ctx context.Context, arg sqlc.UpdateKVStoreRecordParams) error
-}
-
-// BatchedSQLQueries is a version of the SQLQueries that's capable of batched
-// database operations.
-type BatchedSQLQueries interface {
-	SQLQueries
-
-	db.BatchedTx[SQLQueries]
-}
-
-// SQLDB represents a storage backend.
-type SQLDB struct {
-	// db is all the higher level queries that the SQLStore has access to
-	// in order to implement all its CRUD logic.
-	db BatchedSQLQueries
-
-	// BaseDB represents the underlying database connection.
-	*db.BaseDB
-}
-
-var _ RulesDB = (*SQLDB)(nil)
-
-// NewSQLDB creates a new SQLStore instance given an open BatchedSQLQueries
-// storage backend.
-func NewSQLDB(sqlDB *db.BaseDB) *SQLDB {
-	executor := db.NewTransactionExecutor(
-		sqlDB, func(tx *sql.Tx) SQLQueries {
-			return sqlDB.WithTx(tx)
-		},
-	)
-
-	return &SQLDB{
-		db:     executor,
-		BaseDB: sqlDB,
-	}
 }
 
 func (s *SQLDB) DeleteTempKVStores(ctx context.Context) error {

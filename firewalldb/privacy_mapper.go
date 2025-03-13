@@ -38,18 +38,6 @@ var (
 // construct a new PrivacyMapDB.
 type NewPrivacyMapDB func(groupID session.ID) PrivacyMapDB
 
-// PrivacyDB constructs a PrivacyMapDB that will be indexed under the given
-// group ID key.
-func (db *BoltDB) PrivacyDB(groupID session.ID) PrivacyMapDB {
-	return &kvdbExecutor[PrivacyMapTx]{
-		db: db.DB,
-		wrapper: &privacyMapDB{
-			db:      db,
-			groupID: groupID,
-		},
-	}
-}
-
 // PrivacyMapDB provides an Update and View method that will allow the caller
 // to perform atomic read and write transactions defined by PrivacyMapTx on the
 // underlying DB.
@@ -125,13 +113,12 @@ func (p *privacyMapTx) NewPair(real, pseudo string) error {
 	}
 
 	if len(realToPseudoBucket.Get([]byte(real))) != 0 {
-		return fmt.Errorf("an entry already exists for real "+
-			"value: %x", real)
+		return fmt.Errorf("%w, real: %v", ErrDuplicateRealValue, real)
 	}
 
 	if len(pseudoToRealBucket.Get([]byte(pseudo))) != 0 {
-		return fmt.Errorf("an entry already exists for pseudo "+
-			"value: %x", pseudo)
+		return fmt.Errorf("%w, pseudo: %v", ErrDuplicatePseudoValue,
+			pseudo)
 	}
 
 	err = realToPseudoBucket.Put([]byte(real), []byte(pseudo))

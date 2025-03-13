@@ -66,6 +66,18 @@ func (db *BoltDB) GetKVStores(rule string, groupID session.ID,
 	}
 }
 
+// PrivacyDB constructs a PrivacyMapDB that will be indexed under the given
+// group ID key.
+func (db *BoltDB) PrivacyDB(groupID session.ID) PrivacyMapDB {
+	return &kvdbExecutor[PrivacyMapTx]{
+		db: db.DB,
+		wrapper: &privacyMapDB{
+			db:      db,
+			groupID: groupID,
+		},
+	}
+}
+
 // kvStores implements the rules.KVStores interface.
 type kvStores struct {
 	db          *bbolt.DB
