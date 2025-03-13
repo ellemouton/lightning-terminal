@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightningnetwork/lnd/clock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -83,15 +86,23 @@ func testTempAndPermStores(t *testing.T, featureSpecificStore bool) {
 		featureName = "auto-fees"
 	}
 
-	store := NewTestDB(t)
+	tmpDir := filepath.Join(t.TempDir(), DBFilename)
+	sessions := session.NewTestDBFromPath(
+		t, tmpDir, clock.NewDefaultClock(),
+	)
+	store := NewTestDBWithSessions(t, sessions)
 	db := NewDB(store)
 	require.NoError(t, db.Start(ctx))
 
-	kvstores := db.GetKVStores(
-		"test-rule", [4]byte{1, 1, 1, 1}, featureName,
+	sess, err := sessions.NewSession(
+		ctx, "test", session.TypeAutopilot, time.Unix(1000, 0),
+		"something",
 	)
+	require.NoError(t, err)
 
-	err := kvstores.Update(ctx, func(ctx context.Context,
+	kvstores := db.GetKVStores("test-rule", sess.GroupID, featureName)
+
+	err = kvstores.Update(ctx, func(ctx context.Context,
 		tx KVStoreTx) error {
 
 		// Set an item in the temp store.
@@ -133,7 +144,7 @@ func testTempAndPermStores(t *testing.T, featureSpecificStore bool) {
 	db = NewDB(store)
 	require.NoError(t, db.Start(ctx))
 
-	kvstores = db.GetKVStores("test-rule", [4]byte{1, 1, 1, 1}, featureName)
+	kvstores = db.GetKVStores("test-rule", sess.GroupID, featureName)
 
 	// The temp store should no longer have the stored value but the perm
 	// store should .
@@ -160,23 +171,30 @@ func testTempAndPermStores(t *testing.T, featureSpecificStore bool) {
 func TestKVStoreNameSpaces(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	db := NewTestDB(t)
 
-	var (
-		groupID1 = intToSessionID(1)
-		groupID2 = intToSessionID(2)
+	sessions := session.NewTestDB(t, clock.NewDefaultClock())
+	db := NewTestDBWithSessions(t, sessions)
+
+	sess1, err := sessions.NewSession(
+		ctx, "test", session.TypeAutopilot, time.Unix(1000, 0), "",
 	)
+	require.NoError(t, err)
+
+	sess2, err := sessions.NewSession(
+		ctx, "test1", session.TypeAutopilot, time.Unix(1000, 0), "",
+	)
+	require.NoError(t, err)
 
 	// Two DBs for same group but different features.
-	rulesDB1 := db.GetKVStores("test-rule", groupID1, "auto-fees")
-	rulesDB2 := db.GetKVStores("test-rule", groupID1, "re-balance")
+	rulesDB1 := db.GetKVStores("test-rule", sess1.GroupID, "auto-fees")
+	rulesDB2 := db.GetKVStores("test-rule", sess1.GroupID, "re-balance")
 
 	// The third DB is for the same rule but a different group. It is
 	// for the same feature as db 2.
-	rulesDB3 := db.GetKVStores("test-rule", groupID2, "re-balance")
+	rulesDB3 := db.GetKVStores("test-rule", sess2.GroupID, "re-balance")
 
 	// Test that the three ruleDBs share the same global space.
-	err := rulesDB1.Update(ctx, func(ctx context.Context,
+	err = rulesDB1.Update(ctx, func(ctx context.Context,
 		tx KVStoreTx) error {
 
 		return tx.Global().Set(
@@ -307,9 +325,9 @@ func TestKVStoreNameSpaces(t *testing.T) {
 	// Test that the group space is shared by the first two dbs but not
 	// the third. To do this, we re-init the DB's but leave the feature
 	// names out. This way, we will access the group storage.
-	rulesDB1 = db.GetKVStores("test-rule", groupID1, "")
-	rulesDB2 = db.GetKVStores("test-rule", groupID1, "")
-	rulesDB3 = db.GetKVStores("test-rule", groupID2, "")
+	rulesDB1 = db.GetKVStores("test-rule", sess1.GroupID, "")
+	rulesDB2 = db.GetKVStores("test-rule", sess1.GroupID, "")
+	rulesDB3 = db.GetKVStores("test-rule", sess2.GroupID, "")
 
 	err = rulesDB1.Update(ctx, func(ctx context.Context,
 		tx KVStoreTx) error {
