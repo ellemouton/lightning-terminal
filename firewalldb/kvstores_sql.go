@@ -39,11 +39,14 @@ func (s *SQLDB) DeleteTempKVStores(ctx context.Context) error {
 func (s *SQLDB) GetKVStores(rule string, groupAlias session.ID,
 	feature string) KVStores {
 
-	return &kvStoreSQLDB{
-		SQLDB:      s,
-		groupAlias: groupAlias,
-		rule:       rule,
-		feature:    feature,
+	return &sqlExecutor[KVStoreTx]{
+		db: s.db,
+		wrapper: &kvStoreSQLDB{
+			SQLDB:      s,
+			groupAlias: groupAlias,
+			rule:       rule,
+			feature:    feature,
+		},
 	}
 }
 
@@ -54,34 +57,11 @@ type kvStoreSQLDB struct {
 	feature    string
 }
 
-var _ DBExecutor[KVStoreTx] = (*kvStoreSQLDB)(nil)
-
-func (k *kvStoreSQLDB) Update(ctx context.Context, fn func(ctx context.Context,
-	tx KVStoreTx) error) error {
-
-	var txOpts db.QueriesTxOptions
-	return k.db.ExecTx(ctx, &txOpts, func(queries SQLQueries) error {
-		sqlTx := &sqlKVStoresSQLTx{
-			db:      k,
-			queries: queries,
-		}
-
-		return fn(ctx, sqlTx)
-	})
-}
-
-func (k *kvStoreSQLDB) View(ctx context.Context, fn func(ctx context.Context,
-	tx KVStoreTx) error) error {
-
-	txOpts := db.NewQueryReadTx()
-	return k.db.ExecTx(ctx, &txOpts, func(queries SQLQueries) error {
-		sqlTx := &sqlKVStoresSQLTx{
-			db:      k,
-			queries: queries,
-		}
-
-		return fn(ctx, sqlTx)
-	})
+func (s *kvStoreSQLDB) wrap(tx SQLQueries) KVStoreTx {
+	return &sqlKVStoresSQLTx{
+		db:      s,
+		queries: tx,
+	}
 }
 
 type sqlKVStoresSQLTx struct {

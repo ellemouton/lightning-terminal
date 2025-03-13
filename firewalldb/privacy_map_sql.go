@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/lightninglabs/lightning-terminal/db"
 	"github.com/lightninglabs/lightning-terminal/db/sqlc"
 	"github.com/lightninglabs/lightning-terminal/session"
 )
@@ -39,34 +38,6 @@ func (p *privacyMapSQLDB) wrap(tx SQLQueries) PrivacyMapTx {
 type privacyMapSQLDB struct {
 	*SQLDB
 	groupID session.ID
-}
-
-func (p *privacyMapSQLDB) Update(ctx context.Context, fn func(ctx context.Context,
-	tx PrivacyMapTx) error) error {
-
-	var txOpts db.QueriesTxOptions
-	return p.db.ExecTx(ctx, &txOpts, func(queries SQLQueries) error {
-		sqlTx := &privacyMapSQLTx{
-			db:      p,
-			queries: queries,
-		}
-
-		return fn(ctx, sqlTx)
-	})
-}
-
-func (p *privacyMapSQLDB) View(ctx context.Context, fn func(ctx context.Context,
-	tx PrivacyMapTx) error) error {
-
-	txOpts := db.NewQueryReadTx()
-	return p.db.ExecTx(ctx, &txOpts, func(queries SQLQueries) error {
-		sqlTx := &privacyMapSQLTx{
-			db:      p,
-			queries: queries,
-		}
-
-		return fn(ctx, sqlTx)
-	})
 }
 
 // privacyMapSQLTx is an implementation of PrivacyMapTx.
