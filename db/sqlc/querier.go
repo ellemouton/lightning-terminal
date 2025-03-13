@@ -23,7 +23,10 @@ type Querier interface {
 	GetAccountInvoice(ctx context.Context, arg GetAccountInvoiceParams) (AccountInvoice, error)
 	GetAccountPayment(ctx context.Context, arg GetAccountPaymentParams) (AccountPayment, error)
 	GetAliasBySessionID(ctx context.Context, id int64) ([]byte, error)
+	GetAllPrivacyPairs(ctx context.Context, groupID int64) ([]GetAllPrivacyPairsRow, error)
 	GetKVStoreRecord(ctx context.Context, arg GetKVStoreRecordParams) ([]byte, error)
+	GetPseudoForReal(ctx context.Context, arg GetPseudoForRealParams) (string, error)
+	GetRealForPseudo(ctx context.Context, arg GetRealForPseudoParams) (string, error)
 	GetSessionAliasesInGroup(ctx context.Context, groupID sql.NullInt64) ([][]byte, error)
 	GetSessionByAlias(ctx context.Context, alias []byte) (Session, error)
 	GetSessionByID(ctx context.Context, id int64) (Session, error)
@@ -36,6 +39,7 @@ type Querier interface {
 	GetSessionsInGroup(ctx context.Context, groupID sql.NullInt64) ([]Session, error)
 	InsertAccount(ctx context.Context, arg InsertAccountParams) (int64, error)
 	InsertKVStoreRecord(ctx context.Context, arg InsertKVStoreRecordParams) error
+	InsertPrivacyPair(ctx context.Context, arg InsertPrivacyPairParams) error
 	InsertSession(ctx context.Context, arg InsertSessionParams) (int64, error)
 	InsertSessionFeatureConfig(ctx context.Context, arg InsertSessionFeatureConfigParams) error
 	InsertSessionMacaroonCaveat(ctx context.Context, arg InsertSessionMacaroonCaveatParams) error

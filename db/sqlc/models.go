@@ -46,6 +46,12 @@ type Kvstore struct {
 	Value       []byte
 }
 
+type PrivacyPair struct {
+	GroupID int64
+	Real    string
+	Pseudo  string
+}
+
 type Session struct {
 	ID              int64
 	Alias           []byte
