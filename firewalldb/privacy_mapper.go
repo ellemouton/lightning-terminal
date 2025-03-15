@@ -35,13 +35,13 @@ var (
 )
 
 // NewPrivacyMapDB is a function type that takes a group ID and uses it to
-// construct a new PrivacyMapDB.
-type NewPrivacyMapDB func(groupID session.ID) PrivacyMapDB
+// construct a new PrivacyMap.
+type NewPrivacyMapDB func(groupID session.ID) PrivacyMap
 
-// PrivacyMapDB provides an Update and View method that will allow the caller
+// PrivacyMap provides an Update and View method that will allow the caller
 // to perform atomic read and write transactions defined by PrivacyMapTx on the
 // underlying DB.
-type PrivacyMapDB = DBExecutor[PrivacyMapTx]
+type PrivacyMap = DBExecutor[PrivacyMapTx]
 
 // PrivacyMapTx represents a db that can be used to create, store and fetch
 // real-pseudo pairs.
@@ -62,7 +62,7 @@ type PrivacyMapTx interface {
 	FetchAllPairs() (*PrivacyMapPairs, error)
 }
 
-// privacyMapDB is an implementation of PrivacyMapDB.
+// privacyMapDB is an implementation of PrivacyMap.
 type privacyMapDB struct {
 	db      *BoltDB
 	groupID session.ID

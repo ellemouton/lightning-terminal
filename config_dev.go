@@ -86,11 +86,12 @@ func defaultDevConfig() *DevConfig {
 // NewStores creates a new stores instance based on the chosen database backend.
 func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 	var (
-		networkDir = filepath.Join(cfg.LitDir, cfg.Network)
-		acctStore  accounts.Store
-		sessStore  session.Store
-		rulesStore firewalldb.RulesDB
-		closeFn    []func() error
+		networkDir      = filepath.Join(cfg.LitDir, cfg.Network)
+		acctStore       accounts.Store
+		sessStore       session.Store
+		rulesStore      firewalldb.RulesDB
+		privacyMapStore firewalldb.PrivacyMapDB
+		closeFn         []func() error
 	)
 
 	switch cfg.DatabaseBackend {
@@ -109,7 +110,9 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 
 		acctStore = accounts.NewSQLStore(sqlStore.BaseDB, clock)
 		sessStore = session.NewSQLStore(sqlStore.BaseDB, clock)
-		rulesStore = firewalldb.NewSQLDB(sqlStore.BaseDB)
+		firewallDB := firewalldb.NewSQLDB(sqlStore.BaseDB)
+		rulesStore = firewallDB
+		privacyMapStore = firewallDB
 		closeFn = append(closeFn, sqlStore.BaseDB.Close)
 
 	case DatabaseBackendPostgres:
@@ -120,7 +123,9 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 
 		acctStore = accounts.NewSQLStore(sqlStore.BaseDB, clock)
 		sessStore = session.NewSQLStore(sqlStore.BaseDB, clock)
-		rulesStore = firewalldb.NewSQLDB(sqlStore.BaseDB)
+		firewallDB := firewalldb.NewSQLDB(sqlStore.BaseDB)
+		rulesStore = firewallDB
+		privacyMapStore = firewallDB
 		closeFn = append(closeFn, sqlStore.BaseDB.Close)
 
 	default:
@@ -168,6 +173,7 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 
 	if rulesStore == nil {
 		rulesStore = firewallBoltDB
+		privacyMapStore = firewallBoltDB
 	}
 
 	return &stores{
@@ -175,6 +181,7 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 		sessions:     sessStore,
 		firewall:     firewalldb.NewDB(firewallBoltDB),
 		firewallBolt: firewallBoltDB,
+		privacyMaps:  privacyMapStore,
 		rules:        rulesStore,
 		close: func() error {
 			var returnErr error

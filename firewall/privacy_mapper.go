@@ -245,7 +245,7 @@ func (p *PrivacyMapper) replaceOutgoingResponse(ctx context.Context, uri string,
 	return checker.HandleResponse(ctx, resp)
 }
 
-func (p *PrivacyMapper) checkers(db firewalldb.PrivacyMapDB,
+func (p *PrivacyMapper) checkers(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags) map[string]mid.RoundTripChecker {
 
 	return map[string]mid.RoundTripChecker{
@@ -321,7 +321,7 @@ func (p *PrivacyMapper) checkers(db firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleGetInfoResponse(db firewalldb.PrivacyMapDB,
+func handleGetInfoResponse(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags) func(ctx context.Context,
 	r *lnrpc.GetInfoResponse) (proto.Message, error) {
 
@@ -374,7 +374,7 @@ func handleGetInfoResponse(db firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleFwdHistoryResponse(db firewalldb.PrivacyMapDB,
+func handleFwdHistoryResponse(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags,
 	randIntn func(int) (int, error)) func(ctx context.Context,
 	r *lnrpc.ForwardingHistoryResponse) (proto.Message, error) {
@@ -482,7 +482,7 @@ func handleFwdHistoryResponse(db firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleFeeReportResponse(db firewalldb.PrivacyMapDB,
+func handleFeeReportResponse(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags) func(ctx context.Context,
 	r *lnrpc.FeeReportResponse) (proto.Message, error) {
 
@@ -541,7 +541,7 @@ func handleFeeReportResponse(db firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleListChannelsRequest(db firewalldb.PrivacyMapDB,
+func handleListChannelsRequest(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags) func(ctx context.Context,
 	r *lnrpc.ListChannelsRequest) (proto.Message, error) {
 
@@ -575,7 +575,7 @@ func handleListChannelsRequest(db firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleListChannelsResponse(db firewalldb.PrivacyMapDB,
+func handleListChannelsResponse(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags,
 	randIntn func(int) (int, error)) func(ctx context.Context,
 	r *lnrpc.ListChannelsResponse) (proto.Message, error) {
@@ -751,7 +751,7 @@ func handleListChannelsResponse(db firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleUpdatePolicyRequest(db firewalldb.PrivacyMapDB,
+func handleUpdatePolicyRequest(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags) func(ctx context.Context,
 	r *lnrpc.PolicyUpdateRequest) (proto.Message, error) {
 
@@ -801,7 +801,7 @@ func handleUpdatePolicyRequest(db firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleUpdatePolicyResponse(db firewalldb.PrivacyMapDB,
+func handleUpdatePolicyResponse(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags) func(ctx context.Context,
 	r *lnrpc.PolicyUpdateResponse) (proto.Message, error) {
 
@@ -856,7 +856,7 @@ func handleUpdatePolicyResponse(db firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleWalletBalanceResponse(_ firewalldb.PrivacyMapDB,
+func handleWalletBalanceResponse(_ firewalldb.PrivacyMap,
 	flags session.PrivacyFlags,
 	randIntn func(int) (int, error)) func(ctx context.Context,
 	r *lnrpc.WalletBalanceResponse) (proto.Message, error) {
@@ -935,7 +935,7 @@ func handleWalletBalanceResponse(_ firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleClosedChannelsResponse(db firewalldb.PrivacyMapDB,
+func handleClosedChannelsResponse(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags,
 	randIntn func(int) (int, error)) func(ctx context.Context,
 	r *lnrpc.ClosedChannelsResponse) (proto.Message, error) {
@@ -1128,7 +1128,7 @@ func obfuscatePendingChannel(c *lnrpc.PendingChannelsResponse_PendingChannel,
 	}, nil
 }
 
-func handlePendingChannelsResponse(db firewalldb.PrivacyMapDB,
+func handlePendingChannelsResponse(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags,
 	randIntn func(int) (int, error)) func(ctx context.Context,
 	r *lnrpc.PendingChannelsResponse) (proto.Message, error) {
@@ -1357,7 +1357,7 @@ func handlePendingChannelsResponse(db firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleBatchOpenChannelRequest(db firewalldb.PrivacyMapDB,
+func handleBatchOpenChannelRequest(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags) func(ctx context.Context,
 	r *lnrpc.BatchOpenChannelRequest) (proto.Message, error) {
 
@@ -1430,7 +1430,7 @@ func handleBatchOpenChannelRequest(db firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleBatchOpenChannelResponse(db firewalldb.PrivacyMapDB,
+func handleBatchOpenChannelResponse(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags) func(ctx context.Context,
 	r *lnrpc.BatchOpenChannelResponse) (proto.Message, error) {
 
@@ -1489,7 +1489,7 @@ func handleBatchOpenChannelResponse(db firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleChannelOpenRequest(db firewalldb.PrivacyMapDB,
+func handleChannelOpenRequest(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags) func(ctx context.Context,
 	r *lnrpc.OpenChannelRequest) (proto.Message, error) {
 
@@ -1567,7 +1567,7 @@ func handleChannelOpenRequest(db firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleChannelOpenResponse(db firewalldb.PrivacyMapDB,
+func handleChannelOpenResponse(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags) func(ctx context.Context,
 	r *lnrpc.ChannelPoint) (proto.Message, error) {
 
@@ -1643,7 +1643,7 @@ func handleChannelOpenResponse(db firewalldb.PrivacyMapDB,
 	}
 }
 
-func handleConnectPeerRequest(db firewalldb.PrivacyMapDB,
+func handleConnectPeerRequest(db firewalldb.PrivacyMap,
 	flags session.PrivacyFlags) func(ctx context.Context,
 	r *lnrpc.ConnectPeerRequest) (proto.Message, error) {
 
