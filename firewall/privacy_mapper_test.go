@@ -1073,7 +1073,9 @@ func newMockDB(t *testing.T, preloadRealToPseudo map[string]string,
 	db := mockDB{privDB: make(map[string]*mockPrivacyMapDB)}
 	sessDB := db.NewSessionDB(sessID)
 
-	_ = sessDB.Update(func(tx firewalldb.PrivacyMapTx) error {
+	_ = sessDB.Update(context.Background(), func(ctx context.Context,
+		tx firewalldb.PrivacyMapTx) error {
+
 		for r, p := range preloadRealToPseudo {
 			require.NoError(t, tx.NewPair(r, p))
 		}
@@ -1083,7 +1085,7 @@ func newMockDB(t *testing.T, preloadRealToPseudo map[string]string,
 	return db
 }
 
-func (m mockDB) NewSessionDB(sessionID session.ID) firewalldb.PrivacyMapDB {
+func (m mockDB) NewSessionDB(sessionID session.ID) firewalldb.PrivacyMap {
 	db, ok := m.privDB[string(sessionID[:])]
 	if ok {
 		return db
@@ -1107,16 +1109,16 @@ type mockPrivacyMapDB struct {
 	p2r map[string]string
 }
 
-func (m *mockPrivacyMapDB) Update(
-	f func(tx firewalldb.PrivacyMapTx) error) error {
+func (m *mockPrivacyMapDB) Update(ctx context.Context,
+	f func(ctx context.Context, tx firewalldb.PrivacyMapTx) error) error {
 
-	return f(m)
+	return f(ctx, m)
 }
 
-func (m *mockPrivacyMapDB) View(
-	f func(tx firewalldb.PrivacyMapTx) error) error {
+func (m *mockPrivacyMapDB) View(ctx context.Context,
+	f func(ctx context.Context, tx firewalldb.PrivacyMapTx) error) error {
 
-	return f(m)
+	return f(ctx, m)
 }
 
 func (m *mockPrivacyMapDB) NewPair(real, pseudo string) error {
@@ -1149,7 +1151,7 @@ func (m *mockPrivacyMapDB) FetchAllPairs() (*firewalldb.PrivacyMapPairs,
 	return firewalldb.NewPrivacyMapPairs(m.r2p), nil
 }
 
-var _ firewalldb.PrivacyMapDB = (*mockPrivacyMapDB)(nil)
+var _ firewalldb.PrivacyMap = (*mockPrivacyMapDB)(nil)
 
 // TestRandBetween tests random number generation for numbers in an interval.
 func TestRandBetween(t *testing.T) {

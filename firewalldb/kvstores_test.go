@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightningnetwork/lnd/clock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,20 +17,15 @@ import (
 // atomic access to the db. If anything fails in the middle of an `Update`
 // function, then all the changes prior should be rolled back.
 func TestKVStoreTxs(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
-	tmpDir := t.TempDir()
-
-	db, err := NewDB(tmpDir, "test.db", nil)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
-
+	db := NewTestDB(t)
 	store := db.GetKVStores("AutoFees", [4]byte{1, 1, 1, 1}, "auto-fees")
 
 	// Test that if an action fails midway through the transaction, then
 	// it is rolled back.
-	err = store.Update(ctx, func(ctx context.Context, tx KVStoreTx) error {
+	err := store.Update(ctx, func(ctx context.Context, tx KVStoreTx) error {
 		err := tx.Global().Set(ctx, "test", []byte{1})
 		if err != nil {
 			return err
@@ -64,10 +61,14 @@ func TestKVStoreTxs(t *testing.T) {
 // KV stores and the session feature level stores.
 func TestTempAndPermStores(t *testing.T) {
 	t.Run("session level kv store", func(t *testing.T) {
+		t.Parallel()
+
 		testTempAndPermStores(t, false)
 	})
 
 	t.Run("session feature level kv store", func(t *testing.T) {
+		t.Parallel()
+
 		testTempAndPermStores(t, true)
 	})
 }
@@ -79,22 +80,31 @@ func TestTempAndPermStores(t *testing.T) {
 // session level KV stores.
 func testTempAndPermStores(t *testing.T, featureSpecificStore bool) {
 	ctx := context.Background()
-	tmpDir := t.TempDir()
 
 	var featureName string
 	if featureSpecificStore {
 		featureName = "auto-fees"
 	}
 
-	db, err := NewDB(tmpDir, "test.db", nil)
+	tmpDir := filepath.Join(t.TempDir(), DBFilename)
+	sessions := session.NewTestDBFromPath(
+		t, tmpDir, clock.NewDefaultClock(),
+	)
+	store := NewTestDBWithSessions(t, sessions)
+	db := NewDB(store)
+	require.NoError(t, db.Start(ctx))
+
+	sess, err := sessions.NewSession(
+		ctx, "test", session.TypeAutopilot, time.Unix(1000, 0),
+		"something",
+	)
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
 
-	store := db.GetKVStores("test-rule", [4]byte{1, 1, 1, 1}, featureName)
+	kvstores := db.GetKVStores("test-rule", sess.GroupID, featureName)
 
-	err = store.Update(ctx, func(ctx context.Context, tx KVStoreTx) error {
+	err = kvstores.Update(ctx, func(ctx context.Context,
+		tx KVStoreTx) error {
+
 		// Set an item in the temp store.
 		err := tx.LocalTemp().Set(ctx, "test", []byte{4, 3, 2})
 		if err != nil {
@@ -112,7 +122,7 @@ func testTempAndPermStores(t *testing.T, featureSpecificStore bool) {
 		v1 []byte
 		v2 []byte
 	)
-	err = store.View(ctx, func(ctx context.Context, tx KVStoreTx) error {
+	err = kvstores.View(ctx, func(ctx context.Context, tx KVStoreTx) error {
 		b, err := tx.LocalTemp().Get(ctx, "test")
 		if err != nil {
 			return err
@@ -130,21 +140,15 @@ func testTempAndPermStores(t *testing.T, featureSpecificStore bool) {
 	require.True(t, bytes.Equal(v1, []byte{4, 3, 2}))
 	require.True(t, bytes.Equal(v2, []byte{6, 5, 4}))
 
-	// Close the db.
-	require.NoError(t, db.Close())
+	// Re-init the DB.
+	db = NewDB(store)
+	require.NoError(t, db.Start(ctx))
 
-	// Restart it.
-	db, err = NewDB(tmpDir, "test.db", nil)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-		_ = os.RemoveAll(tmpDir)
-	})
-	store = db.GetKVStores("test-rule", [4]byte{1, 1, 1, 1}, featureName)
+	kvstores = db.GetKVStores("test-rule", sess.GroupID, featureName)
 
 	// The temp store should no longer have the stored value but the perm
 	// store should .
-	err = store.View(ctx, func(ctx context.Context, tx KVStoreTx) error {
+	err = kvstores.View(ctx, func(ctx context.Context, tx KVStoreTx) error {
 		b, err := tx.LocalTemp().Get(ctx, "test")
 		if err != nil {
 			return err
@@ -165,27 +169,29 @@ func testTempAndPermStores(t *testing.T, featureSpecificStore bool) {
 
 // TestKVStoreNameSpaces tests that the various name spaces are used correctly.
 func TestKVStoreNameSpaces(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	tmpDir := t.TempDir()
 
-	db, err := NewDB(tmpDir, "test.db", nil)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	sessions := session.NewTestDB(t, clock.NewDefaultClock())
+	db := NewTestDBWithSessions(t, sessions)
 
-	var (
-		groupID1 = intToSessionID(1)
-		groupID2 = intToSessionID(2)
+	sess1, err := sessions.NewSession(
+		ctx, "test", session.TypeAutopilot, time.Unix(1000, 0), "",
 	)
+	require.NoError(t, err)
+
+	sess2, err := sessions.NewSession(
+		ctx, "test1", session.TypeAutopilot, time.Unix(1000, 0), "",
+	)
+	require.NoError(t, err)
 
 	// Two DBs for same group but different features.
-	rulesDB1 := db.GetKVStores("test-rule", groupID1, "auto-fees")
-	rulesDB2 := db.GetKVStores("test-rule", groupID1, "re-balance")
+	rulesDB1 := db.GetKVStores("test-rule", sess1.GroupID, "auto-fees")
+	rulesDB2 := db.GetKVStores("test-rule", sess1.GroupID, "re-balance")
 
 	// The third DB is for the same rule but a different group. It is
 	// for the same feature as db 2.
-	rulesDB3 := db.GetKVStores("test-rule", groupID2, "re-balance")
+	rulesDB3 := db.GetKVStores("test-rule", sess2.GroupID, "re-balance")
 
 	// Test that the three ruleDBs share the same global space.
 	err = rulesDB1.Update(ctx, func(ctx context.Context,
@@ -319,9 +325,9 @@ func TestKVStoreNameSpaces(t *testing.T) {
 	// Test that the group space is shared by the first two dbs but not
 	// the third. To do this, we re-init the DB's but leave the feature
 	// names out. This way, we will access the group storage.
-	rulesDB1 = db.GetKVStores("test-rule", groupID1, "")
-	rulesDB2 = db.GetKVStores("test-rule", groupID1, "")
-	rulesDB3 = db.GetKVStores("test-rule", groupID2, "")
+	rulesDB1 = db.GetKVStores("test-rule", sess1.GroupID, "")
+	rulesDB2 = db.GetKVStores("test-rule", sess1.GroupID, "")
+	rulesDB3 = db.GetKVStores("test-rule", sess2.GroupID, "")
 
 	err = rulesDB1.Update(ctx, func(ctx context.Context,
 		tx KVStoreTx) error {

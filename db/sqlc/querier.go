@@ -13,6 +13,8 @@ type Querier interface {
 	AddAccountInvoice(ctx context.Context, arg AddAccountInvoiceParams) error
 	DeleteAccount(ctx context.Context, id int64) error
 	DeleteAccountPayment(ctx context.Context, arg DeleteAccountPaymentParams) error
+	DeleteAllTemp(ctx context.Context) error
+	DeleteKVStoreRecord(ctx context.Context, arg DeleteKVStoreRecordParams) error
 	DeleteSessionsWithState(ctx context.Context, state int16) error
 	GetAccount(ctx context.Context, id int64) (Account, error)
 	GetAccountByLabel(ctx context.Context, label sql.NullString) (Account, error)
@@ -21,6 +23,10 @@ type Querier interface {
 	GetAccountInvoice(ctx context.Context, arg GetAccountInvoiceParams) (AccountInvoice, error)
 	GetAccountPayment(ctx context.Context, arg GetAccountPaymentParams) (AccountPayment, error)
 	GetAliasBySessionID(ctx context.Context, id int64) ([]byte, error)
+	GetAllPrivacyPairs(ctx context.Context, groupID int64) ([]GetAllPrivacyPairsRow, error)
+	GetKVStoreRecord(ctx context.Context, arg GetKVStoreRecordParams) ([]byte, error)
+	GetPseudoForReal(ctx context.Context, arg GetPseudoForRealParams) (string, error)
+	GetRealForPseudo(ctx context.Context, arg GetRealForPseudoParams) (string, error)
 	GetSessionAliasesInGroup(ctx context.Context, groupID sql.NullInt64) ([][]byte, error)
 	GetSessionByAlias(ctx context.Context, alias []byte) (Session, error)
 	GetSessionByID(ctx context.Context, id int64) (Session, error)
@@ -32,6 +38,8 @@ type Querier interface {
 	GetSessionPrivacyFlags(ctx context.Context, sessionID int64) ([]SessionPrivacyFlag, error)
 	GetSessionsInGroup(ctx context.Context, groupID sql.NullInt64) ([]Session, error)
 	InsertAccount(ctx context.Context, arg InsertAccountParams) (int64, error)
+	InsertKVStoreRecord(ctx context.Context, arg InsertKVStoreRecordParams) error
+	InsertPrivacyPair(ctx context.Context, arg InsertPrivacyPairParams) error
 	InsertSession(ctx context.Context, arg InsertSessionParams) (int64, error)
 	InsertSessionFeatureConfig(ctx context.Context, arg InsertSessionFeatureConfigParams) error
 	InsertSessionMacaroonCaveat(ctx context.Context, arg InsertSessionMacaroonCaveatParams) error
@@ -50,6 +58,7 @@ type Querier interface {
 	UpdateAccountBalance(ctx context.Context, arg UpdateAccountBalanceParams) (int64, error)
 	UpdateAccountExpiry(ctx context.Context, arg UpdateAccountExpiryParams) (int64, error)
 	UpdateAccountLastUpdate(ctx context.Context, arg UpdateAccountLastUpdateParams) (int64, error)
+	UpdateKVStoreRecord(ctx context.Context, arg UpdateKVStoreRecordParams) error
 	UpdateSessionState(ctx context.Context, arg UpdateSessionStateParams) error
 	UpsertAccountPayment(ctx context.Context, arg UpsertAccountPaymentParams) error
 }

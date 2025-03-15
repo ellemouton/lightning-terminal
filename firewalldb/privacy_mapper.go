@@ -35,36 +35,13 @@ var (
 )
 
 // NewPrivacyMapDB is a function type that takes a group ID and uses it to
-// construct a new PrivacyMapDB.
-type NewPrivacyMapDB func(groupID session.ID) PrivacyMapDB
+// construct a new PrivacyMap.
+type NewPrivacyMapDB func(groupID session.ID) PrivacyMap
 
-// PrivacyDB constructs a PrivacyMapDB that will be indexed under the given
-// group ID key.
-func (db *DB) PrivacyDB(groupID session.ID) PrivacyMapDB {
-	return &privacyMapDB{
-		DB:      db,
-		groupID: groupID,
-	}
-}
-
-// PrivacyMapDB provides an Update and View method that will allow the caller
+// PrivacyMap provides an Update and View method that will allow the caller
 // to perform atomic read and write transactions defined by PrivacyMapTx on the
 // underlying DB.
-type PrivacyMapDB interface {
-	// Update opens a database read/write transaction and executes the
-	// function f with the transaction passed as a parameter. After f exits,
-	// if f did not error, the transaction is committed. Otherwise, if f did
-	// error, the transaction is rolled back. If the rollback fails, the
-	// original error returned by f is still returned. If the commit fails,
-	// the commit error is returned.
-	Update(f func(tx PrivacyMapTx) error) error
-
-	// View opens a database read transaction and executes the function f
-	// with the transaction passed as a parameter. After f exits, the
-	// transaction is rolled back. If f errors, its error is returned, not a
-	// rollback error (if any occur).
-	View(f func(tx PrivacyMapTx) error) error
-}
+type PrivacyMap = DBExecutor[PrivacyMapTx]
 
 // PrivacyMapTx represents a db that can be used to create, store and fetch
 // real-pseudo pairs.
@@ -85,86 +62,20 @@ type PrivacyMapTx interface {
 	FetchAllPairs() (*PrivacyMapPairs, error)
 }
 
-// privacyMapDB is an implementation of PrivacyMapDB.
+// privacyMapDB is an implementation of PrivacyMap.
 type privacyMapDB struct {
-	*DB
+	db      *BoltDB
 	groupID session.ID
 }
 
-// beginTx starts db transaction. The transaction will be a read or read-write
-// transaction depending on the value of the `writable` parameter.
-func (p *privacyMapDB) beginTx(writable bool) (*privacyMapTx, error) {
-	boltTx, err := p.Begin(writable)
-	if err != nil {
-		return nil, err
-	}
+// wrap returns a new PrivacyMapTx that wraps the given bolt transaction.
+//
+// NOTE: this is part of the txWrapper interface.
+func (p *privacyMapDB) wrap(tx *bbolt.Tx) PrivacyMapTx {
 	return &privacyMapTx{
+		boltTx:       tx,
 		privacyMapDB: p,
-		boltTx:       boltTx,
-	}, nil
-}
-
-// Update opens a database read/write transaction and executes the function f
-// with the transaction passed as a parameter. After f exits, if f did not
-// error, the transaction is committed. Otherwise, if f did error, the
-// transaction is rolled back. If the rollback fails, the original error
-// returned by f is still returned. If the commit fails, the commit error is
-// returned.
-//
-// NOTE: this is part of the PrivacyMapDB interface.
-func (p *privacyMapDB) Update(f func(tx PrivacyMapTx) error) error {
-	tx, err := p.beginTx(true)
-	if err != nil {
-		return err
 	}
-
-	// Make sure the transaction rolls back in the event of a panic.
-	defer func() {
-		if tx != nil {
-			_ = tx.boltTx.Rollback()
-		}
-	}()
-
-	err = f(tx)
-	if err != nil {
-		// Want to return the original error, not a rollback error if
-		// any occur.
-		_ = tx.boltTx.Rollback()
-		return err
-	}
-
-	return tx.boltTx.Commit()
-}
-
-// View opens a database read transaction and executes the function f with the
-// transaction passed as a parameter. After f exits, the transaction is rolled
-// back. If f errors, its error is returned, not a rollback error (if any
-// occur).
-//
-// NOTE: this is part of the PrivacyMapDB interface.
-func (p *privacyMapDB) View(f func(tx PrivacyMapTx) error) error {
-	tx, err := p.beginTx(false)
-	if err != nil {
-		return err
-	}
-
-	// Make sure the transaction rolls back in the event of a panic.
-	defer func() {
-		if tx != nil {
-			_ = tx.boltTx.Rollback()
-		}
-	}()
-
-	err = f(tx)
-	rollbackErr := tx.boltTx.Rollback()
-	if err != nil {
-		return err
-	}
-
-	if rollbackErr != nil {
-		return rollbackErr
-	}
-	return nil
 }
 
 // privacyMapTx is an implementation of PrivacyMapTx.
@@ -202,13 +113,12 @@ func (p *privacyMapTx) NewPair(real, pseudo string) error {
 	}
 
 	if len(realToPseudoBucket.Get([]byte(real))) != 0 {
-		return fmt.Errorf("an entry already exists for real "+
-			"value: %x", real)
+		return fmt.Errorf("%w, real: %v", ErrDuplicateRealValue, real)
 	}
 
 	if len(pseudoToRealBucket.Get([]byte(pseudo))) != 0 {
-		return fmt.Errorf("an entry already exists for pseudo "+
-			"value: %x", pseudo)
+		return fmt.Errorf("%w, pseudo: %v", ErrDuplicatePseudoValue,
+			pseudo)
 	}
 
 	err = realToPseudoBucket.Put([]byte(real), []byte(pseudo))
