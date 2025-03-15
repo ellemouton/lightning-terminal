@@ -15,6 +15,10 @@ type SessionDB interface {
 	GetSession(context.Context, session.ID) (*session.Session, error)
 }
 
+type PrivacyMapDB interface {
+	PrivacyDB(groupID session.ID) PrivacyMap
+}
+
 // DBExecutor provides an Update and View method that will allow the caller
 // to perform atomic read and write transactions defined by PrivacyMapTx on the
 // underlying BoltDB.

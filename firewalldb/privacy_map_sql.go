@@ -18,7 +18,7 @@ type SQLPrivacyPairQueries interface {
 	GetRealForPseudo(ctx context.Context, arg sqlc.GetRealForPseudoParams) (string, error)
 }
 
-func (s *SQLDB) PrivacyDB(groupID session.ID) PrivacyMapDB {
+func (s *SQLDB) PrivacyDB(groupID session.ID) PrivacyMap {
 	return &sqlExecutor[PrivacyMapTx]{
 		db: s.db,
 		wrapTx: func(queries SQLQueries) PrivacyMapTx {

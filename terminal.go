@@ -236,9 +236,10 @@ func New() *LightningTerminal {
 
 // stores holds a collection of the DB stores that are used by LiT.
 type stores struct {
-	accounts accounts.Store
-	sessions session.Store
-	rules    firewalldb.RulesDB
+	accounts    accounts.Store
+	sessions    session.Store
+	rules       firewalldb.RulesDB
+	privacyMaps firewalldb.PrivacyMapDB
 
 	firewall     *firewalldb.DB
 	firewallBolt *firewalldb.BoltDB
@@ -535,7 +536,7 @@ func (g *LightningTerminal) start(ctx context.Context) error {
 		actionsDB:               g.stores.firewallBolt,
 		autopilot:               g.autopilotClient,
 		ruleMgrs:                g.ruleMgrs,
-		privMap:                 g.stores.firewallBolt.PrivacyDB,
+		privMap:                 g.stores.privacyMaps.PrivacyDB,
 	})
 	if err != nil {
 		return fmt.Errorf("could not create new session rpc "+
@@ -1101,7 +1102,7 @@ func (g *LightningTerminal) startInternalSubServers(ctx context.Context,
 	}
 
 	privacyMapper := firewall.NewPrivacyMapper(
-		g.stores.firewallBolt.PrivacyDB, firewall.CryptoRandIntn,
+		g.stores.privacyMaps.PrivacyDB, firewall.CryptoRandIntn,
 		g.stores.sessions,
 	)
 
@@ -1124,7 +1125,7 @@ func (g *LightningTerminal) startInternalSubServers(ctx context.Context,
 					reqID, firewalldb.ActionStateError,
 					reason,
 				)
-			}, g.stores.firewallBolt.PrivacyDB,
+			}, g.stores.privacyMaps.PrivacyDB,
 		)
 
 		mw = append(mw, ruleEnforcer)
