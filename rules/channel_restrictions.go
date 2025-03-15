@@ -337,7 +337,7 @@ func (c *ChannelRestrict) ToProto() *litrpc.RuleValue {
 //
 // NOTE: this is part of the Values interface.
 func (c *ChannelRestrict) PseudoToReal(ctx context.Context,
-	db firewalldb.PrivacyMapDB, flags session.PrivacyFlags) (Values,
+	db firewalldb.PrivacyMap, flags session.PrivacyFlags) (Values,
 	error) {
 
 	restrictList := make([]uint64, len(c.DenyList))

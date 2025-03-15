@@ -1085,7 +1085,7 @@ func newMockDB(t *testing.T, preloadRealToPseudo map[string]string,
 	return db
 }
 
-func (m mockDB) NewSessionDB(sessionID session.ID) firewalldb.PrivacyMapDB {
+func (m mockDB) NewSessionDB(sessionID session.ID) firewalldb.PrivacyMap {
 	db, ok := m.privDB[string(sessionID[:])]
 	if ok {
 		return db
@@ -1157,7 +1157,7 @@ func (m *mockPrivacyMapDB) FetchAllPairs(_ context.Context) (
 	return firewalldb.NewPrivacyMapPairs(m.r2p), nil
 }
 
-var _ firewalldb.PrivacyMapDB = (*mockPrivacyMapDB)(nil)
+var _ firewalldb.PrivacyMap = (*mockPrivacyMapDB)(nil)
 
 // TestRandBetween tests random number generation for numbers in an interval.
 func TestRandBetween(t *testing.T) {
