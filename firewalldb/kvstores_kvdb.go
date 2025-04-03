@@ -52,6 +52,25 @@ var (
 	featureKVStoreBucketKey = []byte("feature-kv-store")
 )
 
+// DeleteTempKVStores deletes all kv-stores in the temporary namespace.
+func (db *BoltDB) DeleteTempKVStores(_ context.Context) error {
+	return db.Update(func(tx *bbolt.Tx) error {
+		rulesBucket, err := tx.CreateBucketIfNotExists(rulesBucketKey)
+		if err != nil {
+			return err
+		}
+
+		// Delete everything under the "temp" key if such a bucket
+		// exists.
+		err = rulesBucket.DeleteBucket(tempBucketKey)
+		if err != nil && !errors.Is(err, bbolt.ErrBucketNotFound) {
+			return err
+		}
+
+		return nil
+	})
+}
+
 // GetKVStores constructs a new rules.KVStores backed by a bbolt db.
 func (db *BoltDB) GetKVStores(rule string, groupID session.ID,
 	feature string) KVStores {
@@ -71,23 +90,20 @@ func (db *BoltDB) GetKVStores(rule string, groupID session.ID,
 	}
 }
 
-// DeleteTempKVStores deletes all kv-stores in the temporary namespace.
-func (db *BoltDB) DeleteTempKVStores(_ context.Context) error {
-	return db.Update(func(tx *bbolt.Tx) error {
-		rulesBucket, err := tx.CreateBucketIfNotExists(rulesBucketKey)
-		if err != nil {
-			return err
-		}
-
-		// Delete everything under the "temp" key if such a bucket
-		// exists.
-		err = rulesBucket.DeleteBucket(tempBucketKey)
-		if err != nil && !errors.Is(err, bbolt.ErrBucketNotFound) {
-			return err
-		}
-
-		return nil
-	})
+// PrivacyDB constructs a PrivacyMap that will be indexed under the given
+// group ID key.
+func (db *BoltDB) PrivacyDB(groupID session.ID) PrivacyMap {
+	return &kvdbExecutor[PrivacyMapTx]{
+		db: db.DB,
+		wrapTx: func(tx *bbolt.Tx) PrivacyMapTx {
+			return &privacyMapTx{
+				boltTx: tx,
+				privacyMapDB: &privacyMapDB{
+					groupID: groupID,
+				},
+			}
+		},
+	}
 }
 
 // kvStores implements the rules.KVStores interface.

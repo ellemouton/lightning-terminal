@@ -69,8 +69,8 @@ type Values interface {
 
 	// PseudoToReal attempts to convert any appropriate pseudo fields in
 	// the rule Values to their corresponding real values. It uses the
-	// passed PrivacyMapDB to find the real values.
-	PseudoToReal(ctx context.Context, db firewalldb.PrivacyMapDB,
+	// passed PrivacyMap to find the real values.
+	PseudoToReal(ctx context.Context, db firewalldb.PrivacyMap,
 		flags session.PrivacyFlags) (Values, error)
 }
 
