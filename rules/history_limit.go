@@ -252,12 +252,12 @@ func (h *HistoryLimit) GetStartDate() time.Time {
 }
 
 // PseudoToReal attempts to convert any appropriate pseudo fields in the rule
-// Values to their corresponding real values. It uses the passed PrivacyMapDB to
+// Values to their corresponding real values. It uses the passed PrivacyMap to
 // find the real values. This is a no-op for the HistoryLimit rule.
 //
 // NOTE: this is part of the Values interface.
 func (h *HistoryLimit) PseudoToReal(_ context.Context,
-	_ firewalldb.PrivacyMapDB, _ session.PrivacyFlags) (Values, error) {
+	_ firewalldb.PrivacyMap, _ session.PrivacyFlags) (Values, error) {
 
 	return h, nil
 }

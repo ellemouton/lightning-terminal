@@ -52,25 +52,6 @@ var (
 	featureKVStoreBucketKey = []byte("feature-kv-store")
 )
 
-// GetKVStores constructs a new rules.KVStores backed by a bbolt db.
-func (db *BoltDB) GetKVStores(rule string, groupID session.ID,
-	feature string) KVStores {
-
-	return &kvdbExecutor[KVStoreTx]{
-		db: db.DB,
-		wrapTx: func(tx *bbolt.Tx) KVStoreTx {
-			return &kvStoreTx{
-				boltTx: tx,
-				kvStores: &kvStores{
-					ruleName:    rule,
-					groupID:     groupID,
-					featureName: feature,
-				},
-			}
-		},
-	}
-}
-
 // DeleteTempKVStores deletes all kv-stores in the temporary namespace.
 func (db *BoltDB) DeleteTempKVStores(_ context.Context) error {
 	return db.Update(func(tx *bbolt.Tx) error {
@@ -88,6 +69,42 @@ func (db *BoltDB) DeleteTempKVStores(_ context.Context) error {
 
 		return nil
 	})
+}
+
+// GetKVStores constructs a new rules.KVStores backed by a bbolt db.
+func (db *BoltDB) GetKVStores(rule string, groupID session.ID,
+	feature string) KVStores {
+
+	return &kvdbExecutor[KVStoreTx]{
+		db: db.DB,
+		wrapTx: func(tx *bbolt.Tx) KVStoreTx {
+			return &kvStoreTx{
+				boltTx:   tx,
+				sessions: db.sessionIDIndex,
+				kvStores: &kvStores{
+					ruleName:    rule,
+					groupID:     groupID,
+					featureName: feature,
+				},
+			}
+		},
+	}
+}
+
+// PrivacyDB constructs a PrivacyMap that will be indexed under the given
+// group ID key.
+func (db *BoltDB) PrivacyDB(groupID session.ID) PrivacyMap {
+	return &kvdbExecutor[PrivacyMapTx]{
+		db: db.DB,
+		wrapTx: func(tx *bbolt.Tx) PrivacyMapTx {
+			return &privacyMapTx{
+				boltTx: tx,
+				privacyMapDB: &privacyMapDB{
+					groupID: groupID,
+				},
+			}
+		},
+	}
 }
 
 // kvStores implements the rules.KVStores interface.
@@ -109,6 +126,7 @@ type getBucketFunc func(tx *bbolt.Tx, create bool) (*bbolt.Bucket, error)
 type kvStoreTx struct {
 	boltTx    *bbolt.Tx
 	getBucket getBucketFunc
+	sessions  session.IDToGroupIndex
 
 	*kvStores
 }
@@ -116,11 +134,12 @@ type kvStoreTx struct {
 // Global gives the caller access to the global kv store of the rule.
 //
 // NOTE: this is part of the rules.KVStoreTx interface.
-func (tx *kvStoreTx) Global() KVStore {
+func (s *kvStoreTx) Global() KVStore {
 	return &kvStoreTx{
-		kvStores:  tx.kvStores,
-		boltTx:    tx.boltTx,
-		getBucket: getGlobalRuleBucket(true, tx.ruleName),
+		kvStores:  s.kvStores,
+		boltTx:    s.boltTx,
+		sessions:  s.sessions,
+		getBucket: getGlobalRuleBucket(true, s.ruleName),
 	}
 }
 
@@ -129,17 +148,16 @@ func (tx *kvStoreTx) Global() KVStore {
 // how the kv store was initialised.
 //
 // NOTE: this is part of the KVStoreTx interface.
-func (tx *kvStoreTx) Local() KVStore {
-	fn := getSessionRuleBucket(true, tx.ruleName, tx.groupID)
-	if tx.featureName != "" {
-		fn = getSessionFeatureRuleBucket(
-			true, tx.ruleName, tx.groupID, tx.featureName,
-		)
+func (s *kvStoreTx) Local() KVStore {
+	fn := s.getSessionRuleBucket(true)
+	if s.featureName != "" {
+		fn = s.getSessionFeatureRuleBucket(true)
 	}
 
 	return &kvStoreTx{
-		kvStores:  tx.kvStores,
-		boltTx:    tx.boltTx,
+		kvStores:  s.kvStores,
+		boltTx:    s.boltTx,
+		sessions:  s.sessions,
 		getBucket: fn,
 	}
 }
@@ -148,11 +166,12 @@ func (tx *kvStoreTx) Local() KVStore {
 // rule.
 //
 // NOTE: this is part of the KVStoreTx interface.
-func (tx *kvStoreTx) GlobalTemp() KVStore {
+func (s *kvStoreTx) GlobalTemp() KVStore {
 	return &kvStoreTx{
-		kvStores:  tx.kvStores,
-		boltTx:    tx.boltTx,
-		getBucket: getGlobalRuleBucket(false, tx.ruleName),
+		kvStores:  s.kvStores,
+		boltTx:    s.boltTx,
+		sessions:  s.sessions,
+		getBucket: getGlobalRuleBucket(false, s.ruleName),
 	}
 }
 
@@ -160,17 +179,16 @@ func (tx *kvStoreTx) GlobalTemp() KVStore {
 // rule.
 //
 // NOTE: this is part of the KVStoreTx interface.
-func (tx *kvStoreTx) LocalTemp() KVStore {
-	fn := getSessionRuleBucket(false, tx.ruleName, tx.groupID)
-	if tx.featureName != "" {
-		fn = getSessionFeatureRuleBucket(
-			false, tx.ruleName, tx.groupID, tx.featureName,
-		)
+func (s *kvStoreTx) LocalTemp() KVStore {
+	fn := s.getSessionRuleBucket(false)
+	if s.featureName != "" {
+		fn = s.getSessionFeatureRuleBucket(false)
 	}
 
 	return &kvStoreTx{
-		kvStores:  tx.kvStores,
-		boltTx:    tx.boltTx,
+		kvStores:  s.kvStores,
+		boltTx:    s.boltTx,
+		sessions:  s.sessions,
 		getBucket: fn,
 	}
 }
@@ -179,8 +197,8 @@ func (tx *kvStoreTx) LocalTemp() KVStore {
 // If no value is found, nil is returned.
 //
 // NOTE: this is part of the KVStore interface.
-func (tx *kvStoreTx) Get(_ context.Context, key string) ([]byte, error) {
-	bucket, err := tx.getBucket(tx.boltTx, false)
+func (s *kvStoreTx) Get(_ context.Context, key string) ([]byte, error) {
+	bucket, err := s.getBucket(s.boltTx, false)
 	if err != nil {
 		return nil, err
 	}
@@ -194,8 +212,8 @@ func (tx *kvStoreTx) Get(_ context.Context, key string) ([]byte, error) {
 // Set sets the given key-value pair in the underlying kv store.
 //
 // NOTE: this is part of the KVStore interface.
-func (tx *kvStoreTx) Set(_ context.Context, key string, value []byte) error {
-	bucket, err := tx.getBucket(tx.boltTx, true)
+func (s *kvStoreTx) Set(_ context.Context, key string, value []byte) error {
+	bucket, err := s.getBucket(s.boltTx, true)
 	if err != nil {
 		return err
 	}
@@ -206,8 +224,8 @@ func (tx *kvStoreTx) Set(_ context.Context, key string, value []byte) error {
 // Del deletes the value under the given key in the underlying kv store.
 //
 // NOTE: this is part of the .KVStore interface.
-func (tx *kvStoreTx) Del(_ context.Context, key string) error {
-	bucket, err := tx.getBucket(tx.boltTx, false)
+func (s *kvStoreTx) Del(_ context.Context, key string) error {
+	bucket, err := s.getBucket(s.boltTx, false)
 	if err != nil {
 		return err
 	}
@@ -286,11 +304,9 @@ func getGlobalRuleBucket(perm bool, ruleName string) getBucketFunc {
 // bucket under which a kv store for a specific rule-name and group ID is
 // stored. The `perm` param determines if the temporary or permanent store is
 // used.
-func getSessionRuleBucket(perm bool, ruleName string,
-	groupID session.ID) getBucketFunc {
-
+func (s *kvStoreTx) getSessionRuleBucket(perm bool) getBucketFunc {
 	return func(tx *bbolt.Tx, create bool) (*bbolt.Bucket, error) {
-		ruleBucket, err := getRuleBucket(perm, ruleName)(tx, create)
+		ruleBucket, err := getRuleBucket(perm, s.ruleName)(tx, create)
 		if err != nil {
 			return nil, err
 		}
@@ -300,6 +316,19 @@ func getSessionRuleBucket(perm bool, ruleName string,
 		}
 
 		if create {
+			// NOTE: for a bbolt backend, the context is in any case
+			// dropped behind the GetSessionIDs call. So passing in
+			// a new context here is not a problem.
+			ctx := context.Background()
+
+			// If create is true, we expect this to be an existing
+			// session. So we check that now and return an error
+			// accordingly if the session does not exist.
+			_, err := s.sessions.GetSessionIDs(ctx, s.groupID)
+			if err != nil {
+				return nil, err
+			}
+
 			sessBucket, err := ruleBucket.CreateBucketIfNotExists(
 				sessKVStoreBucketKey,
 			)
@@ -307,14 +336,14 @@ func getSessionRuleBucket(perm bool, ruleName string,
 				return nil, err
 			}
 
-			return sessBucket.CreateBucketIfNotExists(groupID[:])
+			return sessBucket.CreateBucketIfNotExists(s.groupID[:])
 		}
 
 		sessBucket := ruleBucket.Bucket(sessKVStoreBucketKey)
 		if sessBucket == nil {
 			return nil, nil
 		}
-		return sessBucket.Bucket(groupID[:]), nil
+		return sessBucket.Bucket(s.groupID[:]), nil
 	}
 }
 
@@ -322,13 +351,9 @@ func getSessionRuleBucket(perm bool, ruleName string,
 // bucket under which a kv store for a specific rule-name, group ID and
 // feature name is stored. The `perm` param determines if the temporary or
 // permanent store is used.
-func getSessionFeatureRuleBucket(perm bool, ruleName string,
-	groupID session.ID, featureName string) getBucketFunc {
-
+func (s *kvStoreTx) getSessionFeatureRuleBucket(perm bool) getBucketFunc {
 	return func(tx *bbolt.Tx, create bool) (*bbolt.Bucket, error) {
-		sessBucket, err := getSessionRuleBucket(
-			perm, ruleName, groupID,
-		)(tx, create)
+		sessBucket, err := s.getSessionRuleBucket(perm)(tx, create)
 		if err != nil {
 			return nil, err
 		}
@@ -346,7 +371,7 @@ func getSessionFeatureRuleBucket(perm bool, ruleName string,
 			}
 
 			return featureBucket.CreateBucketIfNotExists(
-				[]byte(featureName),
+				[]byte(s.featureName),
 			)
 		}
 
@@ -354,6 +379,6 @@ func getSessionFeatureRuleBucket(perm bool, ruleName string,
 		if featureBucket == nil {
 			return nil, nil
 		}
-		return featureBucket.Bucket([]byte(featureName)), nil
+		return featureBucket.Bucket([]byte(s.featureName)), nil
 	}
 }

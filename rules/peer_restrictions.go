@@ -382,8 +382,7 @@ func (c *PeerRestrict) ToProto() *litrpc.RuleValue {
 //
 // NOTE: this is part of the Values interface.
 func (c *PeerRestrict) PseudoToReal(ctx context.Context,
-	db firewalldb.PrivacyMapDB, flags session.PrivacyFlags) (Values,
-	error) {
+	db firewalldb.PrivacyMap, flags session.PrivacyFlags) (Values, error) {
 
 	restrictList := make([]string, len(c.DenyList))
 

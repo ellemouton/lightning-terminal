@@ -108,9 +108,12 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 
 		acctStore := accounts.NewSQLStore(sqlStore.BaseDB, clock)
 		sessStore := session.NewSQLStore(sqlStore.BaseDB, clock)
+		firewallDB := firewalldb.NewSQLDB(sqlStore.BaseDB)
 
 		stores.accounts = acctStore
 		stores.sessions = sessStore
+		stores.rules = firewallDB
+		stores.privacyMaps = firewallDB
 		stores.closeFns["sqlite"] = sqlStore.BaseDB.Close
 
 	case DatabaseBackendPostgres:
@@ -121,9 +124,12 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 
 		acctStore := accounts.NewSQLStore(sqlStore.BaseDB, clock)
 		sessStore := session.NewSQLStore(sqlStore.BaseDB, clock)
+		firewallDB := firewalldb.NewSQLDB(sqlStore.BaseDB)
 
 		stores.accounts = acctStore
 		stores.sessions = sessStore
+		stores.rules = firewallDB
+		stores.privacyMaps = firewallDB
 		stores.closeFns["postgres"] = sqlStore.BaseDB.Close
 
 	default:
@@ -160,6 +166,11 @@ func NewStores(cfg *Config, clock clock.Clock) (*stores, error) {
 	stores.firewall = firewalldb.NewDB(firewallBoltDB)
 	stores.firewallBolt = firewallBoltDB
 	stores.closeFns["bbolt-firewalldb"] = firewallBoltDB.Close
+
+	if stores.rules == nil {
+		stores.rules = firewallBoltDB
+		stores.privacyMaps = firewallBoltDB
+	}
 
 	return stores, nil
 }
