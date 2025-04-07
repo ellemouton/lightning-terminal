@@ -157,6 +157,26 @@ func (s *sqlKVStore) genNamespaceFields(ctx context.Context,
 		err       error
 	)
 
+	s.params.sessionID.WhenSome(func(id session.ID) {
+		var groupID int64
+		groupID, err = s.queries.GetSessionIDByAlias(ctx, id[:])
+		if errors.Is(err, sql.ErrNoRows) {
+			err = session.ErrUnknownGroup
+
+			return
+		} else if err != nil {
+			return
+		}
+
+		sessionID = sql.NullInt64{
+			Int64: groupID,
+			Valid: true,
+		}
+	})
+	if err != nil {
+		return ruleID, sessionID, featureID, err
+	}
+
 	if readOnly {
 		ruleID, err = s.queries.GetRuleID(ctx, s.params.ruleName)
 		if err != nil {
@@ -192,28 +212,15 @@ func (s *sqlKVStore) genNamespaceFields(ctx context.Context,
 			Valid: true,
 		}
 	})
-	if err != nil {
-		return ruleID, sessionID, featureID, err
-	}
 
-	s.params.sessionID.WhenSome(func(id session.ID) {
-		var groupID int64
-		groupID, err = s.queries.GetSessionIDByAlias(ctx, id[:])
-		if err != nil {
-			return
-		}
-
-		sessionID = sql.NullInt64{
-			Int64: groupID,
-			Valid: true,
-		}
-	})
 	return ruleID, sessionID, featureID, err
 }
 
 func (s *sqlKVStore) Get(ctx context.Context, key string) ([]byte, error) {
 	value, err := s.get(ctx, key)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) ||
+		errors.Is(err, session.ErrUnknownGroup) {
+
 		return nil, nil
 	} else if err != nil {
 		return nil, err
@@ -343,7 +350,9 @@ func (s *sqlKVStore) Del(ctx context.Context, key string) error {
 	// Delete, if the record does not exist, we don't need to create one.
 	// But no need to error out if it doesn't exist.
 	ruleID, sessionID, featureID, err := s.genNamespaceFields(ctx, true)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) ||
+		errors.Is(err, session.ErrUnknownGroup) {
+
 		return nil
 	} else if err != nil {
 		return err

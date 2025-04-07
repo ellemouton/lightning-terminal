@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -12,6 +11,81 @@ import (
 	"github.com/lightningnetwork/lnd/clock"
 	"github.com/stretchr/testify/require"
 )
+
+// TestKVStoreSessionCoupling tests if we attempt to write to a kvstore that
+// is namespaced by a session that does not exist, then we should get an error.
+func TestKVStoreSessionCoupling(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	sessions := session.NewTestDB(t, clock.NewDefaultClock())
+	db := NewTestDBWithSessions(t, sessions)
+
+	// Get a kvstore namespaced by a session ID for a session that does
+	// not exist.
+	store := db.GetKVStores("AutoFees", [4]byte{1, 1, 1, 1}, "auto-fees")
+
+	err := store.Update(ctx, func(ctx context.Context,
+		tx KVStoreTx) error {
+
+		// First, show that any call to the global namespace will not
+		// error since it is not namespaced by a session.
+		res, err := tx.Global().Get(ctx, "foo")
+		require.NoError(t, err)
+		require.Nil(t, res)
+
+		err = tx.Global().Set(ctx, "foo", []byte("bar"))
+		require.NoError(t, err)
+
+		res, err = tx.Global().Get(ctx, "foo")
+		require.NoError(t, err)
+		require.Equal(t, []byte("bar"), res)
+
+		// Now we switch to the local store. We don't expect the Get
+		// call to error since it should just return a nil value for
+		// key that has not been set.
+		_, err = tx.Local().Get(ctx, "foo")
+		require.NoError(t, err)
+
+		// For Set, we expect an error since the session does not exist.
+		err = tx.Local().Set(ctx, "foo", []byte("bar"))
+		require.ErrorIs(t, err, session.ErrUnknownGroup)
+
+		// We again don't expect the error for delete since we just
+		// expect it to return nil if the key is not found.
+		err = tx.Local().Del(ctx, "foo")
+		require.NoError(t, err)
+
+		return nil
+	})
+	require.NoError(t, err)
+
+	// Now, go and create a sessions in the session DB.
+	sess, err := sessions.NewSession(
+		ctx, "test", session.TypeAutopilot, time.Unix(1000, 0),
+		"something",
+	)
+	require.NoError(t, err)
+
+	// Get a kvstore namespaced by a session ID for a session that now
+	// does exist.
+	store = db.GetKVStores("AutoFees", sess.GroupID, "auto-fees")
+
+	// Now, repeat the "Set" call for this session's kvstore to
+	// show that it no longer errors.
+	err = store.Update(ctx, func(ctx context.Context, tx KVStoreTx) error {
+		// For Set, we expect an error since the session does not exist.
+		err = tx.Local().Set(ctx, "foo", []byte("bar"))
+		require.NoError(t, err)
+
+		res, err := tx.Local().Get(ctx, "foo")
+		require.NoError(t, err)
+		require.Equal(t, []byte("bar"), res)
+
+		return nil
+	})
+	require.NoError(t, err)
+}
 
 // TestKVStoreTxs tests that the `Update` and `View` functions correctly provide
 // atomic access to the db. If anything fails in the middle of an `Update`
@@ -86,10 +160,7 @@ func testTempAndPermStores(t *testing.T, featureSpecificStore bool) {
 		featureName = "auto-fees"
 	}
 
-	tmpDir := filepath.Join(t.TempDir(), DBFilename)
-	sessions := session.NewTestDBFromPath(
-		t, tmpDir, clock.NewDefaultClock(),
-	)
+	sessions := session.NewTestDB(t, clock.NewDefaultClock())
 	store := NewTestDBWithSessions(t, sessions)
 	db := NewDB(store)
 	require.NoError(t, db.Start(ctx))

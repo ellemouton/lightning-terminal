@@ -696,8 +696,8 @@ func getSessionIDs(sessionBkt *bbolt.Bucket, groupID ID) ([]ID, error) {
 
 	groupIDBkt := groupIndexBkt.Bucket(groupID[:])
 	if groupIDBkt == nil {
-		return nil, fmt.Errorf("no sessions for group ID %v",
-			groupID)
+		return nil, fmt.Errorf("%w: no sessions for group ID %v",
+			ErrUnknownGroup, groupID)
 	}
 
 	sessionIDsBkt := groupIDBkt.Bucket(sessionIDKey)
