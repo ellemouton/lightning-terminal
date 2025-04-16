@@ -14,21 +14,26 @@ var (
 	ErrNoSuchKeyFound = fmt.Errorf("no such key found")
 )
 
+type firewallDBs interface {
+	RulesDB
+	PrivacyMapper
+}
+
 // DB manages the firewall rules database.
 type DB struct {
 	started sync.Once
 	stopped sync.Once
 
-	RulesDB
+	firewallDBs
 
 	cancel fn.Option[context.CancelFunc]
 }
 
 // NewDB creates a new firewall database. For now, it only contains the
 // underlying rules' database.
-func NewDB(kvdb RulesDB) *DB {
+func NewDB(dbs firewallDBs) *DB {
 	return &DB{
-		RulesDB: kvdb,
+		firewallDBs: dbs,
 	}
 }
 
