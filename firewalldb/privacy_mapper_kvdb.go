@@ -35,8 +35,9 @@ func (db *BoltDB) PrivacyDB(groupID session.ID) PrivacyMapDB {
 		db: db.DB,
 		wrapTx: func(tx *bbolt.Tx) PrivacyMapTx {
 			return &privacyMapTx{
-				boltTx:  tx,
-				groupID: groupID,
+				sessions: db.sessionIDIndex,
+				boltTx:   tx,
+				groupID:  groupID,
 			}
 		},
 	}
@@ -44,14 +45,33 @@ func (db *BoltDB) PrivacyDB(groupID session.ID) PrivacyMapDB {
 
 // privacyMapTx is an implementation of PrivacyMapTx.
 type privacyMapTx struct {
-	groupID session.ID
-	boltTx  *bbolt.Tx
+	sessions SessionDB
+	groupID  session.ID
+	boltTx   *bbolt.Tx
+}
+
+// asserGroupExists checks that the session group that the privacy mapper is
+// pointing to exists.
+//
+// NOTE: this is technically a DB transaction within another DB transaction.
+// But this is ok because:
+//  1. We only do this for the bbolt backends in which case the transactions are
+//     for _separate_ DB files.
+//  2. The aim is to completely remove this implementation in future.
+func (p *privacyMapTx) assertGroupExists(ctx context.Context) error {
+	_, err := p.sessions.GetSessionIDs(ctx, p.groupID)
+
+	return err
 }
 
 // NewPair inserts a new real-pseudo pair into the db.
 //
 // NOTE: this is part of the PrivacyMapTx interface.
-func (p *privacyMapTx) NewPair(_ context.Context, real, pseudo string) error {
+func (p *privacyMapTx) NewPair(ctx context.Context, real, pseudo string) error {
+	if err := p.assertGroupExists(ctx); err != nil {
+		return err
+	}
+
 	privacyBucket, err := getBucket(p.boltTx, privacyBucketKey)
 	if err != nil {
 		return err
@@ -97,8 +117,12 @@ func (p *privacyMapTx) NewPair(_ context.Context, real, pseudo string) error {
 // it does then the real value is returned, else an error is returned.
 //
 // NOTE: this is part of the PrivacyMapTx interface.
-func (p *privacyMapTx) PseudoToReal(_ context.Context, pseudo string) (string,
+func (p *privacyMapTx) PseudoToReal(ctx context.Context, pseudo string) (string,
 	error) {
+
+	if err := p.assertGroupExists(ctx); err != nil {
+		return "", err
+	}
 
 	privacyBucket, err := getBucket(p.boltTx, privacyBucketKey)
 	if err != nil {
@@ -127,8 +151,12 @@ func (p *privacyMapTx) PseudoToReal(_ context.Context, pseudo string) (string,
 // it does then the pseudo value is returned, else an error is returned.
 //
 // NOTE: this is part of the PrivacyMapTx interface.
-func (p *privacyMapTx) RealToPseudo(_ context.Context, real string) (string,
+func (p *privacyMapTx) RealToPseudo(ctx context.Context, real string) (string,
 	error) {
+
+	if err := p.assertGroupExists(ctx); err != nil {
+		return "", err
+	}
 
 	privacyBucket, err := getBucket(p.boltTx, privacyBucketKey)
 	if err != nil {
@@ -156,8 +184,12 @@ func (p *privacyMapTx) RealToPseudo(_ context.Context, real string) (string,
 // FetchAllPairs loads and returns the real-to-pseudo pairs.
 //
 // NOTE: this is part of the PrivacyMapTx interface.
-func (p *privacyMapTx) FetchAllPairs(_ context.Context) (*PrivacyMapPairs,
+func (p *privacyMapTx) FetchAllPairs(ctx context.Context) (*PrivacyMapPairs,
 	error) {
+
+	if err := p.assertGroupExists(ctx); err != nil {
+		return nil, err
+	}
 
 	privacyBucket, err := getBucket(p.boltTx, privacyBucketKey)
 	if err != nil {
