@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightningnetwork/lnd/clock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -13,17 +16,18 @@ func TestPrivacyMapStorage(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	tmpDir := t.TempDir()
-	db, err := NewBoltDB(tmpDir, "test.db", nil)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	sessions := session.NewTestDB(t, clock.NewDefaultClock())
+	db := NewTestDBWithSessions(t, sessions)
 
-	pdb1 := db.PrivacyDB([4]byte{1, 1, 1, 1})
+	sess, err := sessions.NewSession(
+		ctx, "test", session.TypeAutopilot, time.Unix(1000, 0), "",
+	)
+	require.NoError(t, err)
+
+	pdb1 := db.PrivacyDB(sess.GroupID)
 
 	_ = pdb1.Update(ctx, func(ctx context.Context, tx PrivacyMapTx) error {
-		_, err = tx.RealToPseudo(ctx, "real")
+		_, err := tx.RealToPseudo(ctx, "real")
 		require.ErrorIs(t, err, ErrNoSuchKeyFound)
 
 		_, err = tx.PseudoToReal(ctx, "pseudo")
@@ -50,10 +54,14 @@ func TestPrivacyMapStorage(t *testing.T) {
 		return nil
 	})
 
-	pdb2 := db.PrivacyDB([4]byte{2, 2, 2, 2})
+	sess2, err := sessions.NewSession(
+		ctx, "test", session.TypeAutopilot, time.Unix(1000, 0), "",
+	)
+	require.NoError(t, err)
+	pdb2 := db.PrivacyDB(sess2.GroupID)
 
 	_ = pdb2.Update(ctx, func(ctx context.Context, tx PrivacyMapTx) error {
-		_, err = tx.RealToPseudo(ctx, "real")
+		_, err := tx.RealToPseudo(ctx, "real")
 		require.ErrorIs(t, err, ErrNoSuchKeyFound)
 
 		_, err = tx.PseudoToReal(ctx, "pseudo")
@@ -80,7 +88,11 @@ func TestPrivacyMapStorage(t *testing.T) {
 		return nil
 	})
 
-	pdb3 := db.PrivacyDB([4]byte{3, 3, 3, 3})
+	sess3, err := sessions.NewSession(
+		ctx, "test", session.TypeAutopilot, time.Unix(1000, 0), "",
+	)
+	require.NoError(t, err)
+	pdb3 := db.PrivacyDB(sess3.GroupID)
 
 	_ = pdb3.Update(ctx, func(ctx context.Context, tx PrivacyMapTx) error {
 		// Check that calling FetchAllPairs returns an empty map if
@@ -96,14 +108,12 @@ func TestPrivacyMapStorage(t *testing.T) {
 		// Try to add a new pair that has the same real value as the
 		// first pair. This should fail.
 		err = tx.NewPair(ctx, "real 1", "pseudo 2")
-		require.ErrorContains(t, err, "an entry already exists for "+
-			"real value")
+		require.ErrorIs(t, err, ErrDuplicateRealValue)
 
 		// Try to add a new pair that has the same pseudo value as the
 		// first pair. This should fail.
 		err = tx.NewPair(ctx, "real 2", "pseudo 1")
-		require.ErrorContains(t, err, "an entry already exists for "+
-			"pseudo value")
+		require.ErrorIs(t, err, ErrDuplicatePseudoValue)
 
 		// Add a few more pairs.
 		err = tx.NewPair(ctx, "real 2", "pseudo 2")
@@ -187,14 +197,15 @@ func TestPrivacyMapTxs(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	tmpDir := t.TempDir()
-	db, err := NewBoltDB(tmpDir, "test.db", nil)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	sessions := session.NewTestDB(t, clock.NewDefaultClock())
+	db := NewTestDBWithSessions(t, sessions)
 
-	pdb1 := db.PrivacyDB([4]byte{1, 1, 1, 1})
+	sess, err := sessions.NewSession(
+		ctx, "test", session.TypeAutopilot, time.Unix(1000, 0),
+		"something",
+	)
+	require.NoError(t, err)
+	pdb1 := db.PrivacyDB(sess.GroupID)
 
 	// Test that if an action fails midway through the transaction, then
 	// it is rolled back.
