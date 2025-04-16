@@ -92,3 +92,7 @@ type RulesDB interface {
 	// DeleteTempKVStores deletes all temporary kv stores.
 	DeleteTempKVStores(ctx context.Context) error
 }
+
+type PrivacyMapper interface {
+	PrivacyDB(groupID session.ID) PrivacyMapDB
+}
