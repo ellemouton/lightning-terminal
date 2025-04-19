@@ -377,7 +377,15 @@ func TestListGroupActions(t *testing.T) {
 }
 
 func assertEqualActions(t *testing.T, expected, got *Action) {
-	require.Equal(t, expected.AttemptedAt.Unix(), got.AttemptedAt.Unix())
-	got.AttemptedAt = expected.AttemptedAt
+	expectedAttemptedAt := expected.AttemptedAt
+	actualAttemptedAt := got.AttemptedAt
+
+	expected.AttemptedAt = time.Time{}
+	got.AttemptedAt = time.Time{}
+
 	require.Equal(t, expected, got)
+	require.Equal(t, expectedAttemptedAt.Unix(), actualAttemptedAt.Unix())
+
+	expected.AttemptedAt = expectedAttemptedAt
+	got.AttemptedAt = actualAttemptedAt
 }
