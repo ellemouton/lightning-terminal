@@ -28,8 +28,7 @@ const (
 	ActionStateError ActionState = 3
 )
 
-// Action represents an RPC call made through the firewall.
-type Action struct {
+type AddActionReq struct {
 	// MacaroonIdentifier is a 4 byte identifier created from the last 4
 	// bytes of the root key ID of the macaroon used to perform the action.
 	MacaroonIdentifier [4]byte
@@ -58,6 +57,11 @@ type Action struct {
 
 	// RPCParams is the method parameters of the request in JSON form.
 	RPCParamsJson []byte
+}
+
+// Action represents an RPC call made through the firewall.
+type Action struct {
+	AddActionReq
 
 	// AttemptedAt is the time at which this action was created.
 	AttemptedAt time.Time
@@ -180,7 +184,8 @@ func WithActionState(state ActionState) ListActionOption {
 // ActionsWriteDB is an abstraction over the Actions DB that will allow a
 // caller to add new actions as well as change the values of an existing action.
 type ActionsWriteDB interface {
-	AddAction(ctx context.Context, action *Action) (ActionLocator, error)
+	AddAction(ctx context.Context, req *AddActionReq) (ActionLocator,
+		error)
 	SetActionState(ctx context.Context, al ActionLocator,
 		state ActionState, errReason string) error
 }

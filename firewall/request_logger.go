@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/lightninglabs/lightning-terminal/firewalldb"
 	mid "github.com/lightninglabs/lightning-terminal/rpcmiddleware"
@@ -194,11 +193,9 @@ func (r *RequestLogger) addNewAction(ctx context.Context, ri *RequestInfo,
 		}
 	}
 
-	action := &firewalldb.Action{
+	actionReq := &firewalldb.AddActionReq{
 		MacaroonIdentifier: macaroonID,
 		RPCMethod:          ri.URI,
-		AttemptedAt:        time.Now(),
-		State:              firewalldb.ActionStateInit,
 	}
 
 	if withPayloadData {
@@ -212,19 +209,19 @@ func (r *RequestLogger) addNewAction(ctx context.Context, ri *RequestInfo,
 			return fmt.Errorf("unable to decode response: %v", err)
 		}
 
-		action.RPCParamsJson = jsonBytes
+		actionReq.RPCParamsJson = jsonBytes
 
 		meta := ri.MetaInfo
 		if meta != nil {
-			action.ActorName = meta.ActorName
-			action.FeatureName = meta.Feature
-			action.Trigger = meta.Trigger
-			action.Intent = meta.Intent
-			action.StructuredJsonData = meta.StructuredJsonData
+			actionReq.ActorName = meta.ActorName
+			actionReq.FeatureName = meta.Feature
+			actionReq.Trigger = meta.Trigger
+			actionReq.Intent = meta.Intent
+			actionReq.StructuredJsonData = meta.StructuredJsonData
 		}
 	}
 
-	locator, err := r.actionsDB.AddAction(ctx, action)
+	locator, err := r.actionsDB.AddAction(ctx, actionReq)
 	if err != nil {
 		return err
 	}
