@@ -81,7 +81,7 @@ func (s *InterceptorService) Intercept(ctx context.Context,
 		return mid.RPCErrString(req, "error parsing macaroon: %v", err)
 	}
 
-	acctID, err := accountFromMacaroon(mac)
+	acctID, err := AccountFromMacaroon(mac)
 	if err != nil {
 		return mid.RPCErrString(
 			req, "error parsing account from macaroon: %v", err,
@@ -208,9 +208,9 @@ func parseRPCMessage(msg *lnrpc.RPCMessage) (proto.Message, error) {
 	return parsedMsg, nil
 }
 
-// accountFromMacaroon attempts to extract an account ID from the custom account
+// AccountFromMacaroon attempts to extract an account ID from the custom account
 // caveat in the macaroon.
-func accountFromMacaroon(mac *macaroon.Macaroon) (*AccountID, error) {
+func AccountFromMacaroon(mac *macaroon.Macaroon) (*AccountID, error) {
 	if mac == nil {
 		return nil, nil
 	}

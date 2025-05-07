@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/firewalldb"
 	mid "github.com/lightninglabs/lightning-terminal/rpcmiddleware"
 	"github.com/lightninglabs/lightning-terminal/session"
@@ -206,6 +207,13 @@ func (r *RequestLogger) addNewAction(ctx context.Context, ri *RequestInfo,
 		return err
 	} else if ok {
 		actionReq.SessionID = fn.Some(id)
+	}
+
+	acctID, err := accounts.AccountFromMacaroon(ri.Macaroon)
+	if err != nil {
+		return fmt.Errorf("could not extract account ID from macaroon")
+	} else if acctID != nil {
+		actionReq.AccountID = fn.Some(*acctID)
 	}
 
 	if withPayloadData {

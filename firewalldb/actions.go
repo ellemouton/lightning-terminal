@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightningnetwork/lnd/fn"
 )
@@ -38,6 +39,9 @@ type AddActionReq struct {
 	// over if any. NOTE: this is currently not populated if read from a
 	// bbolt DB.
 	SessionID fn.Option[session.ID]
+
+	// AccountID is the ID of the account that performed the action if any.
+	AccountID fn.Option[accounts.AccountID]
 
 	// ActorName is the name of the entity who performed the Action.
 	ActorName string
