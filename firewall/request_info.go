@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
+	"google.golang.org/grpc/metadata"
 	"gopkg.in/macaroon.v2"
 )
 
@@ -38,11 +39,19 @@ type RequestInfo struct {
 	MetaInfo        *InterceptMetaInfo
 	Rules           *InterceptRules
 	WithPrivacy     bool
+	MDPairs         metadata.MD
 }
 
 // NewInfoFromRequest parses the given RPC middleware interception request and
 // returns a RequestInfo struct.
 func NewInfoFromRequest(req *lnrpc.RPCMiddlewareRequest) (*RequestInfo, error) {
+	md := make(metadata.MD)
+	for k, vs := range req.MetadataPairs {
+		for _, v := range vs.Values {
+			md.Append(k, v)
+		}
+	}
+
 	var ri *RequestInfo
 	switch t := req.InterceptType.(type) {
 	case *lnrpc.RPCMiddlewareRequest_StreamAuth:
@@ -50,6 +59,7 @@ func NewInfoFromRequest(req *lnrpc.RPCMiddlewareRequest) (*RequestInfo, error) {
 			MWRequestType: MWRequestTypeStreamAuth,
 			URI:           t.StreamAuth.MethodFullUri,
 			Streaming:     true,
+			MDPairs:       md,
 		}
 
 	case *lnrpc.RPCMiddlewareRequest_Request:
@@ -60,6 +70,7 @@ func NewInfoFromRequest(req *lnrpc.RPCMiddlewareRequest) (*RequestInfo, error) {
 			IsError:         t.Request.IsError,
 			Serialized:      t.Request.Serialized,
 			Streaming:       t.Request.StreamRpc,
+			MDPairs:         md,
 		}
 
 	case *lnrpc.RPCMiddlewareRequest_Response:
@@ -70,6 +81,7 @@ func NewInfoFromRequest(req *lnrpc.RPCMiddlewareRequest) (*RequestInfo, error) {
 			IsError:         t.Response.IsError,
 			Serialized:      t.Response.Serialized,
 			Streaming:       t.Response.StreamRpc,
+			MDPairs:         md,
 		}
 
 	default:

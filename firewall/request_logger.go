@@ -9,6 +9,7 @@ import (
 	"github.com/lightninglabs/lightning-terminal/firewalldb"
 	mid "github.com/lightninglabs/lightning-terminal/rpcmiddleware"
 	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightningnetwork/lnd/fn"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
 )
@@ -196,6 +197,15 @@ func (r *RequestLogger) addNewAction(ctx context.Context, ri *RequestInfo,
 	actionReq := &firewalldb.AddActionReq{
 		MacaroonIdentifier: macaroonID,
 		RPCMethod:          ri.URI,
+	}
+
+	// Maybe this action is linked to an LNC session. If it is, the session
+	// ID will be set in the grpc metadata of the request.
+	id, ok, err := session.FromGrpcMD(ri.MDPairs)
+	if err != nil {
+		return err
+	} else if ok {
+		actionReq.SessionID = fn.Some(id)
 	}
 
 	if withPayloadData {

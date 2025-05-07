@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/lightninglabs/lightning-terminal/session"
+	"github.com/lightningnetwork/lnd/fn"
 )
 
 // ActionState represents the state of an action.
@@ -32,6 +33,11 @@ type AddActionReq struct {
 	// MacaroonIdentifier is a 4 byte identifier created from the last 4
 	// bytes of the root key ID of the macaroon used to perform the action.
 	MacaroonIdentifier [4]byte
+
+	// SessionID is the ID of the LNC session that this action was performed
+	// over if any. NOTE: this is currently not populated if read from a
+	// bbolt DB.
+	SessionID fn.Option[session.ID]
 
 	// ActorName is the name of the entity who performed the Action.
 	ActorName string
