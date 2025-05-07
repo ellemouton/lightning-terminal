@@ -30,10 +30,9 @@ const (
 
 // Action represents an RPC call made through the firewall.
 type Action struct {
-	// SessionID is the ID of the session that this action belongs to.
-	// Note that this is not serialized on persistence since the action is
-	// already stored under a bucket identified by the session ID.
-	SessionID session.ID
+	// MacaroonIdentifier is a 4 byte identifier created from the last 4
+	// bytes of the root key ID of the macaroon used to perform the action.
+	MacaroonIdentifier [4]byte
 
 	// ActorName is the name of the entity who performed the Action.
 	ActorName string

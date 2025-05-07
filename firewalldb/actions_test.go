@@ -10,11 +10,11 @@ import (
 )
 
 var (
-	sessionID1 = intToSessionID(1)
-	sessionID2 = intToSessionID(2)
+	sessionID1 = intToMacID(1)
+	sessionID2 = intToMacID(2)
 
 	action1 = &Action{
-		SessionID:          sessionID1,
+		MacaroonIdentifier: sessionID1,
 		ActorName:          "Autopilot",
 		FeatureName:        "auto-fees",
 		Trigger:            "fee too low",
@@ -27,15 +27,15 @@ var (
 	}
 
 	action2 = &Action{
-		SessionID:     sessionID2,
-		ActorName:     "Autopilot",
-		FeatureName:   "rebalancer",
-		Trigger:       "channels not balanced",
-		Intent:        "balance",
-		RPCMethod:     "SendToRoute",
-		RPCParamsJson: []byte("hops, amount"),
-		AttemptedAt:   time.Unix(12300, 0),
-		State:         ActionStateInit,
+		MacaroonIdentifier: sessionID2,
+		ActorName:          "Autopilot",
+		FeatureName:        "rebalancer",
+		Trigger:            "channels not balanced",
+		Intent:             "balance",
+		RPCMethod:          "SendToRoute",
+		RPCParamsJson:      []byte("hops, amount"),
+		AttemptedAt:        time.Unix(12300, 0),
+		State:              ActionStateInit,
 	}
 )
 
@@ -154,7 +154,7 @@ func TestListActions(t *testing.T) {
 	addAction := func(sessionID [4]byte) {
 		actionIds++
 		action := &Action{
-			SessionID:          sessionID,
+			MacaroonIdentifier: sessionID,
 			ActorName:          "Autopilot",
 			FeatureName:        fmt.Sprintf("%d", actionIds),
 			Trigger:            "fee too low",
@@ -179,7 +179,7 @@ func TestListActions(t *testing.T) {
 		require.Len(t, dbActions, len(al))
 		for i, a := range al {
 			require.EqualValues(
-				t, a.sessionID, dbActions[i].SessionID,
+				t, a.sessionID, dbActions[i].MacaroonIdentifier,
 			)
 			require.Equal(t, a.actionID, dbActions[i].FeatureName)
 		}
@@ -336,7 +336,7 @@ func TestListGroupActions(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	group1 := intToSessionID(0)
+	group1 := intToMacID(0)
 
 	// Link session 1 and session 2 to group 1.
 	index := NewMockSessionDB()
@@ -362,7 +362,7 @@ func TestListGroupActions(t *testing.T) {
 	al, _, _, err = db.ListActions(ctx, nil, WithActionGroupID(group1))
 	require.NoError(t, err)
 	require.Len(t, al, 1)
-	require.Equal(t, sessionID1, al[0].SessionID)
+	require.Equal(t, sessionID1, al[0].MacaroonIdentifier)
 
 	// Add an action under session 2.
 	_, err = db.AddAction(ctx, action2)
@@ -372,8 +372,8 @@ func TestListGroupActions(t *testing.T) {
 	al, _, _, err = db.ListActions(ctx, nil, WithActionGroupID(group1))
 	require.NoError(t, err)
 	require.Len(t, al, 2)
-	require.Equal(t, sessionID1, al[0].SessionID)
-	require.Equal(t, sessionID2, al[1].SessionID)
+	require.Equal(t, sessionID1, al[0].MacaroonIdentifier)
+	require.Equal(t, sessionID2, al[1].MacaroonIdentifier)
 }
 
 func assertEqualActions(t *testing.T, expected, got *Action) {

@@ -732,7 +732,7 @@ func (s *sessionRpcServer) ListActions(ctx context.Context,
 		}
 
 		resp[i] = &litrpc.Action{
-			SessionId:          a.SessionID[:],
+			SessionId:          a.MacaroonIdentifier[:],
 			ActorName:          a.ActorName,
 			FeatureName:        a.FeatureName,
 			Trigger:            a.Trigger,

@@ -467,7 +467,7 @@ func TestKVStoreSessionCoupling(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func intToSessionID(i uint32) session.ID {
+func intToMacID(i uint32) [4]byte {
 	var id session.ID
 	byteOrder.PutUint32(id[:], i)
 

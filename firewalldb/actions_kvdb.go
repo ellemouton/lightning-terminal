@@ -74,7 +74,7 @@ func (db *BoltDB) AddAction(_ context.Context, action *Action) (ActionLocator,
 		}
 
 		sessBucket, err := actionsBucket.CreateBucketIfNotExists(
-			action.SessionID[:],
+			action.MacaroonIdentifier[:],
 		)
 		if err != nil {
 			return err
@@ -103,7 +103,7 @@ func (db *BoltDB) AddAction(_ context.Context, action *Action) (ActionLocator,
 		}
 
 		locator = kvdbActionLocator{
-			sessionID: action.SessionID,
+			sessionID: action.MacaroonIdentifier,
 			actionID:  nextActionIndex,
 		}
 
@@ -543,7 +543,7 @@ func DeserializeAction(r io.Reader, sessionID session.ID) (*Action, error) {
 		return nil, err
 	}
 
-	action.SessionID = sessionID
+	action.MacaroonIdentifier = sessionID
 	action.ActorName = string(actor)
 	action.FeatureName = string(featureName)
 	action.Trigger = string(trigger)
