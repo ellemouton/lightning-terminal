@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/db"
@@ -144,7 +143,7 @@ func (s *SQLDB) AddAction(ctx context.Context,
 			StructuredJsonData: structuredJson,
 			RpcMethod:          req.RPCMethod,
 			RpcParamsJson:      req.RPCParamsJson,
-			CreatedAt:          time.Now(),
+			CreatedAt:          s.clock.Now().UTC(),
 			State:              int16(ActionStateInit),
 		})
 		if err != nil {

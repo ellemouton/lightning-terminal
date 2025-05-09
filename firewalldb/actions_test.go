@@ -6,12 +6,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightningnetwork/lnd/clock"
 	"github.com/stretchr/testify/require"
 )
 
 var (
 	sessionID1 = intToMacID(1)
 	sessionID2 = intToMacID(2)
+
+	testTime1 = time.Unix(32100, 0)
+	testTime2 = time.Unix(12300, 0)
 
 	action1Req = &AddActionReq{
 		MacaroonIdentifier: sessionID1,
@@ -26,7 +30,7 @@ var (
 
 	action1 = &Action{
 		AddActionReq: *action1Req,
-		AttemptedAt:  time.Unix(32100, 0),
+		AttemptedAt:  testTime1,
 		State:        ActionStateDone,
 	}
 
@@ -42,7 +46,7 @@ var (
 
 	action2 = &Action{
 		AddActionReq: *action2Req,
-		AttemptedAt:  time.Unix(12300, 0),
+		AttemptedAt:  testTime2,
 		State:        ActionStateInit,
 	}
 )
@@ -52,7 +56,9 @@ func TestActionStorage(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	db, err := NewBoltDB(t.TempDir(), "test.db", nil)
+	clock := clock.NewTestClock(testTime1)
+
+	db, err := NewBoltDB(t.TempDir(), "test.db", nil, clock)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = db.Close()
@@ -74,10 +80,16 @@ func TestActionStorage(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, actions, 0)
 
-	_, err = db.AddAction(ctx, action1Req)
+	locator1, err := db.AddAction(ctx, action1Req)
+	require.NoError(t, err)
+	err = db.SetActionState(ctx, locator1, ActionStateDone, "")
 	require.NoError(t, err)
 
+	clock.SetTime(testTime2)
+
 	locator2, err := db.AddAction(ctx, action2Req)
+	require.NoError(t, err)
+	err = db.SetActionState(ctx, locator1, ActionStateDone, "")
 	require.NoError(t, err)
 
 	actions, _, _, err = db.ListActions(
@@ -149,7 +161,7 @@ func TestListActions(t *testing.T) {
 	tmpDir := t.TempDir()
 	ctx := context.Background()
 
-	db, err := NewBoltDB(tmpDir, "test.db", nil)
+	db, err := NewBoltDB(tmpDir, "test.db", nil, clock.NewDefaultClock())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = db.Close()
@@ -350,7 +362,9 @@ func TestListGroupActions(t *testing.T) {
 	index.AddPair(sessionID1, group1)
 	index.AddPair(sessionID2, group1)
 
-	db, err := NewBoltDB(t.TempDir(), "test.db", index)
+	db, err := NewBoltDB(
+		t.TempDir(), "test.db", index, clock.NewDefaultClock(),
+	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = db.Close()

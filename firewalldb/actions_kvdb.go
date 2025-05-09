@@ -58,7 +58,7 @@ func (db *BoltDB) AddAction(_ context.Context,
 
 	action := &Action{
 		AddActionReq: *req,
-		AttemptedAt:  time.Now().UTC(),
+		AttemptedAt:  db.clock.Now().UTC(),
 		State:        ActionStateInit,
 	}
 
