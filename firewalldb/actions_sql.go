@@ -93,16 +93,20 @@ func (s *SQLDB) AddAction(ctx context.Context,
 		)
 
 		// First check session DB.
-		sessID, err := db.GetSessionIDByAlias(
-			ctx, req.MacaroonIdentifier[:],
-		)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		} else if err == nil {
+		var sessErr error
+		req.SessionID.WhenSome(func(id session.ID) {
+			sessID, err := db.GetSessionIDByAlias(ctx, id[:])
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				sessErr = err
+				return
+			}
 			sessionID = sql.NullInt64{
 				Int64: sessID,
 				Valid: true,
 			}
+		})
+		if sessErr != nil {
+			return sessErr
 		}
 
 		// If an account ID was provided, then it must exist in our DB.

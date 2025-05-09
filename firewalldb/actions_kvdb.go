@@ -297,6 +297,7 @@ func (db *BoltDB) ListActions(ctx context.Context, query *ListActionsQuery,
 			opts.sessionID, filterFn, query,
 		)
 	}
+
 	if opts.groupID != session.EmptyID {
 		actions, err := db.listGroupActions(ctx, opts.groupID, filterFn)
 		if err != nil {

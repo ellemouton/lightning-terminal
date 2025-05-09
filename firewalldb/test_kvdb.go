@@ -4,6 +4,7 @@ package firewalldb
 
 import (
 	"testing"
+	"time"
 
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightningnetwork/lnd/clock"
@@ -40,4 +41,22 @@ func newDBFromPathWithSessions(t *testing.T, dbPath string,
 	})
 
 	return store
+}
+
+func assertEqualActions(t *testing.T, expected, got *Action) {
+	// These are not populated correctly by the Bolt impl.
+	got.SessionID = expected.SessionID
+	got.AccountID = expected.AccountID
+
+	expectedAttemptedAt := expected.AttemptedAt
+	actualAttemptedAt := got.AttemptedAt
+
+	expected.AttemptedAt = time.Time{}
+	got.AttemptedAt = time.Time{}
+
+	require.Equal(t, expected, got)
+	require.Equal(t, expectedAttemptedAt.Unix(), actualAttemptedAt.Unix())
+
+	expected.AttemptedAt = expectedAttemptedAt
+	got.AttemptedAt = actualAttemptedAt
 }
