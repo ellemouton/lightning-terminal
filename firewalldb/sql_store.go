@@ -12,6 +12,7 @@ import (
 type SQLQueries interface {
 	SQLKVStoreQueries
 	SQLPrivacyPairQueries
+	SQLActionQueries
 }
 
 // BatchedSQLQueries is a version of the SQLQueries that's capable of batched
@@ -35,6 +36,8 @@ type SQLDB struct {
 // A compile-time assertion to ensure that SQLDB implements the RulesDB
 // interface.
 var _ RulesDB = (*SQLDB)(nil)
+
+var _ ActionDB = (*SQLDB)(nil)
 
 // NewSQLDB creates a new SQLStore instance given an open SQLQueries
 // storage backend.

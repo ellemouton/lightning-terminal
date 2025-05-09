@@ -49,10 +49,10 @@ var (
 
 // TestActionStorage tests that the ActionsListDB CRUD logic.
 func TestActionStorage(t *testing.T) {
-	tmpDir := t.TempDir()
+	t.Parallel()
 	ctx := context.Background()
 
-	db, err := NewBoltDB(tmpDir, "test.db", nil)
+	db, err := NewBoltDB(t.TempDir(), "test.db", nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = db.Close()
