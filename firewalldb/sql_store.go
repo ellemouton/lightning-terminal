@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/lightninglabs/lightning-terminal/db"
+	"github.com/lightningnetwork/lnd/clock"
 )
 
 // SQLQueries is a subset of the sqlc.Queries interface that can be used to
@@ -12,6 +13,7 @@ import (
 type SQLQueries interface {
 	SQLKVStoreQueries
 	SQLPrivacyPairQueries
+	SQLActionQueries
 }
 
 // BatchedSQLQueries is a version of the SQLQueries that's capable of batched
@@ -30,15 +32,19 @@ type SQLDB struct {
 
 	// BaseDB represents the underlying database connection.
 	*db.BaseDB
+
+	clock clock.Clock
 }
 
 // A compile-time assertion to ensure that SQLDB implements the RulesDB
 // interface.
 var _ RulesDB = (*SQLDB)(nil)
 
+var _ ActionDB = (*SQLDB)(nil)
+
 // NewSQLDB creates a new SQLStore instance given an open SQLQueries
 // storage backend.
-func NewSQLDB(sqlDB *db.BaseDB) *SQLDB {
+func NewSQLDB(sqlDB *db.BaseDB, clock clock.Clock) *SQLDB {
 	executor := db.NewTransactionExecutor(
 		sqlDB, func(tx *sql.Tx) SQLQueries {
 			return sqlDB.WithTx(tx)
@@ -48,6 +54,7 @@ func NewSQLDB(sqlDB *db.BaseDB) *SQLDB {
 	return &SQLDB{
 		db:     executor,
 		BaseDB: sqlDB,
+		clock:  clock,
 	}
 }
 

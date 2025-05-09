@@ -239,8 +239,7 @@ type stores struct {
 	accounts accounts.Store
 	sessions session.Store
 
-	firewall     *firewalldb.DB
-	firewallBolt *firewalldb.BoltDB
+	firewall *firewalldb.DB
 
 	// closeFns holds various callbacks that can be used to close any open
 	// stores in the stores struct.
@@ -531,7 +530,7 @@ func (g *LightningTerminal) start(ctx context.Context) error {
 		superMacBaker:           superMacBaker,
 		firstConnectionDeadline: g.cfg.FirstLNCConnDeadline,
 		permMgr:                 g.permsMgr,
-		actionsDB:               g.stores.firewallBolt,
+		actionsDB:               g.stores.firewall,
 		autopilot:               g.autopilotClient,
 		ruleMgrs:                g.ruleMgrs,
 		privMap:                 g.stores.firewall,
@@ -1093,7 +1092,7 @@ func (g *LightningTerminal) startInternalSubServers(ctx context.Context,
 	}
 
 	requestLogger, err := firewall.NewRequestLogger(
-		g.cfg.Firewall.RequestLogger, g.stores.firewallBolt,
+		g.cfg.Firewall.RequestLogger, g.stores.firewall,
 	)
 	if err != nil {
 		return fmt.Errorf("error creating new request logger")
@@ -1112,15 +1111,17 @@ func (g *LightningTerminal) startInternalSubServers(ctx context.Context,
 
 	if !g.cfg.Autopilot.Disable {
 		ruleEnforcer := firewall.NewRuleEnforcer(
-			g.stores.firewall, g.stores.firewallBolt,
+			g.stores.firewall, g.stores.firewall,
 			g.stores.sessions,
 			g.autopilotClient.ListFeaturePerms,
 			g.permsMgr, g.lndClient.NodePubkey,
 			g.lndClient.Router,
 			g.lndClient.Client, g.lndConnID, g.ruleMgrs,
-			func(reqID uint64, reason string) error {
+			func(ctx context.Context, reqID uint64,
+				reason string) error {
+
 				return requestLogger.MarkAction(
-					reqID, firewalldb.ActionStateError,
+					ctx, reqID, firewalldb.ActionStateError,
 					reason,
 				)
 			}, g.stores.firewall,

@@ -32,8 +32,9 @@ type RuleEnforcer struct {
 	ruleDB            firewalldb.RulesDB
 	actionsDB         firewalldb.ActionReadDBGetter
 	sessionDB         firewalldb.SessionDB
-	markActionErrored func(reqID uint64, reason string) error
-	privMapDB         firewalldb.PrivacyMapper
+	markActionErrored func(ctx context.Context, reqID uint64,
+		reason string) error
+	privMapDB firewalldb.PrivacyMapper
 
 	permsMgr        *perms.Manager
 	getFeaturePerms featurePerms
@@ -63,7 +64,8 @@ func NewRuleEnforcer(ruleDB firewalldb.RulesDB,
 	routerClient lndclient.RouterClient,
 	lndClient lndclient.LightningClient, lndConnID string,
 	ruleMgrs rules.ManagerSet,
-	markActionErrored func(reqID uint64, reason string) error,
+	markActionErrored func(ctx context.Context, reqID uint64,
+		reason string) error,
 	privMap firewalldb.PrivacyMapper) *RuleEnforcer {
 
 	return &RuleEnforcer{
@@ -164,7 +166,9 @@ func (r *RuleEnforcer) Intercept(ctx context.Context,
 
 		replacement, err := r.handleRequest(ctx, ri)
 		if err != nil {
-			dbErr := r.markActionErrored(ri.RequestID, err.Error())
+			dbErr := r.markActionErrored(
+				ctx, ri.RequestID, err.Error(),
+			)
 			if dbErr != nil {
 				log.Error("could not mark action for "+
 					"request ID %d as Errored: %v",
@@ -233,9 +237,12 @@ func (r *RuleEnforcer) Intercept(ctx context.Context,
 func (r *RuleEnforcer) handleRequest(ctx context.Context,
 	ri *RequestInfo) (proto.Message, error) {
 
-	sessionID, err := session.IDFromMacaroon(ri.Macaroon)
+	// First prize is to extract the session ID from the MD pairs.
+	sessionID, ok, err := session.FromGrpcMD(ri.MDPairs)
 	if err != nil {
-		return nil, fmt.Errorf("could not extract ID from macaroon")
+		return nil, fmt.Errorf("could not extract session ID: %v", err)
+	} else if !ok {
+		return nil, fmt.Errorf("no session ID found in request")
 	}
 
 	rules, err := r.collectEnforcers(ctx, ri, sessionID)
