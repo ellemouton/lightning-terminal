@@ -6,19 +6,58 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightningnetwork/lnd/clock"
 	"github.com/stretchr/testify/require"
 )
 
 var (
-	sessionID1 = intToMacID(1)
-	sessionID2 = intToMacID(2)
-
 	testTime1 = time.Unix(32100, 0)
 	testTime2 = time.Unix(12300, 0)
+)
 
-	action1Req = &AddActionReq{
-		MacaroonIdentifier: sessionID1,
+// TestActionStorage tests that the ActionsListDB CRUD logic.
+func TestActionStorage(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	clock := clock.NewTestClock(testTime1)
+	sessDB := session.NewTestDB(t, clock)
+
+	sess1, err := sessDB.NewSession(
+		ctx, "sess 1", session.TypeAutopilot, time.Unix(1000, 0),
+		"something",
+	)
+	require.NoError(t, err)
+
+	sess2, err := sessDB.NewSession(
+		ctx, "sess 2", session.TypeAutopilot, time.Unix(1000, 0),
+		"something",
+	)
+	require.NoError(t, err)
+
+	db := NewTestDBWithSessions(t, sessDB, clock)
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	actions, _, _, err := db.ListActions(
+		ctx, nil,
+		WithActionSessionID(sess1.ID),
+		WithActionState(ActionStateDone),
+	)
+	require.NoError(t, err)
+	require.Len(t, actions, 0)
+
+	actions, _, _, err = db.ListActions(
+		ctx, nil,
+		WithActionSessionID(sess2.ID),
+		WithActionState(ActionStateDone),
+	)
+	require.NoError(t, err)
+	require.Len(t, actions, 0)
+
+	action1Req := &AddActionReq{
+		MacaroonIdentifier: sess1.ID,
 		ActorName:          "Autopilot",
 		FeatureName:        "auto-fees",
 		Trigger:            "fee too low",
@@ -28,57 +67,11 @@ var (
 		RPCParamsJson:      []byte("new fee"),
 	}
 
-	action1 = &Action{
+	action1 := &Action{
 		AddActionReq: *action1Req,
 		AttemptedAt:  testTime1,
 		State:        ActionStateDone,
 	}
-
-	action2Req = &AddActionReq{
-		MacaroonIdentifier: sessionID2,
-		ActorName:          "Autopilot",
-		FeatureName:        "rebalancer",
-		Trigger:            "channels not balanced",
-		Intent:             "balance",
-		RPCMethod:          "SendToRoute",
-		RPCParamsJson:      []byte("hops, amount"),
-	}
-
-	action2 = &Action{
-		AddActionReq: *action2Req,
-		AttemptedAt:  testTime2,
-		State:        ActionStateInit,
-	}
-)
-
-// TestActionStorage tests that the ActionsListDB CRUD logic.
-func TestActionStorage(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	clock := clock.NewTestClock(testTime1)
-
-	db, err := NewBoltDB(t.TempDir(), "test.db", nil, clock)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
-
-	actions, _, _, err := db.ListActions(
-		ctx, nil,
-		WithActionSessionID(sessionID1),
-		WithActionState(ActionStateDone),
-	)
-	require.NoError(t, err)
-	require.Len(t, actions, 0)
-
-	actions, _, _, err = db.ListActions(
-		ctx, nil,
-		WithActionSessionID(sessionID2),
-		WithActionState(ActionStateDone),
-	)
-	require.NoError(t, err)
-	require.Len(t, actions, 0)
 
 	locator1, err := db.AddAction(ctx, action1Req)
 	require.NoError(t, err)
@@ -87,6 +80,22 @@ func TestActionStorage(t *testing.T) {
 
 	clock.SetTime(testTime2)
 
+	action2Req := &AddActionReq{
+		MacaroonIdentifier: sess2.ID,
+		ActorName:          "Autopilot",
+		FeatureName:        "rebalancer",
+		Trigger:            "channels not balanced",
+		Intent:             "balance",
+		RPCMethod:          "SendToRoute",
+		RPCParamsJson:      []byte("hops, amount"),
+	}
+
+	action2 := &Action{
+		AddActionReq: *action2Req,
+		AttemptedAt:  testTime2,
+		State:        ActionStateInit,
+	}
+
 	locator2, err := db.AddAction(ctx, action2Req)
 	require.NoError(t, err)
 	err = db.SetActionState(ctx, locator1, ActionStateDone, "")
@@ -94,7 +103,7 @@ func TestActionStorage(t *testing.T) {
 
 	actions, _, _, err = db.ListActions(
 		ctx, nil,
-		WithActionSessionID(sessionID1),
+		WithActionSessionID(sess1.ID),
 		WithActionState(ActionStateDone),
 	)
 	require.NoError(t, err)
@@ -103,7 +112,7 @@ func TestActionStorage(t *testing.T) {
 
 	actions, _, _, err = db.ListActions(
 		ctx, nil,
-		WithActionSessionID(sessionID2),
+		WithActionSessionID(sess2.ID),
 		WithActionState(ActionStateDone),
 	)
 	require.NoError(t, err)
@@ -114,7 +123,7 @@ func TestActionStorage(t *testing.T) {
 
 	actions, _, _, err = db.ListActions(
 		ctx, nil,
-		WithActionSessionID(sessionID2),
+		WithActionSessionID(sess2.ID),
 		WithActionState(ActionStateDone),
 	)
 	require.NoError(t, err)
@@ -145,7 +154,7 @@ func TestActionStorage(t *testing.T) {
 
 	actions, _, _, err = db.ListActions(
 		ctx, nil,
-		WithActionSessionID(sessionID2),
+		WithActionSessionID(sess2.ID),
 		WithActionState(ActionStateError),
 	)
 	require.NoError(t, err)
@@ -158,11 +167,13 @@ func TestActionStorage(t *testing.T) {
 // TestListActions tests some ListAction options.
 // TODO(elle): cover more test cases here.
 func TestListActions(t *testing.T) {
-	tmpDir := t.TempDir()
-	ctx := context.Background()
+	t.Parallel()
 
-	db, err := NewBoltDB(tmpDir, "test.db", nil, clock.NewDefaultClock())
-	require.NoError(t, err)
+	ctx := context.Background()
+	clock := clock.NewDefaultClock()
+
+	sessDB := session.NewTestDB(t, clock)
+	db := NewTestDBWithSessions(t, sessDB, clock)
 	t.Cleanup(func() {
 		_ = db.Close()
 	})
@@ -354,18 +365,35 @@ func TestListActions(t *testing.T) {
 func TestListGroupActions(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
+	clock := clock.NewDefaultClock()
 
-	group1 := intToMacID(0)
+	sessDB := session.NewTestDB(t, clock)
 
-	// Link session 1 and session 2 to group 1.
-	index := NewMockSessionDB()
-	index.AddPair(sessionID1, group1)
-	index.AddPair(sessionID2, group1)
-
-	db, err := NewBoltDB(
-		t.TempDir(), "test.db", index, clock.NewDefaultClock(),
+	// Create two sessions both linked to session 1's group.
+	sess1, err := sessDB.NewSession(
+		ctx, "sess 1", session.TypeAutopilot, time.Unix(1000, 0),
+		"something",
 	)
 	require.NoError(t, err)
+
+	// We'll first need to revoke session 1 before we can link another
+	// session to the group.
+	require.NoError(
+		t, sessDB.ShiftState(ctx, sess1.ID, session.StateCreated),
+	)
+	require.NoError(
+		t, sessDB.ShiftState(ctx, sess1.ID, session.StateRevoked),
+	)
+
+	group1 := sess1.GroupID
+
+	sess2, err := sessDB.NewSession(
+		ctx, "sess 2", session.TypeAutopilot, time.Unix(1000, 0),
+		"something", session.WithLinkedGroupID(&group1),
+	)
+	require.NoError(t, err)
+
+	db := NewTestDBWithSessions(t, sessDB, clock)
 	t.Cleanup(func() {
 		_ = db.Close()
 	})
@@ -376,25 +404,42 @@ func TestListGroupActions(t *testing.T) {
 	require.Empty(t, al)
 
 	// Add an action under session 1.
-	_, err = db.AddAction(ctx, action1Req)
+	_, err = db.AddAction(ctx, &AddActionReq{
+		MacaroonIdentifier: sess1.ID,
+		ActorName:          "Autopilot",
+		FeatureName:        "auto-fees",
+		Trigger:            "fee too low",
+		Intent:             "increase fee",
+		StructuredJsonData: "{\"something\":\"nothing\"}",
+		RPCMethod:          "UpdateChanPolicy",
+		RPCParamsJson:      []byte("new fee"),
+	})
 	require.NoError(t, err)
 
 	// There should now be one action in the group.
 	al, _, _, err = db.ListActions(ctx, nil, WithActionGroupID(group1))
 	require.NoError(t, err)
 	require.Len(t, al, 1)
-	require.Equal(t, sessionID1, al[0].MacaroonIdentifier)
+	require.EqualValues(t, sess1.ID, al[0].MacaroonIdentifier)
 
 	// Add an action under session 2.
-	_, err = db.AddAction(ctx, action2Req)
+	_, err = db.AddAction(ctx, &AddActionReq{
+		MacaroonIdentifier: sess2.ID,
+		ActorName:          "Autopilot",
+		FeatureName:        "rebalancer",
+		Trigger:            "channels not balanced",
+		Intent:             "balance",
+		RPCMethod:          "SendToRoute",
+		RPCParamsJson:      []byte("hops, amount"),
+	})
 	require.NoError(t, err)
 
 	// There should now be actions in the group.
 	al, _, _, err = db.ListActions(ctx, nil, WithActionGroupID(group1))
 	require.NoError(t, err)
 	require.Len(t, al, 2)
-	require.Equal(t, sessionID1, al[0].MacaroonIdentifier)
-	require.Equal(t, sessionID2, al[1].MacaroonIdentifier)
+	require.EqualValues(t, sess1.ID, al[0].MacaroonIdentifier)
+	require.EqualValues(t, sess2.ID, al[1].MacaroonIdentifier)
 }
 
 func assertEqualActions(t *testing.T, expected, got *Action) {
