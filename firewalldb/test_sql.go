@@ -4,6 +4,7 @@ package firewalldb
 
 import (
 	"testing"
+	"time"
 
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightningnetwork/lnd/clock"
@@ -19,4 +20,18 @@ func NewTestDBWithSessions(t *testing.T, sessionStore session.Store,
 	require.True(t, ok)
 
 	return NewSQLDB(sessions.BaseDB, clock)
+}
+
+func assertEqualActions(t *testing.T, expected, got *Action) {
+	expectedAttemptedAt := expected.AttemptedAt
+	actualAttemptedAt := got.AttemptedAt
+
+	expected.AttemptedAt = time.Time{}
+	got.AttemptedAt = time.Time{}
+
+	require.Equal(t, expected, got)
+	require.Equal(t, expectedAttemptedAt.Unix(), actualAttemptedAt.Unix())
+
+	expected.AttemptedAt = expectedAttemptedAt
+	got.AttemptedAt = actualAttemptedAt
 }
