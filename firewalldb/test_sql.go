@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightninglabs/lightning-terminal/accounts"
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightningnetwork/lnd/clock"
 	"github.com/stretchr/testify/require"
@@ -18,6 +19,20 @@ func NewTestDBWithSessions(t *testing.T, sessionStore session.Store,
 
 	sessions, ok := sessionStore.(*session.SQLStore)
 	require.True(t, ok)
+
+	return NewSQLDB(sessions.BaseDB, clock)
+}
+
+func NewTestDBWithSessionsAndAccounts(t *testing.T, sessionStore SessionDB,
+	acctStore AccountsDB, clock clock.Clock) *SQLDB {
+
+	sessions, ok := sessionStore.(*session.SQLStore)
+	require.True(t, ok)
+
+	accounts, ok := acctStore.(*accounts.SQLStore)
+	require.True(t, ok)
+
+	require.Equal(t, accounts.BaseDB, sessions.BaseDB)
 
 	return NewSQLDB(sessions.BaseDB, clock)
 }

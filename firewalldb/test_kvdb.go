@@ -28,6 +28,14 @@ func NewTestDBWithSessions(t *testing.T, sessStore SessionDB,
 	return newDBFromPathWithSessions(t, t.TempDir(), sessStore, nil, clock)
 }
 
+func NewTestDBWithSessionsAndAccounts(t *testing.T, sessStore SessionDB,
+	acctStore AccountsDB, clock clock.Clock) *BoltDB {
+
+	return newDBFromPathWithSessions(
+		t, t.TempDir(), sessStore, acctStore, clock,
+	)
+}
+
 func newDBFromPathWithSessions(t *testing.T, dbPath string,
 	sessStore SessionDB, acctStore AccountsDB, clock clock.Clock) *BoltDB {
 
