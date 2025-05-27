@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	testTime1 = time.Unix(32100, 0)
-	testTime2 = time.Unix(12300, 0)
+	testTime1 = time.Unix(12300, 0)
+	testTime2 = time.Unix(32100, 0)
 )
 
 // TestActionStorage tests that the ActionsListDB CRUD logic.
@@ -493,10 +493,20 @@ func TestListGroupActions(t *testing.T) {
 	_, err = db.AddAction(ctx, action2Req)
 	require.NoError(t, err)
 
-	// There should now be actions in the group.
+	// There should now be two actions in the group.
 	al, _, _, err = db.ListActions(ctx, nil, WithActionGroupID(group1))
 	require.NoError(t, err)
 	require.Len(t, al, 2)
 	assertEqualActions(t, action1, al[0])
 	assertEqualActions(t, action2, al[1])
+
+	// Try the reversed query too.
+	al, _, _, err = db.ListActions(
+		ctx, &ListActionsQuery{Reversed: true},
+		WithActionGroupID(group1),
+	)
+	require.NoError(t, err)
+	require.Len(t, al, 2)
+	assertEqualActions(t, action2, al[0])
+	assertEqualActions(t, action1, al[1])
 }

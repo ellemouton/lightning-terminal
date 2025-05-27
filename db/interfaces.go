@@ -87,6 +87,8 @@ type BatchedQuerier interface {
 	// create a batched version of the normal methods they need.
 	sqlc.Querier
 
+	sqlc.CustomQueries
+
 	// BeginTx creates a new database transaction given the set of
 	// transaction options.
 	BeginTx(ctx context.Context, options TxOptions) (*sql.Tx, error)

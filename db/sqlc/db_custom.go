@@ -1,5 +1,9 @@
 package sqlc
 
+import (
+	"context"
+)
+
 // BackendType is an enum that represents the type of database backend we're
 // using.
 type BackendType uint8
@@ -33,6 +37,13 @@ func (q *Queries) Backend() BackendType {
 	}
 
 	return wtx.backendType
+}
+
+type CustomQueries interface {
+	CountActions(ctx context.Context, arg ActionQueryParams) (int64, error)
+
+	ListActions(ctx context.Context,
+		arg ListActionsParams) ([]Action, error)
 }
 
 // NewSqlite creates a new Queries instance for a SQLite database.

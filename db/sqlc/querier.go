@@ -11,7 +11,6 @@ import (
 
 type Querier interface {
 	AddAccountInvoice(ctx context.Context, arg AddAccountInvoiceParams) error
-	CountActions(ctx context.Context, arg CountActionsParams) (int64, error)
 	DeleteAccount(ctx context.Context, id int64) error
 	DeleteAccountPayment(ctx context.Context, arg DeleteAccountPaymentParams) error
 	DeleteAllTempKVStores(ctx context.Context) error
@@ -57,8 +56,6 @@ type Querier interface {
 	InsertSessionPrivacyFlag(ctx context.Context, arg InsertSessionPrivacyFlagParams) error
 	ListAccountInvoices(ctx context.Context, accountID int64) ([]AccountInvoice, error)
 	ListAccountPayments(ctx context.Context, accountID int64) ([]AccountPayment, error)
-	ListActions(ctx context.Context, arg ListActionsParams) ([]Action, error)
-	ListActionsPaginated(ctx context.Context, arg ListActionsPaginatedParams) ([]Action, error)
 	ListAllAccounts(ctx context.Context) ([]Account, error)
 	ListSessions(ctx context.Context) ([]Session, error)
 	ListSessionsByState(ctx context.Context, state int16) ([]Session, error)

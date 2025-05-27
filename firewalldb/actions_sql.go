@@ -33,8 +33,7 @@ type SQLActionQueries interface {
 	InsertAction(ctx context.Context, arg sqlc.InsertActionParams) (int64, error)
 	SetActionState(ctx context.Context, arg sqlc.SetActionStateParams) error
 	ListActions(ctx context.Context, arg sqlc.ListActionsParams) ([]sqlc.Action, error)
-	ListActionsPaginated(ctx context.Context, arg sqlc.ListActionsPaginatedParams) ([]sqlc.Action, error)
-	CountActions(ctx context.Context, arg sqlc.CountActionsParams) (int64, error)
+	CountActions(ctx context.Context, arg sqlc.ActionQueryParams) (int64, error)
 }
 
 // sqlActionLocator helps us find an action in the SQL DB.
@@ -294,60 +293,42 @@ func (s *SQLDB) ListActions(ctx context.Context,
 			dbActions []sqlc.Action
 			err       error
 		)
-		if query == nil {
-			dbActions, err = db.ListActions(
-				ctx, sqlc.ListActionsParams{
-					SessionID:   sessionID,
-					GroupID:     groupID,
-					FeatureName: feature,
-					ActorName:   actorName,
-					RpcMethod:   rpcMethod,
-					State:       actionState,
-					EndTime:     endTime,
-					StartTime:   startTime,
-				},
-			)
-		} else {
-			dbActions, err = db.ListActionsPaginated(
-				ctx, sqlc.ListActionsPaginatedParams{
-					NumLimit: func() int32 {
-						if query.MaxNum == 0 {
-							return int32(
-								math.MaxInt32,
-							)
-						}
-
-						return int32(query.MaxNum)
-					}(),
-					NumOffset:   int32(query.IndexOffset),
-					Reversed:    query.Reversed,
-					SessionID:   sessionID,
-					GroupID:     groupID,
-					FeatureName: feature,
-					ActorName:   actorName,
-					RpcMethod:   rpcMethod,
-					State:       actionState,
-					EndTime:     endTime,
-					StartTime:   startTime,
-				},
-			)
+		actionQueryParams := sqlc.ActionQueryParams{
+			SessionID:   sessionID,
+			GroupID:     groupID,
+			FeatureName: feature,
+			ActorName:   actorName,
+			RpcMethod:   rpcMethod,
+			State:       actionState,
+			EndTime:     endTime,
+			StartTime:   startTime,
 		}
+		queryParams := sqlc.ListActionsParams{
+			ActionQueryParams: actionQueryParams,
+			Reversed:          false,
+		}
+		if query != nil {
+			queryParams.Reversed = query.Reversed
+			queryParams.Pagination = &sqlc.Pagination{
+				NumLimit: func() int32 {
+					if query.MaxNum == 0 {
+						return int32(math.MaxInt32)
+					}
+
+					return int32(query.MaxNum)
+				}(),
+				NumOffset: int32(query.IndexOffset),
+			}
+		}
+
+		dbActions, err = db.ListActions(ctx, queryParams)
 		if err != nil {
 			return fmt.Errorf("unable to list actions: %w", err)
 		}
 
 		if query != nil && query.CountAll {
 			totalCount, err = db.CountActions(
-				ctx, sqlc.CountActionsParams{
-					SessionID:   sessionID,
-					GroupID:     groupID,
-					FeatureName: feature,
-					ActorName:   actorName,
-					RpcMethod:   rpcMethod,
-					State:       actionState,
-					EndTime:     endTime,
-					StartTime:   startTime,
-				},
+				ctx, actionQueryParams,
 			)
 			if err != nil {
 				return fmt.Errorf("unable to count actions: %w",

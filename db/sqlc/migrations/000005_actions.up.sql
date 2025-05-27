@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS actions(
     error_reason TEXT
 );
 
-CREATE INDEX IF NOT EXISTS actions_state_idx ON actions(state);
+CREATE INDEX IF NOT EXISTS actions_state_idx ON actions(action_state);
 CREATE INDEX IF NOT EXISTS actions_session_id_idx ON actions(session_id);
 CREATE INDEX IF NOT EXISTS actions_feature_name_idx ON actions(feature_name);
 CREATE INDEX IF NOT EXISTS actions_created_at_idx ON actions(created_at);
